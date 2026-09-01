@@ -1,0 +1,10 @@
+# SQLite (WAL mode leaves -wal/-shm alongside the db)
+*.db
+*.db-wal
+*.db-shm
+
+# Build output
+api-armv6
+
+# macOS
+.DS_Store
