@@ -65,4 +65,17 @@ export const t = {
   confirmDeleteCategory: (name: string) => `Eliminare la categoria "${name}"?`,
   categoryProtected:
     "Questa categoria è di base: il riepilogo fiscale la usa. Puoi solo nasconderla.",
+  categoryInUse:
+    "Questa categoria è usata da spese registrate. Nascondila invece di eliminarla.",
+
+  // Clients — who money comes from
+  clients: "Clienti",
+  clientName: "Nome cliente",
+  addClient: "Aggiungi cliente",
+  noClientsYet: "Nessun cliente registrato.",
+  clientNotSaved: "Cliente non salvato. Riprova.",
+  hiddenClient: "nascosto",
+  confirmDeleteClient: (name: string) => `Eliminare il cliente "${name}"?`,
+  clientInUse:
+    "Questo cliente è usato da entrate registrate. Nascondilo invece di eliminarlo.",
 } as const

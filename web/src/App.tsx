@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 
 import { Categories } from "@/Categories"
+import { Clients } from "@/Clients"
 import { Expenses } from "@/Expenses"
 import { Login } from "@/Login"
 import { Button } from "@/components/ui/button"
@@ -13,9 +14,15 @@ import { t } from "@/strings"
 // one on every cold load.
 type State = "checking" | "loggedOut" | "connected" | "unreachable"
 
+// The screens, in the order the nav lists them: logging an Expense is what the
+// app is for, so it is what opens, and the two management screens sit after
+// it. The keys are the strings-file keys too, so the nav labels itself.
+const screens = ["expenses", "categories", "clients"] as const
+type Screen = (typeof screens)[number]
+
 export function App() {
   const [state, setState] = useState<State>("checking")
-  const [screen, setScreen] = useState<"expenses" | "categories">("expenses")
+  const [screen, setScreen] = useState<Screen>("expenses")
 
   const check = useCallback(() => {
     fetch("/api/health")
@@ -50,22 +57,28 @@ export function App() {
     )
   }
 
-  // Two screens and a text link between them. Logging an Expense is what the
-  // app is for, so it is what opens; Categories is somewhere you go once in a
-  // while. Later tickets will earn a real nav — this is not it yet.
+  // A row of text links, one per screen, the current one not offered. Three
+  // screens is where a two-way toggle stops working; a later ticket will earn
+  // a real nav — this is not it yet.
   return (
     <>
-      {screen === "expenses" ? <Expenses /> : <Categories />}
-      <div className="mx-auto flex w-full max-w-md justify-end px-6 pb-8">
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() =>
-            setScreen(screen === "expenses" ? "categories" : "expenses")
-          }
-        >
-          {screen === "expenses" ? t.categories : t.expenses}
-        </Button>
+      {screen === "expenses" && <Expenses />}
+      {screen === "categories" && <Categories />}
+      {screen === "clients" && <Clients />}
+      <div className="mx-auto flex w-full max-w-md justify-end gap-1 px-6 pb-8">
+        {screens.map(
+          (key) =>
+            key !== screen && (
+              <Button
+                key={key}
+                size="sm"
+                variant="ghost"
+                onClick={() => setScreen(key)}
+              >
+                {t[key]}
+              </Button>
+            )
+        )}
       </div>
     </>
   )

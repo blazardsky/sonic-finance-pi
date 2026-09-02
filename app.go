@@ -3,10 +3,14 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"log"
 	"net/http"
 	"time"
+
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 // newApp builds the whole HTTP surface. The clock is injected: no handler may
@@ -25,6 +29,11 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 	mux.HandleFunc("POST /api/categories", handleCreateCategory(db))
 	mux.HandleFunc("PATCH /api/categories/{id}", handlePatchCategory(db))
 	mux.HandleFunc("DELETE /api/categories/{id}", handleDeleteCategory(db))
+
+	mux.HandleFunc("GET /api/clients", handleListClients(db))
+	mux.HandleFunc("POST /api/clients", handleCreateClient(db))
+	mux.HandleFunc("PATCH /api/clients/{id}", handlePatchClient(db))
+	mux.HandleFunc("DELETE /api/clients/{id}", handleDeleteClient(db))
 
 	mux.HandleFunc("GET /api/expenses", handleListExpenses(db))
 	mux.HandleFunc("POST /api/expenses", handleCreateExpense(db, now))
@@ -71,7 +80,18 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 // writeError logs the detail and tells the client only the status. The
 // underlying error can name tables and columns, which is not something to hand
 // out over an endpoint reachable by anyone on the tailnet.
+//
+// A foreign key refusing is the one database error that is not the server's
+// fault: it means something is still pointing at the row, which is a conflict
+// the client can act on rather than a fault it can only retry. Correcting the
+// status here rather than at each delete is the point — every db.Exec error in
+// the app already passes through this one function, and a Category with
+// Expenses in it and a Client with Incomes in it are the same refusal.
 func writeError(w http.ResponseWriter, status int, err error) {
+	var sqlErr *sqlite.Error
+	if errors.As(err, &sqlErr) && sqlErr.Code() == sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY {
+		status = http.StatusConflict
+	}
 	log.Printf("request failed: %v", err)
 	writeJSON(w, status, map[string]string{"error": http.StatusText(status)})
 }

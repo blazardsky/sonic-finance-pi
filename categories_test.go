@@ -255,3 +255,44 @@ func TestCategoryNamesAreTrimmed(t *testing.T) {
 		t.Errorf("name = %q, want %q", created.Name, "Bici")
 	}
 }
+
+// A Category with Expenses in it refuses to be deleted, and says so as a 409
+// rather than a 500: something is still pointing at the row, which is a
+// conflict the household can act on — hide it instead — not a server fault.
+// Ticket 04 left this to whoever added the foreign key; the answer lives in
+// writeError, so a Client with Incomes behind it gets it for free.
+func TestDeletingACategoryInUseIsRefused(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+	a.addExpense(t, map[string]any{
+		"occurred_on":  "2026-03-15",
+		"amount_cents": 4237,
+		"category_id":  alimentari.ID,
+	})
+
+	if res := a.delete(t, categoryPath(alimentari.ID)); res.StatusCode != http.StatusConflict {
+		t.Errorf("DELETE a Category with an Expense in it = %d, want 409", res.StatusCode)
+	}
+	// And it is still there, so the Expense still resolves through it.
+	if got := a.category(t, "Alimentari"); got.ID != alimentari.ID {
+		t.Errorf("the refused delete moved the Category to id %d, want %d", got.ID, alimentari.ID)
+	}
+
+	// An unused Category still deletes: the guard is about what points at the
+	// row, not about Categories in general.
+	bici := a.createCategoryNamed(t, "Bici")
+	if res := a.delete(t, categoryPath(bici.ID)); res.StatusCode != http.StatusNoContent {
+		t.Errorf("DELETE an unused Category = %d, want 204", res.StatusCode)
+	}
+}
+
+// createCategoryNamed adds an expense-side Category and returns it.
+func (a *testApp) createCategoryNamed(t *testing.T, name string) categoryJSON {
+	t.Helper()
+	var got categoryJSON
+	res := a.post(t, "/api/categories", map[string]any{"name": name, "applies_to": appliesExpense}, &got)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /api/categories %q = %d, want 201", name, res.StatusCode)
+	}
+	return got
+}

@@ -40,9 +40,15 @@ export function Categories() {
   }, [load])
 
   // Every write goes through here so that the reload and the error wording
-  // are in one place: a 409 is the server refusing to break the tax summary,
-  // and is the only failure worth its own sentence.
-  async function write(path: string, init: RequestInit) {
+  // are in one place: a 409 is the only failure worth its own sentence, and it
+  // now has two readings — the tax summary resolves this Category, or entries
+  // are still pointing at it. Which one it is depends on what was attempted,
+  // so the caller supplies the sentence.
+  async function write(
+    path: string,
+    init: RequestInit,
+    onConflict: string = t.categoryProtected
+  ) {
     setError("")
     try {
       await api(path, init)
@@ -51,7 +57,7 @@ export function Categories() {
     } catch (res) {
       setError(
         res instanceof Response && res.status === 409
-          ? t.categoryProtected
+          ? onConflict
           : t.serverUnreachable
       )
       return false
@@ -167,7 +173,11 @@ export function Categories() {
                 disabled={c.base}
                 onClick={() => {
                   if (confirm(t.confirmDeleteCategory(c.name)))
-                    void write(`/api/categories/${c.id}`, { method: "DELETE" })
+                    void write(
+                      `/api/categories/${c.id}`,
+                      { method: "DELETE" },
+                      t.categoryInUse
+                    )
                 }}
               >
                 {t.delete}

@@ -12,6 +12,15 @@ export type Category = {
   base: boolean
 }
 
+// Who money comes from, as one row rather than three spellings. Not a
+// freelance-only idea: "Mum" for a birthday gift is a valid Client. Hidden
+// Clients stay out of the Income picker but still resolve for old Incomes.
+export type Client = {
+  id: number
+  name: string
+  hidden: boolean
+}
+
 export type Expense = {
   id: number
   occurred_on: string
