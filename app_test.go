@@ -129,7 +129,7 @@ func (a *testApp) get(t *testing.T, path string, dst any) *http.Response {
 	return a.decodeBody(t, "GET", path, res, dst)
 }
 
-// post, patch and delete all send the same shape of request. body is encoded
+// post, patch, put and delete all send the same shape of request. body is encoded
 // as JSON, or omitted entirely when nil; dst, when non-nil, is decoded from
 // the response.
 func (a *testApp) post(t *testing.T, path string, body, dst any) *http.Response {
@@ -140,6 +140,11 @@ func (a *testApp) post(t *testing.T, path string, body, dst any) *http.Response 
 func (a *testApp) patch(t *testing.T, path string, body, dst any) *http.Response {
 	t.Helper()
 	return a.do(t, http.MethodPatch, path, body, dst)
+}
+
+func (a *testApp) put(t *testing.T, path string, body, dst any) *http.Response {
+	t.Helper()
+	return a.do(t, http.MethodPut, path, body, dst)
 }
 
 func (a *testApp) delete(t *testing.T, path string) *http.Response {

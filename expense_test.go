@@ -2,17 +2,26 @@ package main
 
 import (
 	"net/http"
+	"strconv"
 	"testing"
 )
 
-// An Expense as the API hands it out at this ticket's scope: an amount, a
-// date, and a Category. The fields that make one recognisable months later —
-// Store, Payer, Payment method, note — arrive in 06.
+// An Expense as the API hands it out: the three fields that make it an
+// Expense, and the four that make it recognisable months later.
 type expenseJSON struct {
-	ID          int64  `json:"id"`
-	OccurredOn  string `json:"occurred_on"`
-	AmountCents int64  `json:"amount_cents"`
-	CategoryID  int64  `json:"category_id"`
+	ID            int64  `json:"id"`
+	OccurredOn    string `json:"occurred_on"`
+	AmountCents   int64  `json:"amount_cents"`
+	CategoryID    int64  `json:"category_id"`
+	Store         string `json:"store"`
+	Payer         string `json:"payer"`
+	PaymentMethod string `json:"payment_method"`
+	Note          string `json:"note"`
+}
+
+// expensePath addresses one Expense the way the API does.
+func expensePath(id int64) string {
+	return "/api/expenses/" + strconv.FormatInt(id, 10)
 }
 
 func (a *testApp) expenses(t *testing.T) []expenseJSON {
@@ -176,5 +185,171 @@ func TestRenamingACategoryLeavesItsExpensesPointingAtIt(t *testing.T) {
 
 	if after := a.category(t, "Cibo"); after.ID != logged.CategoryID {
 		t.Errorf("the renamed Category is id %d, but the Expense points at %d", after.ID, logged.CategoryID)
+	}
+}
+
+// The four detail fields go in and come back out unchanged. They are what
+// makes a €43 line recognisable in November, so a round trip that drops one
+// silently is the failure worth pinning.
+func TestAnExpenseKeepsItsDetails(t *testing.T) {
+	a := newTestApp(t)
+	id := a.category(t, "Alimentari").ID
+
+	created := a.addExpense(t, map[string]any{
+		"occurred_on":    "2026-03-15",
+		"amount_cents":   4237,
+		"category_id":    id,
+		"store":          "Conad Città",
+		"payer":          "Nicco",
+		"payment_method": "Bancomat",
+		"note":           "spesa grossa, c'era la festa",
+	})
+
+	got := a.expenses(t)
+	if len(got) != 1 {
+		t.Fatalf("listed %d Expenses, want 1", len(got))
+	}
+	if got[0] != created {
+		t.Errorf("listed Expense = %+v, want the created one, %+v", got[0], created)
+	}
+	if got[0].Store != "Conad Città" || got[0].Payer != "Nicco" ||
+		got[0].PaymentMethod != "Bancomat" || got[0].Note != "spesa grossa, c'era la festa" {
+		t.Errorf("details came back as %+v", got[0])
+	}
+}
+
+// Every detail is optional: the three-tap Expense of ticket 05 still saves,
+// and reads back as empty text rather than null — the frontend puts these
+// straight into inputs.
+func TestTheDetailsAreOptional(t *testing.T) {
+	a := newTestApp(t)
+	id := a.category(t, "Alimentari").ID
+
+	created := a.addExpense(t, map[string]any{"occurred_on": "2026-03-15", "amount_cents": 700, "category_id": id})
+	if created.Store != "" || created.Payer != "" || created.PaymentMethod != "" || created.Note != "" {
+		t.Errorf("an Expense logged without details = %+v, want the four empty", created)
+	}
+}
+
+// ADR-0001 makes a Payer a label rather than an identity, and this is what
+// that buys: the label is what the entry says, so editing the list it was
+// chosen from must not rewrite history. Renaming a Category does the opposite,
+// deliberately — see TestRenamingACategoryLeavesItsExpensesPointingAtIt.
+func TestRenamingAPayerLeavesExistingExpensesReadingAsBefore(t *testing.T) {
+	a := newTestApp(t)
+	id := a.category(t, "Alimentari").ID
+	before := a.lists(t)
+
+	logged := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": id,
+		"payer": before.Payers[0], "payment_method": before.PaymentMethods[0],
+	})
+
+	a.put(t, settingsPath, map[string]any{
+		"payers":          []string{"Qualcun altro entirely", before.Payers[1]},
+		"payment_methods": []string{"Contanti rinominati"},
+	}, nil)
+
+	got := a.expenses(t)
+	if len(got) != 1 {
+		t.Fatalf("listed %d Expenses, want 1", len(got))
+	}
+	if got[0].Payer != logged.Payer {
+		t.Errorf("payer now reads %q, want the %q it was saved with", got[0].Payer, logged.Payer)
+	}
+	if got[0].PaymentMethod != logged.PaymentMethod {
+		t.Errorf("payment_method now reads %q, want the %q it was saved with", got[0].PaymentMethod, logged.PaymentMethod)
+	}
+}
+
+// A mistake is a correction, not a delete-and-retype. A PATCH carries only the
+// fields that changed; everything else reads back as it was.
+func TestAnExpenseCanBeEdited(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	svago := a.category(t, "Svago").ID
+
+	logged := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 4237, "category_id": alimentari,
+		"store": "Conad", "payer": "Nicco", "payment_method": "Contanti", "note": "sbagliata",
+	})
+
+	var updated expenseJSON
+	res := a.patch(t, expensePath(logged.ID), map[string]any{
+		"amount_cents": 4137,
+		"category_id":  svago,
+		"note":         "",
+	}, &updated)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH %s = %d, want 200", expensePath(logged.ID), res.StatusCode)
+	}
+
+	got := a.expenses(t)
+	if len(got) != 1 {
+		t.Fatalf("listed %d Expenses, want the one, edited", len(got))
+	}
+	if got[0] != updated {
+		t.Errorf("listed Expense = %+v, want what PATCH answered, %+v", got[0], updated)
+	}
+	want := expenseJSON{
+		ID: logged.ID, OccurredOn: "2026-03-15", AmountCents: 4137, CategoryID: svago,
+		Store: "Conad", Payer: "Nicco", PaymentMethod: "Contanti",
+	}
+	if got[0] != want {
+		t.Errorf("edited Expense = %+v, want %+v", got[0], want)
+	}
+}
+
+// An edit is validated exactly as a create is: the same rules, or a bad one
+// could be smuggled in through the back door.
+func TestEditsAreValidated(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	freelance := a.category(t, seedFreelanceName).ID
+	logged := a.addExpense(t, map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": alimentari})
+
+	cases := map[string]struct {
+		path string
+		body any
+		want int
+	}{
+		"a zero amount":       {expensePath(logged.ID), map[string]any{"amount_cents": 0}, http.StatusBadRequest},
+		"a fractional amount": {expensePath(logged.ID), map[string]any{"amount_cents": 7.99}, http.StatusBadRequest},
+		"a malformed date":    {expensePath(logged.ID), map[string]any{"occurred_on": "15/03/2026"}, http.StatusBadRequest},
+		"an income Category":  {expensePath(logged.ID), map[string]any{"category_id": freelance}, http.StatusBadRequest},
+		"an unknown Category": {expensePath(logged.ID), map[string]any{"category_id": 9999}, http.StatusBadRequest},
+		"an unknown Expense":  {expensePath(9999), map[string]any{"amount_cents": 100}, http.StatusNotFound},
+		"an unparseable id":   {"/api/expenses/nope", map[string]any{"amount_cents": 100}, http.StatusNotFound},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			if res := a.patch(t, c.path, c.body, nil); res.StatusCode != c.want {
+				t.Errorf("patching %s = %d, want %d", name, res.StatusCode, c.want)
+			}
+		})
+	}
+
+	if got := a.expenses(t); len(got) != 1 || got[0] != logged {
+		t.Errorf("the Expense reads %+v, want the refused edits to have changed nothing (%+v)", got, logged)
+	}
+}
+
+// A duplicate entry must not distort the month, so it can go.
+func TestAnExpenseCanBeDeleted(t *testing.T) {
+	a := newTestApp(t)
+	id := a.category(t, "Alimentari").ID
+	logged := a.addExpense(t, map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": id})
+	kept := a.addExpense(t, map[string]any{"occurred_on": "2026-03-16", "amount_cents": 900, "category_id": id})
+
+	if res := a.delete(t, expensePath(logged.ID)); res.StatusCode != http.StatusNoContent {
+		t.Fatalf("DELETE %s = %d, want 204", expensePath(logged.ID), res.StatusCode)
+	}
+
+	got := a.expenses(t)
+	if len(got) != 1 || got[0] != kept {
+		t.Errorf("after the delete the list is %+v, want only %+v", got, kept)
+	}
+	if res := a.delete(t, expensePath(logged.ID)); res.StatusCode != http.StatusNotFound {
+		t.Errorf("deleting it twice = %d, want 404", res.StatusCode)
 	}
 }

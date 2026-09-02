@@ -9,7 +9,7 @@ import (
 // schema change bumps this by one and adds the matching case to migrate's
 // switch, so deploying a new binary to the Pi is all it takes to update the
 // schema on the only copy of the data. No migration library.
-const schemaVersion = 3
+const schemaVersion = 4
 
 // Set on every pooled connection, not just the first: synchronous and
 // busy_timeout are per-connection settings, so a PRAGMA exec'd after Open would
@@ -69,6 +69,8 @@ func migrateStep(db *sql.DB, v int) error {
 		err = migrateCategories(tx)
 	case 2:
 		err = migrateExpenses(tx)
+	case 3:
+		err = migrateLists(tx)
 	default:
 		// schemaVersion was bumped without adding a case. Refusing is the whole
 		// point: committing the version bump with no DDL would leave the only

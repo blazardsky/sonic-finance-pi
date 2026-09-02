@@ -17,4 +17,17 @@ export type Expense = {
   occurred_on: string
   amount_cents: number
   category_id: number
+  // The four details, always strings and never null: they go straight into
+  // inputs. Payer and payment method are the label text the Expense was saved
+  // with, not a reference — renaming the list leaves them as they read.
+  store: string
+  payer: string
+  payment_method: string
+  note: string
+}
+
+// The two short configured lists the Expense form picks from.
+export type Lists = {
+  payers: string[]
+  payment_methods: string[]
 }

@@ -27,6 +27,13 @@ export function formatCents(cents: number): string {
   return `${euroGroups.format(Math.trunc(cents / 100))},${String(cents % 100).padStart(2, "0")}`
 }
 
+// toTyped is toCents backwards: whole cents as the form's own input would
+// have them typed, for an Expense being edited. Ungrouped, unlike
+// formatCents — a thousands separator is not something toCents accepts back.
+export function toTyped(cents: number): string {
+  return `${Math.trunc(cents / 100)},${String(cents % 100).padStart(2, "0")}`
+}
+
 // formatDate turns the API's YYYY-MM-DD into the 01/09/2026 the household
 // reads. The parts are swapped rather than parsed into a Date, which would
 // drag a timezone into a value that has none.

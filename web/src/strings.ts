@@ -25,7 +25,19 @@ export const t = {
   addExpense: "Aggiungi spesa",
   invalidAmount: "Importo non valido.",
   expenseNotSaved: "Spesa non salvata. Riprova.",
+  expenseNotDeleted: "Spesa non eliminata. Riprova.",
   noExpensesYet: "Nessuna spesa registrata.",
+  moreDetails: "Altri dettagli",
+  store: "Negozio",
+  payer: "Pagato da",
+  paymentMethod: "Metodo di pagamento",
+  note: "Note",
+  notSet: "—",
+  editExpense: "Modifica spesa",
+  save: "Salva",
+  cancel: "Annulla",
+  confirmDeleteExpense: (amount: string) =>
+    `Eliminare la spesa di € ${amount}?`,
 
   // Categories
   categories: "Categorie",
