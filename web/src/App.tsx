@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 
+import { Categories } from "@/Categories"
 import { Login } from "@/Login"
 import { t } from "@/strings"
 
@@ -10,7 +11,6 @@ import { t } from "@/strings"
 // one on every cold load.
 type State = "checking" | "loggedOut" | "connected" | "unreachable"
 
-// Placeholder shell, until a later ticket gives it something to show.
 export function App() {
   const [state, setState] = useState<State>("checking")
 
@@ -37,16 +37,19 @@ export function App() {
     )
   }
 
-  return (
-    <div className="flex min-h-svh p-6">
-      <div className="flex max-w-md min-w-0 flex-col gap-4 text-sm leading-loose">
-        <h1 className="font-medium">{t.appName}</h1>
+  if (state === "unreachable") {
+    return (
+      <div className="flex min-h-svh items-center justify-center p-6">
         <p className="font-mono text-xs text-muted-foreground">
-          {state === "connected" ? t.connected : t.serverUnreachable}
+          {t.serverUnreachable}
         </p>
       </div>
-    </div>
-  )
+    )
+  }
+
+  // Categories is the only screen there is so far; later tickets give the
+  // shell something to navigate between.
+  return <Categories />
 }
 
 export default App

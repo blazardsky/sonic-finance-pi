@@ -21,6 +21,11 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /", http.FileServer(http.FS(staticFS)))
 
+	mux.HandleFunc("GET /api/categories", handleListCategories(db))
+	mux.HandleFunc("POST /api/categories", handleCreateCategory(db))
+	mux.HandleFunc("PATCH /api/categories/{id}", handlePatchCategory(db))
+	mux.HandleFunc("DELETE /api/categories/{id}", handleDeleteCategory(db))
+
 	mux.HandleFunc("POST /api/login", handleLogin(db, now))
 	mux.HandleFunc("POST /api/logout", handleLogout)
 
@@ -37,6 +42,14 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 	})
 
 	return requireSession(db, now, mux)
+}
+
+// decodeJSON reads a JSON request body into dst. The cap is the point: the Pi
+// has 512MB of RAM, and none of these payloads — an Expense with its Items is
+// the largest — has any business being bigger than this.
+func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+	return json.NewDecoder(r.Body).Decode(dst)
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

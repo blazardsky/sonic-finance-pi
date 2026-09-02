@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -128,19 +129,44 @@ func (a *testApp) get(t *testing.T, path string, dst any) *http.Response {
 	return a.decodeBody(t, "GET", path, res, dst)
 }
 
-// post sends body as JSON — nil for an empty request — and, when dst is
-// non-nil, decodes the JSON response into it.
+// post, patch and delete all send the same shape of request. body is encoded
+// as JSON, or omitted entirely when nil; dst, when non-nil, is decoded from
+// the response.
 func (a *testApp) post(t *testing.T, path string, body, dst any) *http.Response {
 	t.Helper()
-	encoded, err := json.Marshal(body)
-	if err != nil {
-		t.Fatalf("POST %s: encoding body: %v", path, err)
+	return a.do(t, http.MethodPost, path, body, dst)
+}
+
+func (a *testApp) patch(t *testing.T, path string, body, dst any) *http.Response {
+	t.Helper()
+	return a.do(t, http.MethodPatch, path, body, dst)
+}
+
+func (a *testApp) delete(t *testing.T, path string) *http.Response {
+	t.Helper()
+	return a.do(t, http.MethodDelete, path, nil, nil)
+}
+
+func (a *testApp) do(t *testing.T, method, path string, body, dst any) *http.Response {
+	t.Helper()
+	var r io.Reader
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("%s %s: encoding body: %v", method, path, err)
+		}
+		r = bytes.NewReader(encoded)
 	}
-	res, err := a.Client().Post(a.URL+path, "application/json", bytes.NewReader(encoded))
+	req, err := http.NewRequest(method, a.URL+path, r)
 	if err != nil {
-		t.Fatalf("POST %s: %v", path, err)
+		t.Fatal(err)
 	}
-	return a.decodeBody(t, "POST", path, res, dst)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := a.Client().Do(req)
+	if err != nil {
+		t.Fatalf("%s %s: %v", method, path, err)
+	}
+	return a.decodeBody(t, method, path, res, dst)
 }
 
 func (a *testApp) decodeBody(t *testing.T, method, path string, res *http.Response, dst any) *http.Response {

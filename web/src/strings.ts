@@ -8,7 +8,6 @@
 export const t = {
   appName: "Sonic Finance",
   connecting: "Connessione…",
-  connected: "Connesso al server",
   serverUnreachable: "Server non raggiungibile",
 
   // Login
@@ -16,4 +15,21 @@ export const t = {
   logIn: "Accedi",
   loggingIn: "Accesso in corso…",
   wrongPassword: "Password errata. Riprova.",
+
+  // Categories
+  categories: "Categorie",
+  categoryName: "Nome categoria",
+  addCategory: "Aggiungi categoria",
+  appliesTo: "Si applica a",
+  appliesExpense: "Spese",
+  appliesIncome: "Entrate",
+  appliesBoth: "Entrambi",
+  rename: "Rinomina",
+  hide: "Nascondi",
+  unhide: "Mostra",
+  hidden: "nascosta",
+  delete: "Elimina",
+  confirmDeleteCategory: (name: string) => `Eliminare la categoria "${name}"?`,
+  categoryProtected:
+    "Questa categoria è di base: il riepilogo fiscale la usa. Puoi solo nasconderla.",
 } as const
