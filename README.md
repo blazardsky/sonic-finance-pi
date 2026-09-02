@@ -1,12 +1,13 @@
-# Sonic Finance | GO Backend API
+# Sonic Finance | GO Backend API + Vite Frontend
 
-This is the code for the go backend used for the Sonic Finance App.
-Sonic Finance is a simple expenses and icomes tracker for households (multiple people, shared space)
+This is the code for the Sonic Finance App, a simple expenses and icomes tracker for households (multiple people, shared space). 
 
 ## Stack
 
 - Go 1.27
 - modernc.org/sqlite
+- vite
+- react
 
 ## Target
 
