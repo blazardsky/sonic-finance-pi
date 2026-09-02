@@ -45,6 +45,8 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 	mux.HandleFunc("PATCH /api/incomes/{id}", handlePatchIncome(db))
 	mux.HandleFunc("DELETE /api/incomes/{id}", handleDeleteIncome(db))
 
+	mux.HandleFunc("GET /api/reports/month/{month}", handleMonthReport(db))
+
 	mux.HandleFunc("GET "+settingsPath, handleGetLists(db))
 	mux.HandleFunc("PUT "+settingsPath, handlePutLists(db))
 

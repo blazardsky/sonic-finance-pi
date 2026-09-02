@@ -88,6 +88,12 @@ export const t = {
   confirmDeleteIncome: (amount: string) =>
     `Eliminare l'entrata di € ${amount}?`,
 
+  // Month — where the month stands
+  month: "Mese",
+  difference: "Differenza",
+  previousMonth: "Mese precedente",
+  nextMonth: "Mese successivo",
+
   // Clients — who money comes from
   clients: "Clienti",
   clientName: "Nome cliente",

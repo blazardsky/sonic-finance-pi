@@ -13,7 +13,7 @@
 - [x] The Payer list is the same one Expenses use, in both directions
 - [x] An Income stores one number, the amount that arrived: no gross/net pair, no tax percentage — see ADR-0004
 - [x] Incomes can be edited and deleted
-- [ ] Tests cover an unpaid Income being excluded from totals and then included once paid — **owed by ticket 10**, see below
+- [x] Tests cover an unpaid Income being excluded from totals and then included once paid — **paid off by ticket 10**: `TestAnUnpaidIncomeIsAbsentFromTheMonthUntilItIsPaid` in `reports_test.go`
 
 ## Comments
 

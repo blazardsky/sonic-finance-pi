@@ -24,7 +24,11 @@ export function toCents(typed: string): number | null {
 const euroGroups = new Intl.NumberFormat("it-IT", { useGrouping: "always" })
 
 export function formatCents(cents: number): string {
-  return `${euroGroups.format(Math.trunc(cents / 100))},${String(cents % 100).padStart(2, "0")}`
+  // The sign is taken off first and put back by hand. Left on, it would be
+  // formatted into both halves and print -65,43 as "-65,-43" — the euros and
+  // the cents are two integers here, and only one of them wants a sign.
+  const abs = Math.abs(cents)
+  return `${cents < 0 ? "−" : ""}${euroGroups.format(Math.trunc(abs / 100))},${String(abs % 100).padStart(2, "0")}`
 }
 
 // toTyped is toCents backwards: whole cents as the form's own input would
@@ -40,4 +44,29 @@ export function toTyped(cents: number): string {
 export function formatDate(occurredOn: string): string {
   const [y, m, d] = occurredOn.split("-")
   return `${d}/${m}/${y}`
+}
+
+// today is read from the browser rather than from the server: the phone in the
+// hand at the till has a correct clock, and the Pi has no RTC. Local date
+// parts, not toISOString, which would hand back yesterday for most of an
+// Italian evening — and last month for the first hours of a new one.
+export function today(): string {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+// thisMonth is the month today falls in, read from the browser for the same
+// reason today() is.
+export function thisMonth(): string {
+  return today().slice(0, 7)
+}
+
+// shiftMonth walks a YYYY-MM by whole months, in either direction. Date does
+// the carrying: month -1 of January 2026 is December 2025, without this having
+// to know it.
+export function shiftMonth(month: string, by: number): string {
+  const [y, m] = month.split("-").map(Number)
+  const d = new Date(y, m - 1 + by, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
 }

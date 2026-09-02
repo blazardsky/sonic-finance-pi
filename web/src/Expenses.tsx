@@ -5,19 +5,10 @@ import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/api"
-import { formatCents, formatDate, toCents, toTyped } from "@/money"
+import { formatCents, formatDate, toCents, today, toTyped } from "@/money"
 import { nameOf, withSaved } from "@/pickers"
 import { t } from "@/strings"
 import type { Category, Expense, Lists } from "@/types"
-
-// today is read here rather than from the server: the phone in the hand at the
-// till has a correct clock, and the Pi has no RTC. Local date parts, not
-// toISOString, which would hand back yesterday for most of an Italian evening.
-function today(): string {
-  const d = new Date()
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
 
 // What the form holds: the amount as it was typed, and everything else as the
 // API's own field names, so submitting is one spread rather than a mapping.

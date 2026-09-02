@@ -5,6 +5,7 @@ import { Clients } from "@/Clients"
 import { Expenses } from "@/Expenses"
 import { Incomes } from "@/Incomes"
 import { Login } from "@/Login"
+import { Month } from "@/Month"
 import { Button } from "@/components/ui/button"
 import { t } from "@/strings"
 
@@ -15,15 +16,22 @@ import { t } from "@/strings"
 // one on every cold load.
 type State = "checking" | "loggedOut" | "connected" | "unreachable"
 
-// The screens, in the order the nav lists them: logging an Expense is what the
-// app is for, so it is what opens, and the two management screens sit after
-// it. The keys are the strings-file keys too, so the nav labels itself.
-const screens = ["expenses", "incomes", "categories", "clients"] as const
+// The screens, in the order the nav lists them. The month view opens, because
+// where the month stands is the first question the app exists to answer;
+// logging an Expense is next, and the two management screens sit after it. The
+// keys are the strings-file keys too, so the nav labels itself.
+const screens = [
+  "month",
+  "expenses",
+  "incomes",
+  "categories",
+  "clients",
+] as const
 type Screen = (typeof screens)[number]
 
 export function App() {
   const [state, setState] = useState<State>("checking")
-  const [screen, setScreen] = useState<Screen>("expenses")
+  const [screen, setScreen] = useState<Screen>("month")
 
   const check = useCallback(() => {
     fetch("/api/health")
@@ -62,6 +70,7 @@ export function App() {
   // ticket will earn a real nav — this is not it yet.
   return (
     <>
+      {screen === "month" && <Month />}
       {screen === "expenses" && <Expenses />}
       {screen === "incomes" && <Incomes />}
       {screen === "categories" && <Categories />}

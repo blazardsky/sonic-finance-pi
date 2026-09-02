@@ -78,3 +78,14 @@ export type Income = {
   invoice_sent_date: string
   note: string
 }
+
+// Where a calendar month stands: what came in, what went out, and the
+// difference. Money in counts received Incomes only — an unpaid one is money
+// that has not arrived and is in none of these numbers (ADR-0003). net_cents
+// is negative in a month that spent more than it received.
+export type MonthTotals = {
+  month: string
+  income_cents: number
+  expense_cents: number
+  net_cents: number
+}
