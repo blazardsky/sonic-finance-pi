@@ -2,14 +2,14 @@ package main
 
 import (
 	"database/sql"
-	"errors"
 	"net/http"
-	"time"
 )
 
-// monthLayout is how a month crosses the API and how it is stored inside a
-// date: dates are TEXT as YYYY-MM-DD, so a month is the first seven characters
-// of one and nothing has to be parsed to group by it.
+// monthLayout is how a month crosses the API and how it is stored: dates are
+// TEXT as YYYY-MM-DD, so a month is the first seven characters of one and
+// nothing has to be parsed to group by it — and a Recurring expense's window
+// is two columns of exactly this shape, compared as text for the same reason.
+// validMonth, in recurring.go, is the one gate that holds anything to it.
 const monthLayout = "2006-01"
 
 // monthTotals answers the question the app exists to answer: where does this
@@ -51,8 +51,8 @@ type categoryTotal struct {
 func handleMonthReport(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		month := r.PathValue("month")
-		if _, err := time.Parse(monthLayout, month); err != nil {
-			writeInvalid(w, errors.New("a month must be a real month as YYYY-MM"))
+		if err := validMonth("month", month); err != nil {
+			writeInvalid(w, err)
 			return
 		}
 		totals, err := readMonth(db, month)

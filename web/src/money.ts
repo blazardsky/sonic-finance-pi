@@ -46,6 +46,12 @@ export function formatDate(occurredOn: string): string {
   return `${d}/${m}/${y}`
 }
 
+// formatMonth turns the API's YYYY-MM into the 03/2026 the household reads.
+// Swapped rather than parsed into a Date, for the same reason formatDate is.
+export function formatMonth(month: string): string {
+  return month.split("-").reverse().join("/")
+}
+
 // today is read from the browser rather than from the server: the phone in the
 // hand at the till has a correct clock, and the Pi has no RTC. Local date
 // parts, not toISOString, which would hand back yesterday for most of an

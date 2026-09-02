@@ -121,3 +121,26 @@ export type RecentEntry = {
   amount_cents: number
   category: string
 }
+
+// The rent, defined once. It carries an Expense's template fields — every one
+// of them is copied onto the Expenses it produces — plus the day of the month
+// it lands on and the window it covers.
+//
+// There is no active flag: end_month is the whole of it (ADR-0005). Empty
+// means still running, and a month is covered when start_month <= it <=
+// end_month. Both are YYYY-MM and zero-padded, so that is a string comparison.
+//
+// Changing an amount is not an edit: the old definition is ended and a new one
+// started, so the months before the change keep the amount that was true then.
+export type Recurring = {
+  id: number
+  amount_cents: number
+  category_id: number
+  store: string
+  payer: string
+  payment_method: string
+  note: string
+  day_of_month: number
+  start_month: string
+  end_month: string
+}

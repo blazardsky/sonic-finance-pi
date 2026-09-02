@@ -6,6 +6,7 @@ import { Expenses } from "@/Expenses"
 import { Incomes } from "@/Incomes"
 import { Login } from "@/Login"
 import { Month } from "@/Month"
+import { RecurringExpenses } from "@/RecurringExpenses"
 import { Button } from "@/components/ui/button"
 import { t } from "@/strings"
 
@@ -24,6 +25,7 @@ const screens = [
   "month",
   "expenses",
   "incomes",
+  "recurring",
   "categories",
   "clients",
 ] as const
@@ -73,6 +75,7 @@ export function App() {
       {screen === "month" && <Month />}
       {screen === "expenses" && <Expenses />}
       {screen === "incomes" && <Incomes />}
+      {screen === "recurring" && <RecurringExpenses />}
       {screen === "categories" && <Categories />}
       {screen === "clients" && <Clients />}
       <div className="mx-auto flex w-full max-w-md justify-end gap-1 px-6 pb-8">

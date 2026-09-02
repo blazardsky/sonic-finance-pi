@@ -100,6 +100,37 @@ export const t = {
   recentEntries: "Ultime registrazioni",
   noEntriesYet: "Nessuna registrazione ancora.",
 
+  // Recurring expenses — the rent, defined once
+  recurring: "Ricorrenti",
+  addRecurring: "Aggiungi spesa ricorrente",
+  editRecurring: "Modifica spesa ricorrente",
+  dayOfMonth: "Giorno del mese",
+  startMonth: "Dal mese",
+  endMonth: "Fino al mese",
+  ongoing: "in corso",
+  endedIn: (month: string) => `terminata a ${month}`,
+  // Ending is all that deactivating is: the window is the record, so the
+  // months it did cover stay exactly as they were.
+  end: "Termina",
+  confirmEndRecurring: (month: string) =>
+    `Terminare questa spesa ricorrente a ${month}? Le spese già generate restano.`,
+  // The amount changed, so this one ends and a new one starts — history keeps
+  // what was true at the time.
+  newAmount: "Nuovo importo",
+  confirmDeleteRecurring:
+    "Eliminare questa spesa ricorrente? Per fermarla senza perdere lo storico, terminala.",
+  noReactivating:
+    "Una spesa ricorrente terminata si riattiva creandone una nuova, non riaprendola.",
+  recurringNotSaved: "Spesa ricorrente non salvata. Riprova.",
+  noRecurringYet: "Nessuna spesa ricorrente.",
+  recurringInUse:
+    "Questa spesa ricorrente ha già generato delle spese. Terminala invece di eliminarla.",
+  invalidDayOfMonth: "Il giorno del mese deve essere tra 1 e 31.",
+  endBeforeStart: "Il mese di fine è prima di quello di inizio.",
+  // The 31st does not exist in April: say so once, here, rather than let the
+  // household wonder why the date moved.
+  dayClamped: "Nei mesi più corti la spesa cade nell'ultimo giorno.",
+
   // Clients — who money comes from
   clients: "Clienti",
   clientName: "Nome cliente",
