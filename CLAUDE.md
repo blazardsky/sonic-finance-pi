@@ -2,6 +2,10 @@
 
 Go backend API for the Sonic Finance App. Targets a Raspberry Pi Zero W (1st gen, ARMv6); build with `./build.sh`.
 
+## Schema changes
+
+Tickets are written behaviourally and do not mention the database. If yours needs a table or column that does not exist, bump `schemaVersion` in `migrate.go` by one and add the matching `case` to `migrateStep` — the schema is versioned by `PRAGMA user_version`, applied at startup, with no migration library. An earlier case can never be edited afterwards, because a database already at that version will not re-run it. The table shapes are specified in the spec's Schema section.
+
 ## Agent skills
 
 ### Issue tracker
