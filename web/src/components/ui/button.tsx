@@ -64,4 +64,7 @@ function Button({
   )
 }
 
+// buttonVariants is a cva list, not a component, so fast refresh objects to
+// the pair being exported together. Known shadcn shape; not worth splitting.
+// eslint-disable-next-line react-refresh/only-export-components
 export { Button, buttonVariants }
