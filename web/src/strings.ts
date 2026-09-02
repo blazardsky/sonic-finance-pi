@@ -68,6 +68,26 @@ export const t = {
   categoryInUse:
     "Questa categoria è usata da spese registrate. Nascondila invece di eliminarla.",
 
+  // Incomes — money owed to or received by the household
+  incomes: "Entrate",
+  addIncome: "Aggiungi entrata",
+  editIncome: "Modifica entrata",
+  incomeReason: "Motivo",
+  client: "Cliente",
+  // The same Payer field an Expense carries, from the same configured list,
+  // worded for the direction money moved — "Pagato da" is wrong for an Income.
+  // One concept, two wordings, exactly as Category is "Motivo" here.
+  incomePayer: "Ricevuto da",
+  paymentDate: "Data incasso",
+  invoiceSentDate: "Fattura inviata",
+  notPaidYet: "Da incassare",
+  waitingSince: (date: string) => `in attesa dal ${date}`,
+  incomeNotSaved: "Entrata non salvata. Riprova.",
+  incomeNotDeleted: "Entrata non eliminata. Riprova.",
+  noIncomesYet: "Nessuna entrata registrata.",
+  confirmDeleteIncome: (amount: string) =>
+    `Eliminare l'entrata di € ${amount}?`,
+
   // Clients — who money comes from
   clients: "Clienti",
   clientName: "Nome cliente",

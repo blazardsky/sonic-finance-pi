@@ -405,32 +405,18 @@ func checkExpense(w http.ResponseWriter, db *sql.DB, e *expense) bool {
 		writeInvalid(w, err)
 		return false
 	}
-	if !acceptsExpense(w, db, e.CategoryID, "that category is not one an expense can go in") {
+	if !acceptsCategory(w, db, e.CategoryID, appliesExpense,
+		"that category is not one an expense can go in") {
 		return false
 	}
 	// An Item is money in a Category exactly as its Expense is, so it answers
 	// to the same rule. Sharing the Expense's own Category is deliberately not
 	// checked: pointless, but nobody's business to forbid.
 	for _, it := range e.Items {
-		if !acceptsExpense(w, db, it.CategoryID,
+		if !acceptsCategory(w, db, it.CategoryID, appliesExpense,
 			fmt.Sprintf("the item %q is not in a category an expense can go in", it.Name)) {
 			return false
 		}
 	}
 	return true
-}
-
-// acceptsExpense confirms one Category can hold expense money, writing the
-// response itself on a refusal — refusal being a bad request the client can be
-// told about, in the words the caller chose.
-func acceptsExpense(w http.ResponseWriter, db *sql.DB, id int64, refusal string) bool {
-	switch ok, err := categoryAccepts(db, id, appliesExpense); {
-	case err != nil:
-		writeError(w, http.StatusInternalServerError, err)
-	case !ok:
-		writeInvalid(w, errors.New(refusal))
-	default:
-		return true
-	}
-	return false
 }

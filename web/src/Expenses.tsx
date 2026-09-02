@@ -6,6 +6,7 @@ import { NativeSelect } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/api"
 import { formatCents, formatDate, toCents, toTyped } from "@/money"
+import { nameOf, withSaved } from "@/pickers"
 import { t } from "@/strings"
 import type { Category, Expense, Lists } from "@/types"
 
@@ -66,16 +67,6 @@ const draftOf = (e: Expense): Draft => ({
     category_id: it.category_id,
   })),
 })
-
-// A picker keeps whatever the Expense being edited was saved with, even when
-// the list no longer offers it: a hidden Category and a Payer renamed out of
-// the list are both still what that entry says, and a select with no matching
-// option would quietly rewrite it on the first correction.
-function withSaved<T>(offered: T[], saved: T | undefined): T[] {
-  return saved !== undefined && !offered.includes(saved)
-    ? [...offered, saved]
-    : offered
-}
 
 // The details an Expense actually carries, on one line, for the list — empty
 // when it has none, which is the same question as whether to show the line.
@@ -210,13 +201,6 @@ export function Expenses() {
     setDraft(blankDraft())
     await load()
   }
-
-  // A name for the id an Expense carries. Every Category is looked up, hidden
-  // ones included: hiding takes a Category out of the picker, not out of the
-  // entries already filed under it, and an old Expense showing a blank label
-  // is the bug that would make hiding unsafe.
-  const categoryName = (id: number) =>
-    categories.find((c) => c.id === id)?.name ?? ""
 
   // What a picker offers, which is the narrower list: no hidden Category, and
   // nothing income-only — "Freelance" is never an Expense. Plus whichever one
@@ -458,7 +442,7 @@ export function Expenses() {
                   {remainder < 0
                     ? t.itemsOverTotal
                     : t.remainderIn(
-                        categoryName(draft.category_id),
+                        nameOf(categories, draft.category_id),
                         formatCents(remainder)
                       )}
                 </span>
@@ -517,7 +501,7 @@ export function Expenses() {
               }`}
             >
               <span className="flex items-baseline justify-between gap-2">
-                <span>{categoryName(e.category_id)}</span>
+                <span>{nameOf(categories, e.category_id)}</span>
                 <span className="flex items-baseline gap-3">
                   <span className="text-xs text-muted-foreground">
                     {formatDate(e.occurred_on)}
@@ -544,7 +528,7 @@ export function Expenses() {
                   className="flex items-baseline justify-between gap-2 pl-3 text-xs text-muted-foreground"
                 >
                   <span className="truncate">
-                    ↳ {it.name} · {categoryName(it.category_id)}
+                    ↳ {it.name} · {nameOf(categories, it.category_id)}
                   </span>
                   <span className="tabular-nums">
                     € {formatCents(it.amount_cents)}

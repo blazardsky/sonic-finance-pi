@@ -53,3 +53,28 @@ export type Lists = {
   payers: string[]
   payment_methods: string[]
 }
+
+// Money owed to or received by the household. It exists from the moment it is
+// expected — an invoice sent — and is received only once it has a payment
+// date: an empty payment_date is the unpaid state, and unpaid Income counts
+// toward no total anywhere (ADR-0003).
+//
+// One number, the amount that arrived. No gross/net pair and no tax
+// percentage: tax is an Expense on the day it is paid (ADR-0004).
+export type Income = {
+  id: number
+  amount_cents: number
+  // The "income reason" the screens word differently — the same Category
+  // field an Expense carries, referenced so a rename fixes every past Income.
+  category_id: number
+  // Who it came from, or null: a reimbursement names nobody.
+  client_id: number | null
+  // The label text the Income was saved with, not a reference — the same
+  // bargain an Expense makes.
+  payer: string
+  // Both dates are "" when absent rather than null: they go straight into
+  // date inputs, and "" is how one is cleared on the way back.
+  payment_date: string
+  invoice_sent_date: string
+  note: string
+}

@@ -274,6 +274,22 @@ func categoryAccepts(db *sql.DB, id int64, applies string) (bool, error) {
 	return err == nil, err
 }
 
+// acceptsCategory confirms one Category exists and can hold money of this
+// kind, writing the response itself on a refusal — a refusal being a bad
+// request the client can be told about, in the words the caller chose.
+// Expenses, their Items and Incomes all answer to the same rule, from here.
+func acceptsCategory(w http.ResponseWriter, db *sql.DB, id int64, applies, refusal string) bool {
+	switch ok, err := categoryAccepts(db, id, applies); {
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, err)
+	case !ok:
+		writeInvalid(w, errors.New(refusal))
+	default:
+		return true
+	}
+	return false
+}
+
 func (c category) validate() error {
 	if c.Name == "" {
 		return errors.New("a category needs a name")
