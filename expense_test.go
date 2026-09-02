@@ -2,21 +2,32 @@ package main
 
 import (
 	"net/http"
+	"reflect"
 	"strconv"
 	"testing"
 )
 
 // An Expense as the API hands it out: the three fields that make it an
-// Expense, and the four that make it recognisable months later.
+// Expense, the four that make it recognisable months later, and the optional
+// partial breakdown of ticket 07.
 type expenseJSON struct {
-	ID            int64  `json:"id"`
-	OccurredOn    string `json:"occurred_on"`
-	AmountCents   int64  `json:"amount_cents"`
-	CategoryID    int64  `json:"category_id"`
-	Store         string `json:"store"`
-	Payer         string `json:"payer"`
-	PaymentMethod string `json:"payment_method"`
-	Note          string `json:"note"`
+	ID            int64      `json:"id"`
+	OccurredOn    string     `json:"occurred_on"`
+	AmountCents   int64      `json:"amount_cents"`
+	CategoryID    int64      `json:"category_id"`
+	Store         string     `json:"store"`
+	Payer         string     `json:"payer"`
+	PaymentMethod string     `json:"payment_method"`
+	Note          string     `json:"note"`
+	Items         []itemJSON `json:"items"`
+}
+
+// An Item as the API hands it out. It carries no id: nothing addresses an Item
+// on its own, so what a request sends is exactly what a later one reads back.
+type itemJSON struct {
+	Name        string `json:"name"`
+	AmountCents int64  `json:"amount_cents"`
+	CategoryID  int64  `json:"category_id"`
 }
 
 // expensePath addresses one Expense the way the API does.
@@ -65,7 +76,7 @@ func TestALoggedExpenseIsThereForTheNextRequest(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("listed %d Expenses, want 1", len(got))
 	}
-	if got[0] != created {
+	if !reflect.DeepEqual(got[0], created) {
 		t.Errorf("listed Expense = %+v, want the one that was created, %+v", got[0], created)
 	}
 	if got[0].AmountCents != 4237 || got[0].OccurredOn != "2026-03-15" || got[0].CategoryID != alimentari.ID {
@@ -209,7 +220,7 @@ func TestAnExpenseKeepsItsDetails(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("listed %d Expenses, want 1", len(got))
 	}
-	if got[0] != created {
+	if !reflect.DeepEqual(got[0], created) {
 		t.Errorf("listed Expense = %+v, want the created one, %+v", got[0], created)
 	}
 	if got[0].Store != "Conad Città" || got[0].Payer != "Nicco" ||
@@ -288,14 +299,15 @@ func TestAnExpenseCanBeEdited(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("listed %d Expenses, want the one, edited", len(got))
 	}
-	if got[0] != updated {
+	if !reflect.DeepEqual(got[0], updated) {
 		t.Errorf("listed Expense = %+v, want what PATCH answered, %+v", got[0], updated)
 	}
 	want := expenseJSON{
 		ID: logged.ID, OccurredOn: "2026-03-15", AmountCents: 4137, CategoryID: svago,
 		Store: "Conad", Payer: "Nicco", PaymentMethod: "Contanti",
+		Items: []itemJSON{},
 	}
-	if got[0] != want {
+	if !reflect.DeepEqual(got[0], want) {
 		t.Errorf("edited Expense = %+v, want %+v", got[0], want)
 	}
 }
@@ -329,7 +341,7 @@ func TestEditsAreValidated(t *testing.T) {
 		})
 	}
 
-	if got := a.expenses(t); len(got) != 1 || got[0] != logged {
+	if got := a.expenses(t); len(got) != 1 || !reflect.DeepEqual(got[0], logged) {
 		t.Errorf("the Expense reads %+v, want the refused edits to have changed nothing (%+v)", got, logged)
 	}
 }
@@ -346,10 +358,321 @@ func TestAnExpenseCanBeDeleted(t *testing.T) {
 	}
 
 	got := a.expenses(t)
-	if len(got) != 1 || got[0] != kept {
+	if len(got) != 1 || !reflect.DeepEqual(got[0], kept) {
 		t.Errorf("after the delete the list is %+v, want only %+v", got, kept)
 	}
 	if res := a.delete(t, expensePath(logged.ID)); res.StatusCode != http.StatusNotFound {
 		t.Errorf("deleting it twice = %d, want 404", res.StatusCode)
+	}
+}
+
+// The ticket's own example: a book bought during the grocery shop stops
+// counting as Food, without the receipt ever being fully itemised. The €62
+// shop stays a €62 shop — ADR-0002 — and €14 of it now belongs to Svago.
+func TestPartOfAnExpenseCanBeBrokenOutUnderAnotherCategory(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	svago := a.category(t, "Svago").ID
+
+	created := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 6200, "category_id": alimentari,
+		"items": []map[string]any{{"name": "Libro", "amount_cents": 1400, "category_id": svago}},
+	})
+
+	if created.AmountCents != 6200 {
+		t.Errorf("amount_cents = %d, want the authoritative 6200 the receipt said", created.AmountCents)
+	}
+	want := []itemJSON{{Name: "Libro", AmountCents: 1400, CategoryID: svago}}
+	if !reflect.DeepEqual(created.Items, want) {
+		t.Errorf("items = %+v, want %+v", created.Items, want)
+	}
+
+	got := a.expenses(t)
+	if len(got) != 1 || !reflect.DeepEqual(got[0], created) {
+		t.Errorf("listed Expense = %+v, want the created one, %+v", got, created)
+	}
+}
+
+// Items never have to account for the whole Expense, and several can sit under
+// one: what they do not cover stays under the Expense's own Category, which is
+// the remainder ticket 11 will report on.
+func TestItemsAreAPartialBreakdownInTheOrderTheyWereSent(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	svago := a.category(t, "Svago").ID
+	salute := a.category(t, "Salute").ID
+
+	created := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 6200, "category_id": alimentari,
+		"items": []map[string]any{
+			{"name": "Libro", "amount_cents": 1400, "category_id": svago},
+			{"name": "Aspirina", "amount_cents": 600, "category_id": salute},
+		},
+	})
+
+	want := []itemJSON{
+		{Name: "Libro", AmountCents: 1400, CategoryID: svago},
+		{Name: "Aspirina", AmountCents: 600, CategoryID: salute},
+	}
+	if !reflect.DeepEqual(created.Items, want) {
+		t.Errorf("items = %+v, want %+v", created.Items, want)
+	}
+}
+
+// A €7 coffee is one record and nothing else. Items read back as an empty list
+// rather than null, because the frontend maps over them.
+func TestAnExpenseWithoutItemsStaysASingleRecord(t *testing.T) {
+	a := newTestApp(t)
+	id := a.category(t, "Alimentari").ID
+
+	created := a.addExpense(t, map[string]any{"occurred_on": "2026-03-15", "amount_cents": 700, "category_id": id})
+	if created.Items == nil || len(created.Items) != 0 {
+		t.Errorf("items = %#v, want an empty list", created.Items)
+	}
+	if got := a.expenses(t); len(got) != 1 || len(got[0].Items) != 0 {
+		t.Errorf("listed Expense = %+v, want it with no items", got)
+	}
+}
+
+// A negative remainder has no meaning, so the save is refused — and refused
+// with a sentence the frontend can put in front of whoever is standing in the
+// shop, not a bare "Bad Request".
+func TestItemsAddingUpToMoreThanTheExpenseAreRejected(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	svago := a.category(t, "Svago").ID
+
+	var body struct{ Error string }
+	res := a.post(t, "/api/expenses", map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 2000, "category_id": alimentari,
+		"items": []map[string]any{
+			{"name": "Libro", "amount_cents": 1400, "category_id": svago},
+			{"name": "Rivista", "amount_cents": 900, "category_id": svago},
+		},
+	}, &body)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("posting items over the total = %d, want 400", res.StatusCode)
+	}
+	if body.Error == "" || body.Error == http.StatusText(http.StatusBadRequest) {
+		t.Errorf("error = %q, want a message saying what was wrong", body.Error)
+	}
+
+	if got := a.expenses(t); len(got) != 0 {
+		t.Errorf("the refused Expense was saved anyway: %+v", got)
+	}
+}
+
+// Items exactly covering the Expense is the boundary, and it is allowed: a
+// fully itemised receipt leaves a remainder of zero, not a negative one.
+func TestItemsMayCoverTheWholeExpense(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	svago := a.category(t, "Svago").ID
+
+	created := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 2000, "category_id": alimentari,
+		"items": []map[string]any{
+			{"name": "Libro", "amount_cents": 1400, "category_id": svago},
+			{"name": "Rivista", "amount_cents": 600, "category_id": svago},
+		},
+	})
+	if len(created.Items) != 2 {
+		t.Errorf("items = %+v, want both saved", created.Items)
+	}
+}
+
+// Pointless but permitted, and deliberately unvalidated: deciding for someone
+// that they may not itemise within their own Category would be a rule with
+// nothing behind it.
+func TestAnItemMayShareTheExpensesCategory(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+
+	created := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 6200, "category_id": alimentari,
+		"items": []map[string]any{{"name": "Pane", "amount_cents": 200, "category_id": alimentari}},
+	})
+	if len(created.Items) != 1 {
+		t.Errorf("items = %+v, want the one sharing the Expense's Category", created.Items)
+	}
+}
+
+// An Item is an Expense's worth of money in a Category, so it answers to the
+// same rules the Expense does: a real amount, and a Category an Expense can go
+// in. It needs a name too, since telling two Items apart is the whole point.
+func TestItemsAreValidated(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	svago := a.category(t, "Svago").ID
+	freelance := a.category(t, seedFreelanceName).ID
+
+	item := func(over map[string]any) map[string]any {
+		it := map[string]any{"name": "Libro", "amount_cents": 1400, "category_id": svago}
+		for k, v := range over {
+			it[k] = v
+		}
+		return map[string]any{
+			"occurred_on": "2026-03-15", "amount_cents": 6200, "category_id": alimentari,
+			"items": []map[string]any{it},
+		}
+	}
+
+	cases := map[string]any{
+		"a missing name":          item(map[string]any{"name": nil}),
+		"a blank name":            item(map[string]any{"name": "   "}),
+		"a zero amount":           item(map[string]any{"amount_cents": 0}),
+		"a negative amount":       item(map[string]any{"amount_cents": -100}),
+		"a fractional amount":     item(map[string]any{"amount_cents": 14.5}),
+		"no Category":             item(map[string]any{"category_id": nil}),
+		"an unknown Category":     item(map[string]any{"category_id": 9999}),
+		"an income-only Category": item(map[string]any{"category_id": freelance}),
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			if res := a.post(t, "/api/expenses", body, nil); res.StatusCode != http.StatusBadRequest {
+				t.Errorf("posting an item with %s = %d, want 400", name, res.StatusCode)
+			}
+		})
+	}
+
+	if got := a.expenses(t); len(got) != 0 {
+		t.Errorf("%d refused Expenses were saved anyway: %+v", len(got), got)
+	}
+}
+
+// Items are saved with the Expense in one request, so they are edited with it
+// too: a body carrying items replaces the whole breakdown, one omitting them
+// leaves it alone, and an empty list is how a breakdown is removed.
+func TestItemsAreEditedWithTheirExpense(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	svago := a.category(t, "Svago").ID
+	salute := a.category(t, "Salute").ID
+
+	logged := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 6200, "category_id": alimentari,
+		"items": []map[string]any{{"name": "Libro", "amount_cents": 1400, "category_id": svago}},
+	})
+
+	// A breakdown sent in full replaces what was there.
+	var updated expenseJSON
+	res := a.patch(t, expensePath(logged.ID), map[string]any{
+		"items": []map[string]any{{"name": "Aspirina", "amount_cents": 600, "category_id": salute}},
+	}, &updated)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH %s = %d, want 200", expensePath(logged.ID), res.StatusCode)
+	}
+	want := []itemJSON{{Name: "Aspirina", AmountCents: 600, CategoryID: salute}}
+	if !reflect.DeepEqual(updated.Items, want) {
+		t.Fatalf("items after the edit = %+v, want %+v", updated.Items, want)
+	}
+
+	// An edit that says nothing about items leaves them standing.
+	a.patch(t, expensePath(logged.ID), map[string]any{"store": "Conad"}, &updated)
+	if !reflect.DeepEqual(updated.Items, want) {
+		t.Errorf("items after an unrelated edit = %+v, want the untouched %+v", updated.Items, want)
+	}
+
+	// An empty list is how the breakdown goes away.
+	a.patch(t, expensePath(logged.ID), map[string]any{"items": []map[string]any{}}, &updated)
+	if len(updated.Items) != 0 {
+		t.Errorf("items after clearing = %+v, want none", updated.Items)
+	}
+	if got := a.expenses(t); len(got) != 1 || len(got[0].Items) != 0 {
+		t.Errorf("listed Expense = %+v, want the cleared breakdown to have stuck", got)
+	}
+}
+
+// The Expense total stays authoritative under editing too: it cannot be
+// corrected downwards past what its own Items already claim, and a refused
+// edit leaves both the Expense and its breakdown as they were.
+func TestAnExpenseCannotBeEditedBelowItsItems(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	svago := a.category(t, "Svago").ID
+
+	logged := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 6200, "category_id": alimentari,
+		"items": []map[string]any{{"name": "Libro", "amount_cents": 1400, "category_id": svago}},
+	})
+
+	cases := map[string]any{
+		"a total under its items": map[string]any{"amount_cents": 1000},
+		"items over the total":    map[string]any{"items": []map[string]any{{"name": "TV", "amount_cents": 90000, "category_id": svago}}},
+		"an invalid item":         map[string]any{"items": []map[string]any{{"name": "", "amount_cents": 100, "category_id": svago}}},
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			if res := a.patch(t, expensePath(logged.ID), body, nil); res.StatusCode != http.StatusBadRequest {
+				t.Errorf("patching %s = %d, want 400", name, res.StatusCode)
+			}
+		})
+	}
+
+	if got := a.expenses(t); len(got) != 1 || !reflect.DeepEqual(got[0], logged) {
+		t.Errorf("the Expense reads %+v, want the refused edits to have changed nothing (%+v)", got, logged)
+	}
+}
+
+// An Item has no life outside its Expense, so deleting the Expense has to take
+// the breakdown with it rather than fail on it.
+func TestDeletingAnExpenseTakesItsItemsWithIt(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	svago := a.category(t, "Svago").ID
+
+	logged := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 6200, "category_id": alimentari,
+		"items": []map[string]any{{"name": "Libro", "amount_cents": 1400, "category_id": svago}},
+	})
+
+	if res := a.delete(t, expensePath(logged.ID)); res.StatusCode != http.StatusNoContent {
+		t.Fatalf("DELETE %s = %d, want 204", expensePath(logged.ID), res.StatusCode)
+	}
+	if got := a.expenses(t); len(got) != 0 {
+		t.Errorf("after the delete the list is %+v, want it empty", got)
+	}
+}
+
+// Two Expenses' breakdowns must not bleed into each other — the list loads
+// every Item in one query and groups them, and grouping is where that goes
+// wrong.
+func TestEachExpenseKeepsItsOwnItems(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	svago := a.category(t, "Svago").ID
+
+	first := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-14", "amount_cents": 6200, "category_id": alimentari,
+		"items": []map[string]any{{"name": "Libro", "amount_cents": 1400, "category_id": svago}},
+	})
+	second := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 700, "category_id": alimentari,
+	})
+	third := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-16", "amount_cents": 3000, "category_id": alimentari,
+		"items": []map[string]any{
+			{"name": "Cuffie", "amount_cents": 500, "category_id": svago},
+			{"name": "Rivista", "amount_cents": 400, "category_id": svago},
+		},
+	})
+
+	got := a.expenses(t)
+	if len(got) != 3 {
+		t.Fatalf("listed %d Expenses, want 3", len(got))
+	}
+	for _, want := range []expenseJSON{third, second, first} {
+		var found *expenseJSON
+		for i := range got {
+			if got[i].ID == want.ID {
+				found = &got[i]
+			}
+		}
+		if found == nil {
+			t.Fatalf("Expense %d is missing from %+v", want.ID, got)
+		}
+		if !reflect.DeepEqual(*found, want) {
+			t.Errorf("Expense %d reads %+v, want %+v", want.ID, *found, want)
+		}
 	}
 }

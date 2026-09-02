@@ -20,11 +20,23 @@ function today(): string {
 
 // What the form holds: the amount as it was typed, and everything else as the
 // API's own field names, so submitting is one spread rather than a mapping.
-type Draft = Omit<Expense, "id" | "amount_cents" | "category_id"> & {
+type Draft = Omit<Expense, "id" | "amount_cents" | "category_id" | "items"> & {
   amount: string
   // "" is the unchosen picker, which the required select refuses to submit.
   category_id: number | ""
+  items: ItemDraft[]
 }
+
+// An Item mid-typing: same shape, same reasons — the amount as it was typed,
+// and "" for a Category not chosen yet. A row is added empty and filled in,
+// so it has to be able to hold nothing.
+type ItemDraft = {
+  name: string
+  amount: string
+  category_id: number | ""
+}
+
+const blankItem = (): ItemDraft => ({ name: "", amount: "", category_id: "" })
 
 const blankDraft = (): Draft => ({
   amount: "",
@@ -34,6 +46,7 @@ const blankDraft = (): Draft => ({
   payer: "",
   payment_method: "",
   note: "",
+  items: [],
 })
 
 // Field by field rather than a spread, so the draft carries what the form
@@ -47,6 +60,11 @@ const draftOf = (e: Expense): Draft => ({
   payer: e.payer,
   payment_method: e.payment_method,
   note: e.note,
+  items: e.items.map((it) => ({
+    name: it.name,
+    amount: toTyped(it.amount_cents),
+    category_id: it.category_id,
+  })),
 })
 
 // A picker keeps whatever the Expense being edited was saved with, even when
@@ -63,6 +81,12 @@ function withSaved<T>(offered: T[], saved: T | undefined): T[] {
 // when it has none, which is the same question as whether to show the line.
 const details = (e: Expense) =>
   [e.store, e.payer, e.payment_method, e.note].filter(Boolean).join(" · ")
+
+// itemsCents sums a draft breakdown, skipping what is not yet an amount. The
+// Expense's own total is never computed from this — ADR-0002 — it is only what
+// the form checks the total against and shows the remainder from.
+const itemsCents = (items: ItemDraft[]) =>
+  items.reduce((sum, it) => sum + (toCents(it.amount) ?? 0), 0)
 
 // The main screen: log what was just spent in about three taps, and see it
 // land. The form is first and biggest because it is what the app is for; the
@@ -114,6 +138,31 @@ export function Expenses() {
       return
     }
 
+    // A row added and then left alone is not an Item, so it is dropped rather
+    // than refused — anything half-filled in is a mistake worth stopping on.
+    const filled = draft.items.filter(
+      (it) => it.name.trim() !== "" || it.amount !== "" || it.category_id !== ""
+    )
+    const items = filled.map((it) => ({
+      name: it.name.trim(),
+      amount_cents: toCents(it.amount) ?? 0,
+      category_id: it.category_id,
+    }))
+    if (
+      items.some(
+        (it) => !it.name || it.amount_cents <= 0 || it.category_id === ""
+      )
+    ) {
+      setError(t.invalidItem)
+      return
+    }
+    // The server refuses this too, and in English: checking here is what gets
+    // the household an Italian sentence rather than a bare failed save.
+    if (itemsCents(filled) > cents) {
+      setError(t.itemsOverTotal)
+      return
+    }
+
     try {
       await api(
         editing === null ? "/api/expenses" : `/api/expenses/${editing}`,
@@ -126,6 +175,7 @@ export function Expenses() {
             ...draft,
             amount: undefined,
             amount_cents: cents,
+            items,
           }),
         }
       )
@@ -138,7 +188,7 @@ export function Expenses() {
     setEditing(null)
     setDraft((d) =>
       editing === null
-        ? { ...d, amount: "", store: "", note: "" }
+        ? { ...d, amount: "", store: "", note: "", items: [] }
         : blankDraft()
     )
     await load()
@@ -168,13 +218,26 @@ export function Expenses() {
   const categoryName = (id: number) =>
     categories.find((c) => c.id === id)?.name ?? ""
 
-  // What the picker offers, which is the narrower list: no hidden Category,
-  // and nothing income-only — "Freelance" is never an Expense. Plus the one
-  // the Expense being edited is already in, whatever it is.
-  const pickable = withSaved(
-    categories.filter((c) => !c.hidden && c.applies_to !== "income"),
-    categories.find((c) => c.id === draft.category_id)
-  )
+  // What a picker offers, which is the narrower list: no hidden Category, and
+  // nothing income-only — "Freelance" is never an Expense. Plus whichever one
+  // the entry being edited already carries, whatever it is. An Item answers to
+  // the same rule as its Expense, so both pickers come from here.
+  const pickable = (chosen: number | "") =>
+    withSaved(
+      categories.filter((c) => !c.hidden && c.applies_to !== "income"),
+      categories.find((c) => c.id === chosen)
+    )
+
+  const setItem = (i: number, over: Partial<ItemDraft>) =>
+    setDraft((d) => ({
+      ...d,
+      items: d.items.map((it, j) => (j === i ? { ...it, ...over } : it)),
+    }))
+
+  // What the Expense's own Category keeps: the total less whatever the Items
+  // claim. Shown rather than enforced-by-arithmetic, because the total is the
+  // authoritative number and this is derived from it — never the reverse.
+  const remainder = (toCents(draft.amount) ?? 0) - itemsCents(draft.items)
 
   // The Store suggestions are the Stores already used, which the list on this
   // screen already carries — no endpoint and no list to maintain, which is the
@@ -227,7 +290,7 @@ export function Expenses() {
               className="h-10"
             >
               <option value="">{t.chooseCategory}</option>
-              {pickable.map((c) => (
+              {pickable(draft.category_id).map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
@@ -308,6 +371,99 @@ export function Expenses() {
                 rows={2}
               />
             </label>
+
+            {/* The breakdown: the book bought during the grocery shop. Rows
+                are added one at a time and the receipt is never itemised in
+                full, so what is on screen is only the exceptions — with the
+                remainder underneath, saying what the Expense's own Category
+                still keeps. */}
+            <div className="flex flex-col gap-2">
+              <span className="text-sm">{t.items}</span>
+              {draft.items.map((it, i) => (
+                <div key={i} className="flex items-end gap-2">
+                  <Input
+                    value={it.name}
+                    onChange={(e) => setItem(i, { name: e.target.value })}
+                    placeholder={t.itemName}
+                    aria-label={t.itemName}
+                    className="h-10 flex-1"
+                  />
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    value={it.amount}
+                    onChange={(e) => setItem(i, { amount: e.target.value })}
+                    placeholder="0,00"
+                    aria-label={t.amount}
+                    className="h-10 w-20"
+                  />
+                  <NativeSelect
+                    value={it.category_id}
+                    // Back to the blank option is "" and not Number("") — 0,
+                    // which no Category has, would slip past the unchosen
+                    // check and travel as a Category the server refuses.
+                    // The Expense's own select is `required`, so it never
+                    // reaches this; an Item row has no such guard.
+                    onChange={(e) =>
+                      setItem(i, {
+                        category_id:
+                          e.target.value === "" ? "" : Number(e.target.value),
+                      })
+                    }
+                    aria-label={t.category}
+                    className="h-10 flex-1"
+                  >
+                    <option value="">{t.chooseCategory}</option>
+                    {pickable(it.category_id).map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t.removeItem}
+                    className="size-10 shrink-0 text-lg"
+                    onClick={() =>
+                      set(
+                        "items",
+                        draft.items.filter((_, j) => j !== i)
+                      )
+                    }
+                  >
+                    ×
+                  </Button>
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10"
+                onClick={() => set("items", [...draft.items, blankItem()])}
+              >
+                {t.addItem}
+              </Button>
+              {/* The remainder, live as the amounts are typed. Once it goes
+                  negative there is no remainder to name — that is the refusal
+                  ADR-0002 describes, said here rather than on submit, while
+                  the number that caused it is still under the thumb. */}
+              {draft.items.length > 0 && draft.category_id !== "" && (
+                <span
+                  className={`text-xs ${
+                    remainder < 0 ? "text-destructive" : "text-muted-foreground"
+                  }`}
+                >
+                  {remainder < 0
+                    ? t.itemsOverTotal
+                    : t.remainderIn(
+                        categoryName(draft.category_id),
+                        formatCents(remainder)
+                      )}
+                </span>
+              )}
+            </div>
           </div>
         </details>
 
@@ -378,6 +534,23 @@ export function Expenses() {
                   {details(e)}
                 </span>
               )}
+              {/* Each Item on its own line, indented under the Expense it was
+                  broken out of: the point of an Item is that this part of the
+                  €62 shop counts as something else, so the row has to say so
+                  and name the Category it went to. */}
+              {e.items.map((it, i) => (
+                <span
+                  key={i}
+                  className="flex items-baseline justify-between gap-2 pl-3 text-xs text-muted-foreground"
+                >
+                  <span className="truncate">
+                    ↳ {it.name} · {categoryName(it.category_id)}
+                  </span>
+                  <span className="tabular-nums">
+                    € {formatCents(it.amount_cents)}
+                  </span>
+                </span>
+              ))}
             </button>
           </li>
         ))}

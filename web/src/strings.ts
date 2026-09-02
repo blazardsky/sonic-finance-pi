@@ -39,6 +39,16 @@ export const t = {
   confirmDeleteExpense: (amount: string) =>
     `Eliminare la spesa di € ${amount}?`,
 
+  // Items — the part of an Expense that belongs under another Category
+  items: "Voci in altre categorie",
+  itemName: "Voce",
+  addItem: "Aggiungi voce",
+  removeItem: "Rimuovi voce",
+  invalidItem: "Ogni voce vuole nome, importo e categoria.",
+  itemsOverTotal: "Le voci superano il totale della spesa.",
+  remainderIn: (category: string, amount: string) =>
+    `Resto in ${category}: € ${amount}`,
+
   // Categories
   categories: "Categorie",
   categoryName: "Nome categoria",

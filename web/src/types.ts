@@ -24,6 +24,19 @@ export type Expense = {
   payer: string
   payment_method: string
   note: string
+  // The optional partial breakdown: the parts of this Expense that belong
+  // under a different Category. Always an array, empty for the €7 coffee.
+  // Never the source of amount_cents — see ADR-0002.
+  items: Item[]
+}
+
+// A part of an Expense under its own Category. No id: an Item is saved as one
+// of a set with its Expense and addressed by nothing, so what the form sends
+// back is the whole breakdown.
+export type Item = {
+  name: string
+  amount_cents: number
+  category_id: number
 }
 
 // The two short configured lists the Expense form picks from.

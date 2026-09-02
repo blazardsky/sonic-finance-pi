@@ -75,3 +75,15 @@ func writeError(w http.ResponseWriter, status int, err error) {
 	log.Printf("request failed: %v", err)
 	writeJSON(w, status, map[string]string{"error": http.StatusText(status)})
 }
+
+// writeInvalid is the deliberate opposite: a refusal this codebase itself
+// worded, handed to the client as written. These sentences name the rule that
+// was broken and nothing else — no table, no column — so there is nothing in
+// them to withhold, and a client that gets a 400 can say which rule it broke.
+//
+// The screens do not read it yet: they refuse the same cases themselves, in
+// Italian, before sending. This is what the API answers, and what its tests
+// hold it to.
+func writeInvalid(w http.ResponseWriter, err error) {
+	writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+}

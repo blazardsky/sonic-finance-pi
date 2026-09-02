@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -34,6 +35,22 @@ type expense struct {
 	Payer         string `json:"payer"`
 	PaymentMethod string `json:"payment_method"`
 	Note          string `json:"note"`
+	Items         []item `json:"items"`
+}
+
+// An item is a part of an Expense that belongs under a different Category — a
+// book bought during the grocery shop. Items are optional and partial: they
+// never have to account for the whole Expense, and whatever they do not cover
+// stays under the Expense's own Category. The Expense's amount is never
+// derived from them; see ADR-0002.
+//
+// An Item carries no id across the API, because nothing addresses one: they
+// are saved as a set with their Expense, an edit replaces the whole
+// breakdown, and so what a request sends is exactly what a later one reads.
+type item struct {
+	Name        string `json:"name"`
+	AmountCents int64  `json:"amount_cents"`
+	CategoryID  int64  `json:"category_id"`
 }
 
 // migrateExpenses is schema step 2. It created more columns than ticket 05
@@ -63,6 +80,24 @@ func migrateExpenses(tx *sql.Tx) error {
 	return err
 }
 
+// migrateItems is schema step 4. ON DELETE CASCADE is the schema saying what
+// ADR-0002 says: an Item has no life outside its Expense, so deleting the
+// Expense takes the breakdown with it rather than failing on the reference.
+//
+// There is no CHECK against the Expense's total, because a row constraint
+// cannot see its siblings' amounts. That sum is enforced on the way in, where
+// the refusal can say what was wrong.
+func migrateItems(tx *sql.Tx) error {
+	_, err := tx.Exec(`CREATE TABLE item (
+		id           INTEGER PRIMARY KEY,
+		expense_id   INTEGER NOT NULL REFERENCES expense(id) ON DELETE CASCADE,
+		name         TEXT NOT NULL,
+		amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+		category_id  INTEGER NOT NULL REFERENCES category(id)
+	) STRICT`)
+	return err
+}
+
 // handleListExpenses returns every Expense, newest first: the list sits under
 // the add form, so what was just logged has to be the first thing on it. Ties
 // on the date fall back to the id, which is insertion order.
@@ -71,6 +106,12 @@ func migrateExpenses(tx *sql.Tx) error {
 // frontend has one screen; add a month filter when a report needs one.
 func handleListExpenses(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		items, err := itemsByExpense(db)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+
 		rows, err := db.Query(expenseSelect + ` ORDER BY occurred_on DESC, id DESC`)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
@@ -87,6 +128,7 @@ func handleListExpenses(db *sql.DB) http.HandlerFunc {
 				writeError(w, http.StatusInternalServerError, err)
 				return
 			}
+			e.Items = append(e.Items, items[e.ID]...)
 			out = append(out, e)
 		}
 		if err := rows.Err(); err != nil {
@@ -111,7 +153,16 @@ func handleCreateExpense(db *sql.DB, now func() time.Time) http.HandlerFunc {
 			return
 		}
 
-		res, err := db.Exec(`INSERT INTO expense
+		// One transaction, because an Expense and its breakdown are one save:
+		// a failure partway must not leave a €62 shop with half a book in it.
+		tx, err := db.Begin()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		defer tx.Rollback()
+
+		res, err := tx.Exec(`INSERT INTO expense
 			(occurred_on, amount_cents, category_id, store, payer, payment_method, note, created_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 			e.OccurredOn, e.AmountCents, e.CategoryID,
@@ -124,6 +175,14 @@ func handleCreateExpense(db *sql.DB, now func() time.Time) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
+		if err := insertItems(tx, e.ID, e.Items); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if err := tx.Commit(); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
 		writeJSON(w, http.StatusCreated, e)
 	}
 }
@@ -132,7 +191,9 @@ const expenseSelect = `SELECT id, occurred_on, amount_cents, category_id,
 	store, payer, payment_method, note FROM expense`
 
 func scanExpense(row interface{ Scan(...any) error }) (expense, error) {
-	var e expense
+	// The frontend maps over the breakdown, so an Expense without one has to
+	// marshal as [] rather than null. The caller fills in any Items there are.
+	e := expense{Items: []item{}}
 	err := row.Scan(&e.ID, &e.OccurredOn, &e.AmountCents, &e.CategoryID,
 		&e.Store, &e.Payer, &e.PaymentMethod, &e.Note)
 	return e, err
@@ -158,6 +219,30 @@ func (e *expense) validate() error {
 	if _, err := time.Parse(dateLayout, e.OccurredOn); err != nil {
 		return errors.New("occurred_on must be a real date as YYYY-MM-DD")
 	}
+
+	// The breakdown marshals as [] rather than null, and is checked against
+	// the Expense's own amount — never the other way around. ADR-0002: a
+	// partial itemisation must not silently shrink a €62 shop into a €14 one,
+	// and a remainder below zero has no meaning, so it is refused instead.
+	if e.Items == nil {
+		e.Items = []item{}
+	}
+	var covered int64
+	for i := range e.Items {
+		it := &e.Items[i]
+		it.Name = strings.TrimSpace(it.Name)
+		if it.Name == "" {
+			return errors.New("every item needs a name")
+		}
+		if it.AmountCents <= 0 {
+			return fmt.Errorf("the item %q needs an amount above zero", it.Name)
+		}
+		// Compared inside the loop, so covered never runs past one item's
+		// amount above the total and an int64 has no chance to overflow.
+		if covered += it.AmountCents; covered > e.AmountCents {
+			return errors.New("the items add up to more than the expense total")
+		}
+	}
 	return nil
 }
 
@@ -176,19 +261,48 @@ func handlePatchExpense(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		id := e.ID
+		// Items are the one field decoding cannot merge into: an Item has no
+		// id, so a shorter list sent for a longer stored one would leave the
+		// old names and amounts showing through the gaps. The breakdown is
+		// emptied first and replaced wholesale, and only put back if the body
+		// turned out to say nothing about it.
+		stored := e.Items
+		e.Items = nil
 		if err := decodeJSON(w, r, &e); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
+		}
+		if e.Items == nil {
+			e.Items = stored
 		}
 		e.ID = id // an id in the body is not a way to move the row
 		if !checkExpense(w, db, &e) {
 			return
 		}
 
-		if _, err := db.Exec(`UPDATE expense SET occurred_on = ?, amount_cents = ?, category_id = ?,
+		tx, err := db.Begin()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		defer tx.Rollback()
+
+		if _, err := tx.Exec(`UPDATE expense SET occurred_on = ?, amount_cents = ?, category_id = ?,
 			store = ?, payer = ?, payment_method = ?, note = ? WHERE id = ?`,
 			e.OccurredOn, e.AmountCents, e.CategoryID,
 			e.Store, e.Payer, e.PaymentMethod, e.Note, e.ID); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if _, err := tx.Exec(`DELETE FROM item WHERE expense_id = ?`, e.ID); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if err := insertItems(tx, e.ID, e.Items); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if err := tx.Commit(); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -230,7 +344,53 @@ func findExpense(w http.ResponseWriter, db *sql.DB, rawID string) (expense, bool
 		writeError(w, http.StatusInternalServerError, err)
 		return expense{}, false
 	}
+
+	// The breakdown comes with it: an edit that says nothing about Items has
+	// to keep them, and one that replaces them has to answer with what stuck.
+	items, err := itemsByExpense(db)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return expense{}, false
+	}
+	e.Items = append(e.Items, items[e.ID]...)
 	return e, true
+}
+
+// itemsByExpense loads every Expense's breakdown at once, grouped by the
+// Expense it belongs to and each group in the order it was saved. One query
+// for the whole table rather than one per Expense: a household's entire
+// history of Items is a few hundred rows, which is cheaper to read whole than
+// to filter twice.
+func itemsByExpense(db *sql.DB) (map[int64][]item, error) {
+	rows, err := db.Query(`SELECT expense_id, name, amount_cents, category_id
+		FROM item ORDER BY expense_id, id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := map[int64][]item{}
+	for rows.Next() {
+		var id int64
+		var it item
+		if err := rows.Scan(&id, &it.Name, &it.AmountCents, &it.CategoryID); err != nil {
+			return nil, err
+		}
+		out[id] = append(out[id], it)
+	}
+	return out, rows.Err()
+}
+
+// insertItems writes an Expense's breakdown. Items are always written as a
+// whole set — that is what lets one carry no id of its own.
+func insertItems(tx *sql.Tx, expenseID int64, items []item) error {
+	for _, it := range items {
+		if _, err := tx.Exec(`INSERT INTO item (expense_id, name, amount_cents, category_id)
+			VALUES (?, ?, ?, ?)`, expenseID, it.Name, it.AmountCents, it.CategoryID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // checkExpense validates e and confirms its Category, writing the response
@@ -242,16 +402,35 @@ func findExpense(w http.ResponseWriter, db *sql.DB, rawID string) (expense, bool
 // would not catch an income-only Category at all.
 func checkExpense(w http.ResponseWriter, db *sql.DB, e *expense) bool {
 	if err := e.validate(); err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		writeInvalid(w, err)
 		return false
 	}
-	switch ok, err := categoryAccepts(db, e.CategoryID, appliesExpense); {
-	case err != nil:
-		writeError(w, http.StatusInternalServerError, err)
+	if !acceptsExpense(w, db, e.CategoryID, "that category is not one an expense can go in") {
 		return false
-	case !ok:
-		writeError(w, http.StatusBadRequest, errors.New("that category is not one an expense can go in"))
-		return false
+	}
+	// An Item is money in a Category exactly as its Expense is, so it answers
+	// to the same rule. Sharing the Expense's own Category is deliberately not
+	// checked: pointless, but nobody's business to forbid.
+	for _, it := range e.Items {
+		if !acceptsExpense(w, db, it.CategoryID,
+			fmt.Sprintf("the item %q is not in a category an expense can go in", it.Name)) {
+			return false
+		}
 	}
 	return true
+}
+
+// acceptsExpense confirms one Category can hold expense money, writing the
+// response itself on a refusal — refusal being a bad request the client can be
+// told about, in the words the caller chose.
+func acceptsExpense(w http.ResponseWriter, db *sql.DB, id int64, refusal string) bool {
+	switch ok, err := categoryAccepts(db, id, appliesExpense); {
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, err)
+	case !ok:
+		writeInvalid(w, errors.New(refusal))
+	default:
+		return true
+	}
+	return false
 }
