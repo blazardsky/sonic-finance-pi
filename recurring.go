@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -81,6 +82,25 @@ func migrateRecurring(tx *sql.Tx) error {
 	}
 	_, err := tx.Exec(`ALTER TABLE expense
 		ADD COLUMN recurring_id INTEGER REFERENCES recurring_expense(id)`)
+	return err
+}
+
+// migrateSkips is schema step 8: the record of a generated Expense the
+// household deleted. ADR-0005 — deleting one has to make it stay deleted, and
+// generation is otherwise a pure function of the window, so the only place
+// "the month I did not pay the rent" can be written down is a row of its own.
+//
+// The month is the whole of the value: (recurring_id, month) is the primary
+// key, so re-skipping the same month is a no-op rather than a second row. ON
+// DELETE CASCADE for the reason an Item's is — a skip has no life outside the
+// Recurring expense it belongs to, and once the definition is gone there is
+// nothing left to skip.
+func migrateSkips(tx *sql.Tx) error {
+	_, err := tx.Exec(`CREATE TABLE recurring_skip (
+		recurring_id INTEGER NOT NULL REFERENCES recurring_expense(id) ON DELETE CASCADE,
+		month        TEXT NOT NULL,
+		PRIMARY KEY (recurring_id, month)
+	) STRICT`)
 	return err
 }
 
@@ -326,4 +346,108 @@ func checkRecurring(w http.ResponseWriter, db *sql.DB, rec *recurringExpense) bo
 	}
 	return acceptsCategory(w, db, rec.CategoryID, appliesExpense,
 		"that category is not one an expense can go in")
+}
+
+// clockFloor is the build-time constant the Pi's clock is judged against. The
+// Zero W has no real-time clock: it boots at whatever the filesystem last saw,
+// or at 1970, and only becomes right once NTP answers. A now() below this
+// cannot be the truth, so generation refuses rather than writing a rent into
+// the wrong month — or into 1970, which no report would ever go looking for.
+//
+// Refusing is the recoverable half of the choice: nothing is generated until
+// the clock is right, and the next read after that generates everything the
+// window owes. Generating against a wrong clock is what cannot be undone.
+//
+// A var, not a const, because the test suite runs at a fixed clock of its own
+// and moves this out of its way — the same bargain bcryptCost makes.
+var clockFloor = time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+
+// clockSane is the one question every caller asks of the clock: is now late
+// enough to be believed. /api/health publishes the answer so the screens can
+// say so out loud, because a household seeing no rent needs to know why.
+func clockSane(now func() time.Time) bool {
+	return !now().Before(clockFloor)
+}
+
+// logClockUnset says it loudly, and says it the same way wherever it is said:
+// once at startup, and again at every read that would have generated. Two
+// wordings of this would have drifted, and this is the line whoever is
+// wondering where the rent went has to be able to find.
+func logClockUnset(now func() time.Time) {
+	log.Printf("CLOCK UNSET: the clock reads %s, before %s — the Pi has booted without "+
+		"network time. REFUSING to generate recurring expenses until it is corrected",
+		now().Format(time.RFC3339), clockFloor.Format(dateLayout))
+}
+
+// materialise creates the Expenses the given month owes, and is the whole of
+// ADR-0005's "no scheduler": every read that covers a month calls this first,
+// so the rent appears because someone looked, not because a timer fired on a
+// Pi that may have been switched off. It is called for months long past as
+// readily as for this one — a month nobody opened at the time is not
+// permanently empty.
+//
+// Idempotent, and by one statement rather than by a check-then-insert: the
+// NOT EXISTS pair is evaluated inside the INSERT that depends on it, so two
+// screens loading the same month at once cannot both decide the rent is
+// missing. What makes an Expense "already generated" is its recurring_id and
+// its month, which is exactly the pair the spec keys generation on.
+//
+// Nothing is generated past the current month: next month's rent has not been
+// paid, and an Expense is money that left.
+func materialise(db *sql.DB, now func() time.Time, month string) error {
+	if !clockSane(now) {
+		logClockUnset(now)
+		return nil
+	}
+	if month > now().Format(monthLayout) {
+		return nil
+	}
+	// The clamp: a rent that leaves on the 31st leaves on the 30th in April,
+	// and on the 28th in February. The month's length is arithmetic Go already
+	// does — day 0 of the next month is the last of this one — so SQL is left
+	// with a plain min() rather than a date expression to decode at 3am.
+	start, err := time.Parse(monthLayout, month)
+	if err != nil {
+		return err
+	}
+	lastDay := start.AddDate(0, 1, 0).AddDate(0, 0, -1).Day()
+
+	// Every template field is copied, because a generated Expense has to be
+	// indistinguishable from a typed one — including recurring_id, which is
+	// not published over the API and exists only so this statement can tell
+	// what it already did, and so a delete knows which month to skip.
+	_, err = db.Exec(`INSERT INTO expense
+		(occurred_on, amount_cents, category_id, store, payer, payment_method,
+		 note, recurring_id, created_at)
+		SELECT printf('%s-%02d', ?, min(r.day_of_month, ?)), r.amount_cents, r.category_id,
+			r.store, r.payer, r.payment_method, r.note, r.id, ?
+		FROM recurring_expense r
+		WHERE r.start_month <= ? AND ? <= COALESCE(r.end_month, ?)
+		AND NOT EXISTS (SELECT 1 FROM expense e
+			WHERE e.recurring_id = r.id AND substr(e.occurred_on, 1, 7) = ?)
+		AND NOT EXISTS (SELECT 1 FROM recurring_skip s
+			WHERE s.recurring_id = r.id AND s.month = ?)`,
+		month, lastDay, now().Format(time.RFC3339),
+		month, month, month, month, month)
+	return err
+}
+
+// skipMonth writes down that a Recurring expense's month is not to be
+// generated again. Which month is read from the stored row rather than from
+// anything a client sent, and OR IGNORE because (recurring_id, month) is the
+// primary key: a month skipped twice is skipped once.
+//
+// staying is the month the Expense is keeping — the month a PATCH is moving it
+// to, or "" for a delete, which keeps none. That is the whole difference
+// between the two callers: a correction inside the month skips nothing,
+// because the rent is still sitting in the month it was paid in.
+//
+// A typed Expense has no recurring_id, so this inserts nothing for one and
+// neither caller needs a branch to keep in step with its own write.
+func skipMonth(tx *sql.Tx, expenseID int64, staying string) error {
+	_, err := tx.Exec(`INSERT OR IGNORE INTO recurring_skip (recurring_id, month)
+		SELECT recurring_id, substr(occurred_on, 1, 7) FROM expense
+		WHERE id = ? AND recurring_id IS NOT NULL
+		AND substr(occurred_on, 1, 7) <> ?`, expenseID, staying)
+	return err
 }

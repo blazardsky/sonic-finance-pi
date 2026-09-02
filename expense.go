@@ -254,6 +254,12 @@ func (e *expense) validate() error {
 // Payer and Payment method are not checked against the configured lists, and
 // must not be: an Expense saved under a label since renamed away still has to
 // be editable, or correcting its amount would mean losing what it says.
+//
+// Moving a generated Expense to another month skips the month it left, for the
+// reason deleting one does: generation asks whether that (Recurring expense,
+// month) has an Expense, and after the move it does not — so the next look at
+// the old month would put a second rent there for a payment that happened
+// once. Correcting a date inside the month skips nothing.
 func handlePatchExpense(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		e, ok := findExpense(w, db, r.PathValue("id"))
@@ -287,6 +293,13 @@ func handlePatchExpense(db *sql.DB) http.HandlerFunc {
 		}
 		defer tx.Rollback()
 
+		// Before the UPDATE, while the stored row still says which month it is
+		// leaving. OccurredOn is the validated layout by now, so its first
+		// seven characters are the month it is moving to.
+		if err := skipMonth(tx, e.ID, e.OccurredOn[:len(monthLayout)]); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
 		if _, err := tx.Exec(`UPDATE expense SET occurred_on = ?, amount_cents = ?, category_id = ?,
 			store = ?, payer = ?, payment_method = ?, note = ? WHERE id = ?`,
 			e.OccurredOn, e.AmountCents, e.CategoryID,
@@ -311,14 +324,42 @@ func handlePatchExpense(db *sql.DB) http.HandlerFunc {
 }
 
 // handleDeleteExpense removes one, so a duplicate entry does not distort the
-// month.
+// month — including a generated one, which is deletable under exactly the same
+// rules as a typed one and answers the same 204.
+//
+// What is different is what deleting a generated one leaves behind: a skip for
+// its (Recurring expense, month), because generation is otherwise a pure
+// function of the window and the next look at the month would put the rent
+// straight back. ADR-0005 — the month the rent was not paid has to stay the
+// month the rent was not paid.
+//
+// One transaction, because a skip written without the delete would silence a
+// rent that is still there. skipMonth is shared with the edit below, which has
+// the same problem the moment it moves a generated Expense out of its month.
 func handleDeleteExpense(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		e, ok := findExpense(w, db, r.PathValue("id"))
 		if !ok {
 			return
 		}
-		if _, err := db.Exec(`DELETE FROM expense WHERE id = ?`, e.ID); err != nil {
+		tx, err := db.Begin()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		defer tx.Rollback()
+
+		// Before the delete, while the row is still there to be read: a
+		// deleted Expense is keeping no month at all.
+		if err := skipMonth(tx, e.ID, ""); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if _, err := tx.Exec(`DELETE FROM expense WHERE id = ?`, e.ID); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if err := tx.Commit(); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}

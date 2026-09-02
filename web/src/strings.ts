@@ -9,6 +9,11 @@ export const t = {
   appName: "Sonic Finance",
   connecting: "Connessione…",
   serverUnreachable: "Server non raggiungibile",
+  // The Pi has no real-time clock, so until NTP answers its idea of "now" is
+  // wrong and it refuses to generate anything. Nothing is lost by waiting: the
+  // next look at a month, once the clock is right, fills in every month owed.
+  clockUnset:
+    "L'orologio del server non è ancora sincronizzato: le spese ricorrenti non vengono generate. Riprova tra qualche minuto.",
 
   // Login
   password: "Password",

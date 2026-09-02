@@ -34,11 +34,21 @@ type Screen = (typeof screens)[number]
 export function App() {
   const [state, setState] = useState<State>("checking")
   const [screen, setScreen] = useState<Screen>("month")
+  // The Pi has no RTC. When its clock is unset it generates no Recurring
+  // expenses, and a month short a rent with nothing said about it is how a
+  // household concludes the app has lost the rent. Assumed fine until health
+  // says otherwise, so an older server that does not send the field warns
+  // about nothing.
+  const [clockOK, setClockOK] = useState(true)
 
   const check = useCallback(() => {
     fetch("/api/health")
-      .then((r) => {
+      .then(async (r) => {
         if (r.status === 401) return setState("loggedOut")
+        if (r.ok) {
+          const health = await r.json()
+          setClockOK(health.clock_ok !== false)
+        }
         setState(r.ok ? "connected" : "unreachable")
       })
       .catch(() => setState("unreachable"))
@@ -72,6 +82,13 @@ export function App() {
   // ticket will earn a real nav — this is not it yet.
   return (
     <>
+      {!clockOK && (
+        <div className="mx-auto w-full max-w-md px-6 pt-6">
+          <p role="alert" className="text-sm text-destructive">
+            {t.clockUnset}
+          </p>
+        </div>
+      )}
       {screen === "month" && <Month />}
       {screen === "expenses" && <Expenses />}
       {screen === "incomes" && <Incomes />}

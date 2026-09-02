@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"net/http"
+	"time"
 )
 
 // monthLayout is how a month crosses the API and how it is stored: dates are
@@ -42,20 +43,23 @@ type categoryTotal struct {
 }
 
 // handleMonthReport reports one calendar month. The month is the whole input:
-// no handler here reads the clock, so which month to show is the browser's
-// question — the phone in the hand has a correct clock and the Pi has no RTC.
+// which month to show is the browser's question — the phone in the hand has a
+// correct clock and the Pi has no RTC. The clock is injected all the same,
+// because generating this month's Recurring expenses is the one thing here
+// that has to know what "past" means.
 //
 // A month that is not a month is refused rather than summed: substr against
 // "2026-3" matches nothing, and answering zeros would be indistinguishable
-// from a month in which nothing happened.
-func handleMonthReport(db *sql.DB) http.HandlerFunc {
+// from a month in which nothing happened. It is refused before generation,
+// too — materialise builds a date out of the month it is given.
+func handleMonthReport(db *sql.DB, now func() time.Time) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		month := r.PathValue("month")
 		if err := validMonth("month", month); err != nil {
 			writeInvalid(w, err)
 			return
 		}
-		totals, err := readMonth(db, month)
+		totals, err := readMonth(db, now, month)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -64,15 +68,25 @@ func handleMonthReport(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// readMonth is the single path every month read goes through, and is meant to
-// stay that way: ticket 11's Category breakdown reads the same month, and
-// ticket 13 materialises the month's Recurring expenses before anything is
-// summed (ADR-0005). One function to hook, rather than one per report.
+// readMonth is the single path every month read goes through, and stays that
+// way: the Category breakdown reads the same month, and ticket 15's year view
+// will read twelve of them through here. One function to hook, rather than one
+// per report — which is what makes the line below cover every month read.
+//
+// Generation comes first, and reading second, which is the whole of ADR-0005:
+// there is no scheduler, so the rent exists because someone looked at the
+// month. A refusal to generate — a clock the Pi cannot believe — is not a
+// refusal to read: the totals of what was typed are still the truth, and
+// /api/health is where the screens learn why nothing was generated.
 //
 // month is trusted to be YYYY-MM by the time it arrives — the handler is where
 // that is decided, so the SQL below can compare it as plain text.
-func readMonth(db *sql.DB, month string) (monthTotals, error) {
+func readMonth(db *sql.DB, now func() time.Time, month string) (monthTotals, error) {
 	m := monthTotals{Month: month}
+
+	if err := materialise(db, now, month); err != nil {
+		return m, err
+	}
 
 	if err := db.QueryRow(`SELECT COALESCE(SUM(amount_cents), 0) FROM expense
 		WHERE substr(occurred_on, 1, 7) = ?`, month).Scan(&m.ExpenseCents); err != nil {

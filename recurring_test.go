@@ -348,3 +348,342 @@ func TestAMissingRecurringExpenseIsANotFound(t *testing.T) {
 		}
 	}
 }
+
+// --- Generation on sight (ticket 13) ---------------------------------------
+//
+// There is no scheduler to drive in a test, and that is the point: every test
+// below reads a month and asserts on what reading it produced. The clock is
+// the fixed testClock throughout — 2026-03-15 — so "this month" is 2026-03 and
+// every month before it is the past.
+
+// clockOKJSON reads the one field the screens warn on.
+func (a *testApp) clockOK(t *testing.T) bool {
+	t.Helper()
+	var got struct {
+		ClockOK bool `json:"clock_ok"`
+	}
+	a.get(t, "/api/health", &got)
+	return got.ClockOK
+}
+
+// The whole ticket in one test: nothing generated the rent, and it is there
+// because somebody looked at the month. Every template field comes with it,
+// because the Expense it produces has to be the one that would have been typed.
+func TestReadingAMonthGeneratesTheRecurringExpensesItOwes(t *testing.T) {
+	a := newTestApp(t)
+	casa := a.category(t, "Casa")
+	a.addRecurring(t, map[string]any{
+		"amount_cents": 85000, "category_id": casa.ID,
+		"store": "Immobiliare Rossi", "payer": "Entrambi",
+		"payment_method": "Bonifico", "note": "Affitto",
+		"day_of_month": 5, "start_month": "2026-03",
+	})
+
+	// Before anything reads the month there is no Expense at all: generation
+	// is not something defining a Recurring expense did.
+	if got := a.expenses(t); len(got) != 0 {
+		t.Fatalf("listed %+v before any month was read, want none — defining one generated an Expense", got)
+	}
+
+	if got := a.month(t, "2026-03"); got.ExpenseCents != 85000 {
+		t.Errorf("expense_cents = %d, want 85000 — the month read did not generate the rent", got.ExpenseCents)
+	}
+
+	got := a.expenses(t)
+	if len(got) != 1 {
+		t.Fatalf("listed %d Expenses, want the one generated", len(got))
+	}
+	want := expenseJSON{
+		ID: got[0].ID, OccurredOn: "2026-03-05", AmountCents: 85000, CategoryID: casa.ID,
+		Store: "Immobiliare Rossi", Payer: "Entrambi", PaymentMethod: "Bonifico",
+		Note: "Affitto", Items: []itemJSON{},
+	}
+	if !reflect.DeepEqual(got[0], want) {
+		t.Errorf("generated Expense = %+v, want %+v", got[0], want)
+	}
+}
+
+// Opening a month twice does not produce two rents. The household's own screen
+// does this on every navigation, so idempotence is not an edge case — it is the
+// normal path.
+func TestGeneratingTheSameMonthTwiceProducesOneRent(t *testing.T) {
+	a := newTestApp(t)
+	a.addRecurring(t, a.rent(t, map[string]any{"day_of_month": 5}))
+
+	first := a.month(t, "2026-03")
+	second := a.month(t, "2026-03")
+	if first != second {
+		t.Errorf("reading the month twice gave %+v then %+v, want the same totals", first, second)
+	}
+	if got := a.expenses(t); len(got) != 1 {
+		t.Errorf("listed %d Expenses after two reads, want 1", len(got))
+	}
+
+	// And a third read after the same month was read through the breakdown,
+	// which is the other thing the month screen loads.
+	a.breakdown(t, "2026-03")
+	if got := a.expenses(t); len(got) != 1 {
+		t.Errorf("listed %d Expenses after the breakdown too, want 1", len(got))
+	}
+}
+
+// Switching the rent on in February must not invent January, and ending it in
+// March must not carry it into April. The window is the whole of the state, so
+// it is the whole of what generation asks — ADR-0005.
+func TestOnlyMonthsInsideTheWindowAreGenerated(t *testing.T) {
+	a := newTestApp(t)
+	a.addRecurring(t, a.rent(t, map[string]any{
+		"day_of_month": 5, "start_month": "2026-02", "end_month": "2026-03",
+	}))
+
+	for _, tc := range []struct {
+		month string
+		want  int64
+	}{
+		{"2026-01", 0},     // before the start
+		{"2026-02", 85000}, // the first month it covers
+		{"2026-03", 85000}, // the end month is covered, not excluded
+	} {
+		if got := a.month(t, tc.month); got.ExpenseCents != tc.want {
+			t.Errorf("%s expense_cents = %d, want %d", tc.month, got.ExpenseCents, tc.want)
+		}
+	}
+	if got := a.expenses(t); len(got) != 2 {
+		t.Errorf("listed %d Expenses, want 2 — one per month inside the window", len(got))
+	}
+}
+
+// A month nobody opened at the time is not permanently empty: the report is
+// what generates it, whenever it is run. This is the reason there is no
+// scheduler — the Pi was switched off in June 2025 and the answer still has to
+// be right in 2026.
+func TestAMonthLongPastStillGeneratesItsRent(t *testing.T) {
+	a := newTestApp(t)
+	a.addRecurring(t, a.rent(t, map[string]any{
+		"day_of_month": 5, "start_month": "2025-01",
+	}))
+
+	if got := a.month(t, "2025-06"); got.ExpenseCents != 85000 {
+		t.Errorf("2025-06 expense_cents = %d, want 85000 — a month long past generated nothing", got.ExpenseCents)
+	}
+	got := a.expenses(t)
+	if len(got) != 1 || got[0].OccurredOn != "2025-06-05" {
+		t.Errorf("listed %+v, want one Expense on 2025-06-05", got)
+	}
+	// Reading it again is still one, twenty months after the fact.
+	a.month(t, "2025-06")
+	if got := a.expenses(t); len(got) != 1 {
+		t.Errorf("listed %d Expenses after a second read of the old month, want 1", len(got))
+	}
+}
+
+// Next month's rent has not been paid, and an Expense is money that left. A
+// household looking ahead must not see it in a total — and must see it the
+// month it arrives, without anything else changing.
+func TestNothingIsGeneratedBeyondTheCurrentMonth(t *testing.T) {
+	a := newTestApp(t)
+	a.addRecurring(t, a.rent(t, map[string]any{
+		"day_of_month": 5, "start_month": "2026-01",
+	}))
+
+	if got := a.month(t, "2026-04"); got.ExpenseCents != 0 {
+		t.Errorf("next month's expense_cents = %d, want 0 — the rent has not been paid yet", got.ExpenseCents)
+	}
+	if got := a.month(t, "2026-03"); got.ExpenseCents != 85000 {
+		t.Errorf("this month's expense_cents = %d, want 85000", got.ExpenseCents)
+	}
+
+	// April becomes the current month, and only then does it fill in.
+	a.setNow(t, time.Date(2026, 4, 1, 8, 0, 0, 0, time.UTC))
+	if got := a.month(t, "2026-04"); got.ExpenseCents != 85000 {
+		t.Errorf("April's expense_cents once April arrived = %d, want 85000", got.ExpenseCents)
+	}
+}
+
+// A rent that leaves on the 31st leaves on the 30th in April and the 28th in
+// February — the day of the month is what was meant, and the month's length is
+// what is possible. A date that overflowed into the next month would put the
+// rent in a month it was not paid in, and no report would find it.
+func TestTheGeneratedDateIsClampedToTheMonthsLength(t *testing.T) {
+	a := newTestApp(t)
+	a.addRecurring(t, a.rent(t, map[string]any{
+		"day_of_month": 31, "start_month": "2024-01",
+	}))
+	a.setNow(t, time.Date(2026, 5, 20, 10, 0, 0, 0, time.UTC))
+
+	for month, want := range map[string]string{
+		"2026-01": "2026-01-31", // a month that really has a 31st
+		"2026-04": "2026-04-30",
+		"2026-02": "2026-02-28",
+		"2024-02": "2024-02-29", // and February when it has 29
+	} {
+		if got := a.month(t, month); got.ExpenseCents != 85000 {
+			t.Fatalf("%s expense_cents = %d, want 85000", month, got.ExpenseCents)
+		}
+		if !hasExpenseOn(a.expenses(t), want) {
+			t.Errorf("no generated Expense on %s after reading %s; got %+v",
+				want, month, datesOf(a.expenses(t)))
+		}
+	}
+}
+
+// A generated Expense is indistinguishable in use from a typed one: the same
+// PATCH corrects it when the rent went out a day late, and the same DELETE
+// removes it. No second set of rules, per the ticket and story 19.
+func TestAGeneratedExpenseIsEditedAndDeletedLikeATypedOne(t *testing.T) {
+	a := newTestApp(t)
+	a.addRecurring(t, a.rent(t, map[string]any{"day_of_month": 5}))
+	a.month(t, "2026-03")
+
+	generated := a.expenses(t)[0]
+	var edited expenseJSON
+	res := a.patch(t, expensePath(generated.ID), map[string]any{
+		"occurred_on": "2026-03-07", "amount_cents": 86000, "note": "aumento",
+	}, &edited)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH of a generated Expense = %d, want 200", res.StatusCode)
+	}
+	if edited.OccurredOn != "2026-03-07" || edited.AmountCents != 86000 || edited.Note != "aumento" {
+		t.Errorf("edited = %+v, want the correction to have stuck", edited)
+	}
+	// And the edit is not undone by the next look at the month: what is
+	// already there for that month is what generation counts.
+	if got := a.month(t, "2026-03"); got.ExpenseCents != 86000 {
+		t.Errorf("expense_cents = %d after re-reading the month, want the edited 86000", got.ExpenseCents)
+	}
+
+	if res := a.delete(t, expensePath(generated.ID)); res.StatusCode != http.StatusNoContent {
+		t.Errorf("DELETE of a generated Expense = %d, want 204", res.StatusCode)
+	}
+}
+
+// The month the rent was not paid stays the month the rent was not paid.
+// Generation is otherwise a pure function of the window, so a delete has to
+// write the skip down — and only for that month, because the months either
+// side were paid.
+func TestDeletingAGeneratedExpenseKeepsItDeleted(t *testing.T) {
+	a := newTestApp(t)
+	a.addRecurring(t, a.rent(t, map[string]any{
+		"day_of_month": 5, "start_month": "2026-01",
+	}))
+	a.month(t, "2026-02")
+
+	generated := a.expenses(t)[0]
+	if res := a.delete(t, expensePath(generated.ID)); res.StatusCode != http.StatusNoContent {
+		t.Fatalf("DELETE = %d, want 204", res.StatusCode)
+	}
+
+	if got := a.month(t, "2026-02"); got.ExpenseCents != 0 {
+		t.Errorf("February's expense_cents = %d after the delete, want 0 — the rent came back", got.ExpenseCents)
+	}
+	if got := a.expenses(t); len(got) != 0 {
+		t.Errorf("listed %+v, want none — a skipped month regenerated", got)
+	}
+	// The skip is that month's and nobody else's.
+	if got := a.month(t, "2026-03"); got.ExpenseCents != 85000 {
+		t.Errorf("March's expense_cents = %d, want 85000 — the skip leaked into another month", got.ExpenseCents)
+	}
+	// And deleting a typed Expense skips nothing, because there is nothing
+	// that would ever regenerate it.
+	typed := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-20", "amount_cents": 1200, "category_id": a.category(t, "Casa").ID,
+	})
+	a.delete(t, expensePath(typed.ID))
+	if got := a.month(t, "2026-03"); got.ExpenseCents != 85000 {
+		t.Errorf("March's expense_cents = %d after a typed Expense was deleted, want 85000", got.ExpenseCents)
+	}
+}
+
+// The bug the review found: a generated Expense moved to another month left
+// the month it came from looking unpaid, and the next look at it produced a
+// second rent for a payment that happened once. Generation asks whether that
+// (Recurring expense, month) has an Expense — after the move it does not — so
+// the move has to write the same skip a delete does.
+func TestMovingAGeneratedExpenseDoesNotLeaveTheOldMonthToRegenerate(t *testing.T) {
+	a := newTestApp(t)
+	a.addRecurring(t, a.rent(t, map[string]any{
+		"day_of_month": 5, "start_month": "2026-01",
+	}))
+	a.month(t, "2026-02")
+	generated := a.expenses(t)[0]
+
+	// The rent went out late enough to land in March.
+	var moved expenseJSON
+	res := a.patch(t, expensePath(generated.ID), map[string]any{"occurred_on": "2026-03-07"}, &moved)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH moving a generated Expense = %d, want 200", res.StatusCode)
+	}
+
+	if got := a.month(t, "2026-02"); got.ExpenseCents != 0 {
+		t.Errorf("February's expense_cents = %d after the rent was moved out, want 0 — a second rent was generated", got.ExpenseCents)
+	}
+	if got := a.month(t, "2026-03"); got.ExpenseCents != 85000 {
+		t.Errorf("March's expense_cents = %d, want the 85000 that was moved there", got.ExpenseCents)
+	}
+	if got := a.expenses(t); len(got) != 1 {
+		t.Fatalf("listed %+v, want exactly one rent — one payment happened", datesOf(got))
+	}
+
+	// And moving it back is the same story in the other direction: still one
+	// rent, and March does not fill the hole it left.
+	a.patch(t, expensePath(generated.ID), map[string]any{"occurred_on": "2026-02-05"}, nil)
+	a.month(t, "2026-02")
+	a.month(t, "2026-03")
+	if got := a.expenses(t); len(got) != 1 {
+		t.Errorf("listed %+v after moving it back, want one rent", datesOf(got))
+	}
+}
+
+// Story 72: the Pi has no real-time clock, so a boot without network time
+// reads 1970. Generating against that writes a rent into a month no report
+// will ever look at, and there is no way back; generating nothing is undone by
+// the next read once NTP has answered. So it refuses, and says so where the
+// UI can see it.
+func TestAClockBeforeTheFloorRefusesToGenerate(t *testing.T) {
+	a := newTestApp(t)
+	a.addRecurring(t, a.rent(t, map[string]any{
+		"day_of_month": 5, "start_month": "2026-01",
+	}))
+
+	a.setNow(t, time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC))
+	if a.clockOK(t) {
+		t.Error("clock_ok = true at 1970 — the UI has nothing to warn on")
+	}
+	// The read still answers: what was typed is still the truth, and refusing
+	// to generate is not refusing to report.
+	if got := a.month(t, "2026-01"); got.ExpenseCents != 0 {
+		t.Errorf("expense_cents = %d with the clock unset, want 0 — it generated against a wrong clock", got.ExpenseCents)
+	}
+	if got := a.expenses(t); len(got) != 0 {
+		t.Fatalf("listed %+v with the clock unset, want none", got)
+	}
+
+	// Once the clock is right, the next read generates everything the window
+	// owed — nothing was lost by refusing.
+	a.setNow(t, testClock)
+	if !a.clockOK(t) {
+		t.Error("clock_ok = false at the test clock, which is after the floor")
+	}
+	if got := a.month(t, "2026-01"); got.ExpenseCents != 85000 {
+		t.Errorf("expense_cents = %d once the clock was right, want 85000", got.ExpenseCents)
+	}
+}
+
+// hasExpenseOn and datesOf keep the clamping test readable: it asserts that a
+// date is among what was generated, not on the order of a growing list.
+func hasExpenseOn(expenses []expenseJSON, date string) bool {
+	for _, e := range expenses {
+		if e.OccurredOn == date {
+			return true
+		}
+	}
+	return false
+}
+
+func datesOf(expenses []expenseJSON) []string {
+	out := []string{}
+	for _, e := range expenses {
+		out = append(out, e.OccurredOn)
+	}
+	return out
+}

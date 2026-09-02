@@ -50,7 +50,7 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 	mux.HandleFunc("PATCH /api/recurring/{id}", handlePatchRecurring(db))
 	mux.HandleFunc("DELETE /api/recurring/{id}", handleDeleteRecurring(db))
 
-	mux.HandleFunc("GET /api/reports/month/{month}", handleMonthReport(db))
+	mux.HandleFunc("GET /api/reports/month/{month}", handleMonthReport(db, now))
 	mux.HandleFunc("GET /api/reports/recent", handleRecentEntries(db))
 
 	mux.HandleFunc("GET "+settingsPath, handleGetLists(db))
@@ -65,9 +65,14 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
+		// clock_ok is what the screens warn on. The Pi has no RTC, so a boot
+		// without network time is a real state the household has to be told
+		// about: nothing is being generated, their month is short a rent, and
+		// the fix is to wait for NTP rather than to retype anything.
 		writeJSON(w, http.StatusOK, map[string]any{
 			"schema_version": v,
 			"now":            now().Format(time.RFC3339),
+			"clock_ok":       clockSane(now),
 		})
 	})
 
