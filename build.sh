@@ -4,7 +4,7 @@
 # ARMv6. CGO is off because modernc.org/sqlite is pure Go — no cross toolchain.
 set -e
 
-npm --prefix web ci
-npm --prefix web run build
+pnpm --dir web install --frozen-lockfile
+pnpm --dir web build
 
 CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=6 go build -o api-armv6 .

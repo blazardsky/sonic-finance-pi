@@ -6,8 +6,8 @@
 // Names of things the household typed — Categories, Clients, Stores, notes —
 // are data, not UI strings, and stay in whatever language they were typed in.
 export const t = {
-  appName: 'Sonic Finance',
-  connected: 'Connesso al server',
-  serverUnreachable: 'Server non raggiungibile',
-  connecting: 'Connessione…',
+  appName: "Sonic Finance",
+  connecting: "Connessione…",
+  connected: "Connesso al server",
+  serverUnreachable: "Server non raggiungibile",
 } as const
