@@ -49,7 +49,7 @@ const (
 // purpose — they are the household's own names to type, and the settings
 // screen is where they type them.
 var (
-	seedPayers         = []string{"Persona 1", "Persona 2", seedPayerBoth, seedPayerSomeoneElse}
+	seedPayers         = []string{"Nicco", "Sofi", seedPayerBoth, seedPayerSomeoneElse}
 	seedPaymentMethods = []string{"Contanti", "Carta di credito", "Bancomat"}
 )
 
