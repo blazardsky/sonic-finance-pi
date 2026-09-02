@@ -16,6 +16,17 @@ export const t = {
   loggingIn: "Accesso in corso…",
   wrongPassword: "Password errata. Riprova.",
 
+  // Expenses
+  expenses: "Spese",
+  amount: "Importo",
+  date: "Data",
+  category: "Categoria",
+  chooseCategory: "Scegli…",
+  addExpense: "Aggiungi spesa",
+  invalidAmount: "Importo non valido.",
+  expenseNotSaved: "Spesa non salvata. Riprova.",
+  noExpensesYet: "Nessuna spesa registrata.",
+
   // Categories
   categories: "Categorie",
   categoryName: "Nome categoria",

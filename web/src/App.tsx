@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react"
 
 import { Categories } from "@/Categories"
+import { Expenses } from "@/Expenses"
 import { Login } from "@/Login"
+import { Button } from "@/components/ui/button"
 import { t } from "@/strings"
 
 // /api/health doubles as the session check: it sits behind auth like every
@@ -13,6 +15,7 @@ type State = "checking" | "loggedOut" | "connected" | "unreachable"
 
 export function App() {
   const [state, setState] = useState<State>("checking")
+  const [screen, setScreen] = useState<"expenses" | "categories">("expenses")
 
   const check = useCallback(() => {
     fetch("/api/health")
@@ -47,9 +50,25 @@ export function App() {
     )
   }
 
-  // Categories is the only screen there is so far; later tickets give the
-  // shell something to navigate between.
-  return <Categories />
+  // Two screens and a text link between them. Logging an Expense is what the
+  // app is for, so it is what opens; Categories is somewhere you go once in a
+  // while. Later tickets will earn a real nav — this is not it yet.
+  return (
+    <>
+      {screen === "expenses" ? <Expenses /> : <Categories />}
+      <div className="mx-auto flex w-full max-w-md justify-end px-6 pb-8">
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() =>
+            setScreen(screen === "expenses" ? "categories" : "expenses")
+          }
+        >
+          {screen === "expenses" ? t.categories : t.expenses}
+        </Button>
+      </div>
+    </>
+  )
 }
 
 export default App

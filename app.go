@@ -26,6 +26,9 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 	mux.HandleFunc("PATCH /api/categories/{id}", handlePatchCategory(db))
 	mux.HandleFunc("DELETE /api/categories/{id}", handleDeleteCategory(db))
 
+	mux.HandleFunc("GET /api/expenses", handleListExpenses(db))
+	mux.HandleFunc("POST /api/expenses", handleCreateExpense(db, now))
+
 	mux.HandleFunc("POST /api/login", handleLogin(db, now))
 	mux.HandleFunc("POST /api/logout", handleLogout)
 

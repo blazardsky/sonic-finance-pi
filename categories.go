@@ -261,6 +261,19 @@ func scanCategory(row interface{ Scan(...any) error }) (category, error) {
 	return c, err
 }
 
+// categoryAccepts reports whether the Category exists and is one an entry of
+// this kind can go in — "Freelance" is never an Expense. Hidden is not part of
+// it: hiding takes a Category out of the picker, not out of the app.
+func categoryAccepts(db *sql.DB, id int64, applies string) (bool, error) {
+	var found int
+	err := db.QueryRow(`SELECT 1 FROM category WHERE id = ? AND applies_to IN (?, ?)`,
+		id, applies, appliesBoth).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 func (c category) validate() error {
 	if c.Name == "" {
 		return errors.New("a category needs a name")

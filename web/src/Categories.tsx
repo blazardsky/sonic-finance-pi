@@ -2,33 +2,15 @@ import { useCallback, useEffect, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { NativeSelect } from "@/components/ui/native-select"
+import { api } from "@/api"
 import { t } from "@/strings"
-
-type Applies = "expense" | "income" | "both"
-
-type Category = {
-  id: number
-  name: string
-  applies_to: Applies
-  hidden: boolean
-  // A Base category is one the tax summary resolves by identity: it can be
-  // hidden, never renamed or deleted, and the server enforces that with a 409.
-  base: boolean
-}
+import type { Applies, Category } from "@/types"
 
 const appliesLabels: Record<Applies, string> = {
   expense: t.appliesExpense,
   income: t.appliesIncome,
   both: t.appliesBoth,
-}
-
-async function api(path: string, init?: RequestInit) {
-  const res = await fetch(path, {
-    ...init,
-    headers: init?.body ? { "Content-Type": "application/json" } : undefined,
-  })
-  if (!res.ok) throw res
-  return res
 }
 
 // The Category management screen: add, rename, hide, delete. Hidden Categories
@@ -107,20 +89,18 @@ export function Categories() {
             required
             className="h-9"
           />
-          <select
+          <NativeSelect
             value={appliesTo}
             onChange={(e) => setAppliesTo(e.target.value as Applies)}
             aria-label={t.appliesTo}
-            // A native select, so a phone gives its own picker wheel. The
-            // classes are Input's chrome, minus what only an input needs.
-            className="h-9 rounded-lg border border-input bg-transparent px-2 text-base transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30"
+            className="h-9 w-auto"
           >
             {(["expense", "income", "both"] as const).map((value) => (
               <option key={value} value={value}>
                 {appliesLabels[value]}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
         <Button type="submit" size="lg">
           {t.addCategory}
