@@ -10,4 +10,10 @@ export const t = {
   connecting: "Connessione…",
   connected: "Connesso al server",
   serverUnreachable: "Server non raggiungibile",
+
+  // Login
+  password: "Password",
+  logIn: "Accedi",
+  loggingIn: "Accesso in corso…",
+  wrongPassword: "Password errata. Riprova.",
 } as const

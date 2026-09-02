@@ -13,4 +13,5 @@ api-armv6
 static/*
 !static/.gitkeep
 node_modules/
-sonic-finance-backend
+sonic-finance-pi
+build/*

@@ -21,6 +21,9 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /", http.FileServer(http.FS(staticFS)))
 
+	mux.HandleFunc("POST /api/login", handleLogin(db, now))
+	mux.HandleFunc("POST /api/logout", handleLogout)
+
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		var v int
 		if err := db.QueryRow("PRAGMA user_version").Scan(&v); err != nil {
@@ -33,7 +36,7 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 		})
 	})
 
-	return mux
+	return requireSession(db, now, mux)
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {
