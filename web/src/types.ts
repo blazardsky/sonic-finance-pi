@@ -88,4 +88,36 @@ export type MonthTotals = {
   income_cents: number
   expense_cents: number
   net_cents: number
+  // Where the money went, biggest share first, always summing to
+  // expense_cents. An Item's amount is under the Item's Category and the
+  // remainder under the Expense's own, so nothing is ever "uncategorised"
+  // (ADR-0002).
+  by_category: CategoryTotal[]
+}
+
+// One Category's share of a month's spend. The name comes with the id, so the
+// month screen has no reason to hold the Category list — including for a
+// Category since hidden, which still has to say what it was called.
+export type CategoryTotal = {
+  category_id: number
+  category: string
+  amount_cents: number
+}
+
+// One thing the household typed, in either direction, as the home screen's
+// list reads it. Not month-scoped and ordered by when it was typed rather than
+// by the date on it: the list exists to confirm an entry landed, including one
+// backdated to a month the screen is not showing.
+//
+// date is the day the money moved — occurred_on for an Expense, the payment
+// date for an Income — and "" for an Income that has not been paid, because
+// money that has not arrived has no day it arrived on. An empty date is
+// therefore the unpaid state, and the screen must show it as one: this list
+// sits under a money-in total that excludes it (ADR-0003).
+export type RecentEntry = {
+  direction: "expense" | "income"
+  id: number
+  date: string
+  amount_cents: number
+  category: string
 }

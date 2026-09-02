@@ -93,6 +93,12 @@ export const t = {
   difference: "Differenza",
   previousMonth: "Mese precedente",
   nextMonth: "Mese successivo",
+  byCategory: "Dove sono andati i soldi",
+  nothingSpent: "Nessuna spesa questo mese.",
+  // "movimenti" is what a bank calls these; this app has Expenses and Incomes,
+  // and the word it already uses for having recorded one is "registrata".
+  recentEntries: "Ultime registrazioni",
+  noEntriesYet: "Nessuna registrazione ancora.",
 
   // Clients — who money comes from
   clients: "Clienti",

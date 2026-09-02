@@ -3,15 +3,19 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { apiJSON } from "@/api"
-import { formatCents, shiftMonth, thisMonth } from "@/money"
+import { formatCents, formatDate, shiftMonth, thisMonth } from "@/money"
 import { t } from "@/strings"
-import type { MonthTotals } from "@/types"
+import type { MonthTotals, RecentEntry } from "@/types"
 
-// The screen the app opens on: where does this month stand. Three numbers, the
-// two arrows that step through the months either side, and the month itself as
-// a native picker — a comparison against a month three years back should not
-// be thirty-six taps of an arrow. Both ways of moving stop at the current
-// month, because there is no such thing as next month's total.
+// The screen the app opens on: where does this month stand. Three numbers,
+// where the money went, and the last few things typed — the totals answer the
+// question, the breakdown says what made it, and the strip at the bottom
+// confirms what was just entered.
+//
+// The two arrows step through the months either side, and the month itself is
+// a native picker: a comparison against a month three years back should not be
+// thirty-six taps of an arrow. Both ways of moving stop at the current month,
+// because there is no such thing as next month's total.
 //
 // Which month it is is the browser's answer, not the server's: the phone has a
 // correct clock and the Pi has no RTC. The server is never asked which month
@@ -19,7 +23,19 @@ import type { MonthTotals } from "@/types"
 export function Month() {
   const [month, setMonth] = useState(thisMonth)
   const [totals, setTotals] = useState<MonthTotals | null>(null)
+  const [recent, setRecent] = useState<RecentEntry[]>([])
   const [error, setError] = useState("")
+
+  // The last few entries are not this month's — they are the last few typed,
+  // whatever month they landed in — so this fetch does not depend on the
+  // month and is not repeated when the household steps through the months.
+  // A failure here leaves the list empty: the three totals are the screen,
+  // and losing the confirmation strip is not worth blanking them for.
+  useEffect(() => {
+    apiJSON<RecentEntry[]>("/api/reports/recent")
+      .then(setRecent)
+      .catch(() => setRecent([]))
+  }, [])
 
   useEffect(() => {
     let current = true
@@ -96,6 +112,75 @@ export function Month() {
           <Row label={t.difference} cents={totals.net_cents} big />
         </dl>
       )}
+
+      {/* Where the money went. Every line is real spend — the breakdown adds
+          up to the expense total above it, with an itemised shop split across
+          its Categories and no "uncategorised" line to absorb a remainder. */}
+      {totals && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-sm font-medium text-muted-foreground">
+            {t.byCategory}
+          </h2>
+          {totals.by_category.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t.nothingSpent}</p>
+          ) : (
+            <dl className="flex flex-col divide-y divide-border">
+              {totals.by_category.map((line) => (
+                <div
+                  key={line.category_id}
+                  className="flex items-baseline justify-between gap-3 py-2"
+                >
+                  <dt className="truncate">{line.category}</dt>
+                  <dd className="whitespace-nowrap tabular-nums">
+                    € {formatCents(line.amount_cents)}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </section>
+      )}
+
+      {/* The confirmation strip: what was just typed, newest first. An
+          Expense reads as money out and an Income as money in, which is the
+          one thing about an entry this list has to get across.
+
+          An Income with no date is one that has not been paid, and it gets
+          neither a sign nor full-strength text: it sits directly under a money
+          in total that excludes it, and a "+ € 800,00" here would be ADR-0003's
+          named bug rendered on screen. */}
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-medium text-muted-foreground">
+          {t.recentEntries}
+        </h2>
+        {recent.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t.noEntriesYet}</p>
+        ) : (
+          <ul className="flex flex-col divide-y divide-border">
+            {recent.map((entry) => (
+              <li
+                key={`${entry.direction}-${entry.id}`}
+                className="flex items-baseline justify-between gap-3 py-2"
+              >
+                <span className="min-w-0">
+                  <span className="truncate">{entry.category}</span>{" "}
+                  <span className="text-xs text-muted-foreground">
+                    {entry.date ? formatDate(entry.date) : t.notPaidYet}
+                  </span>
+                </span>
+                <span
+                  className={`whitespace-nowrap tabular-nums ${
+                    entry.date ? "" : "text-muted-foreground"
+                  }`}
+                >
+                  {entry.date && (entry.direction === "expense" ? "−" : "+")} €{" "}
+                  {formatCents(entry.amount_cents)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   )
 }
