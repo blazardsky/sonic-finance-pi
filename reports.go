@@ -2,7 +2,10 @@ package main
 
 import (
 	"database/sql"
+	"errors"
+	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -13,18 +16,30 @@ import (
 // validMonth, in recurring.go, is the one gate that holds anything to it.
 const monthLayout = "2006-01"
 
-// monthTotals answers the question the app exists to answer: where does this
-// month stand. Money in is received Income only — an Income with no payment
-// date is money that has not arrived, and counts toward nothing (ADR-0003).
+// monthRow is where a month stands, in three numbers: money in is received
+// Income only — an Income with no payment date is money that has not arrived,
+// and counts toward nothing (ADR-0003).
 //
 // The difference is computed here rather than left to the client, because it
 // is the number the household actually reads and there is no second opinion to
 // be had about it.
-type monthTotals struct {
+//
+// It is a type of its own because a year is twelve of these and nothing more:
+// the year view draws a shape out of the three numbers, and a year that also
+// carried twelve Category breakdowns would be twelve of the heaviest query in
+// the app for a screen that reads none of them. Embedded rather than nested,
+// so a month report's JSON is one flat object exactly as it was.
+type monthRow struct {
 	Month        string `json:"month"`
 	IncomeCents  int64  `json:"income_cents"`
 	ExpenseCents int64  `json:"expense_cents"`
 	NetCents     int64  `json:"net_cents"`
+}
+
+// monthTotals answers the question the app exists to answer: where does this
+// month stand, and what did the money go on.
+type monthTotals struct {
+	monthRow
 
 	// Where the money went, biggest share first. Always present, and always
 	// summing to ExpenseCents exactly — the screen maps over it, and a
@@ -68,10 +83,20 @@ func handleMonthReport(db *sql.DB, now func() time.Time) http.HandlerFunc {
 	}
 }
 
-// readMonth is the single path every month read goes through, and stays that
-// way: the Category breakdown reads the same month, and ticket 15's year view
-// will read twelve of them through here. One function to hook, rather than one
-// per report — which is what makes the line below cover every month read.
+// readMonth is a month with its breakdown: what the month screen reads.
+func readMonth(db *sql.DB, now func() time.Time, month string) (monthTotals, error) {
+	row, err := readMonthRow(db, now, month)
+	if err != nil {
+		return monthTotals{monthRow: row}, err
+	}
+	byCategory, err := readBreakdown(db, month)
+	return monthTotals{monthRow: row, ByCategory: byCategory}, err
+}
+
+// readMonthRow is the single path every month read goes through, and stays
+// that way: the month screen reads one through readMonth, and the year view
+// reads twelve. One function to hook, rather than one per report — which is
+// what makes the line below cover every month read.
 //
 // Generation comes first, and reading second, which is the whole of ADR-0005:
 // there is no scheduler, so the rent exists because someone looked at the
@@ -81,8 +106,8 @@ func handleMonthReport(db *sql.DB, now func() time.Time) http.HandlerFunc {
 //
 // month is trusted to be YYYY-MM by the time it arrives — the handler is where
 // that is decided, so the SQL below can compare it as plain text.
-func readMonth(db *sql.DB, now func() time.Time, month string) (monthTotals, error) {
-	m := monthTotals{Month: month}
+func readMonthRow(db *sql.DB, now func() time.Time, month string) (monthRow, error) {
+	m := monthRow{Month: month}
 
 	if err := materialise(db, now, month); err != nil {
 		return m, err
@@ -106,12 +131,6 @@ func readMonth(db *sql.DB, now func() time.Time, month string) (monthTotals, err
 		month).Scan(&m.IncomeCents); err != nil {
 		return m, err
 	}
-
-	byCategory, err := readBreakdown(db, month)
-	if err != nil {
-		return m, err
-	}
-	m.ByCategory = byCategory
 
 	m.NetCents = m.IncomeCents - m.ExpenseCents
 	return m, nil
@@ -251,4 +270,195 @@ func handleRecentEntries(db *sql.DB) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, out)
 	}
+}
+
+// yearLayout is how a year crosses the API: four digits, which is the first
+// four characters of a date and of a month, and a Tax year written out. Like
+// every other date shape here, it sorts correctly as text.
+const yearLayout = "2006"
+
+// yearTotals is the shape of a whole year: the same three numbers a month
+// answers with, over twelve months, and the twelve months themselves so the
+// screen can draw what the year looked like month by month.
+//
+// No Category breakdown, for the year or for its months. The ticket asks for
+// the shape of the year and the year in tax terms; a twelve-month breakdown is
+// twelve runs of the heaviest query in the app, on a Pi Zero W, for a screen
+// that would have to sum them back together to say anything. The month screen
+// is one tap away and answers it for the month the household is asking about.
+type yearTotals struct {
+	Year         string `json:"year"`
+	IncomeCents  int64  `json:"income_cents"`
+	ExpenseCents int64  `json:"expense_cents"`
+	NetCents     int64  `json:"net_cents"`
+
+	// Always twelve, January first, whether or not anything happened in any
+	// of them: a year view is a shape, and a missing month would be a gap in
+	// it rather than an empty one.
+	Months []monthRow `json:"months"`
+}
+
+// handleYearReport reports one calendar year, month by month. Which year is
+// the browser's question for the reason which month is: the phone has a
+// correct clock and the Pi has no RTC.
+//
+// A year that is not a year is refused rather than summed, exactly as a month
+// is: "26" matches no date, and answering zeros would be indistinguishable
+// from a year in which nothing happened.
+func handleYearReport(db *sql.DB, now func() time.Time) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		year := r.PathValue("year")
+		if err := validYear("year", year); err != nil {
+			writeInvalid(w, err)
+			return
+		}
+		totals := yearTotals{Year: year}
+		for _, month := range monthsOf(year) {
+			// Through readMonthRow, which is what makes a year view generate
+			// the Recurring expenses each of its twelve months owes —
+			// ADR-0005's "a month nobody opened at the time is not silently
+			// empty forever" is most of what a year view is for.
+			m, err := readMonthRow(db, now, month)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+			totals.IncomeCents += m.IncomeCents
+			totals.ExpenseCents += m.ExpenseCents
+			totals.Months = append(totals.Months, m)
+		}
+		totals.NetCents = totals.IncomeCents - totals.ExpenseCents
+		writeJSON(w, http.StatusOK, totals)
+	}
+}
+
+// taxSummary is the figure the invoicing software cannot give: what was really
+// received and what was really paid, after the fact. "Received X, paid Y in
+// tax, net Z%" — one total, no per-tax-type breakdown (ADR-0008).
+//
+// The two halves are counted differently on purpose. Received is cash: money
+// in the account during this year, and unpaid invoices are not money
+// (ADR-0003). Tax paid is attributed by Tax year, because tax on one year's
+// income is paid during the next, and a cash-basis figure would look like a
+// tax rate while being nothing of the kind.
+type taxSummary struct {
+	Year          string `json:"year"`
+	ReceivedCents int64  `json:"received_cents"`
+	TaxPaidCents  int64  `json:"tax_paid_cents"`
+	NetCents      int64  `json:"net_cents"`
+
+	// What was kept, as a percentage of what was received. Null rather than
+	// zero when nothing was received: a percentage of nothing is not 0%, and
+	// a screen reading "net 0%" against an empty year would be a wrong answer
+	// where there is no answer. A percentage is not money, so this is the one
+	// float in the codebase.
+	NetPercent *float64 `json:"net_percent"`
+}
+
+// handleTaxSummary answers the year in tax terms. It generates the year's
+// months first, for the reason every other report does — a tax payment can be
+// a Recurring expense like any other, and the summary must not be short one
+// because nobody happened to open the month it lands in.
+//
+// ponytail: it generates this year's twelve months and not the next year's,
+// where a payment attributed back to this one would have been made. The year
+// view beside this report generates whichever year the household is looking
+// at, so the months not covered here are covered the moment anyone looks at
+// them. Widen it if a tax payment ever goes missing for a year nobody opened.
+func handleTaxSummary(db *sql.DB, now func() time.Time) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		year := r.PathValue("year")
+		if err := validYear("year", year); err != nil {
+			writeInvalid(w, err)
+			return
+		}
+		for _, month := range monthsOf(year) {
+			if err := materialise(db, now, month); err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+		}
+
+		s := taxSummary{Year: year}
+
+		// The ADR-0003 filter, said out loud for the reason the month report
+		// says it: an invoice sent is not income received, and this is the
+		// number the household compares against its invoicing software.
+		//
+		// Freelance is resolved by the Base category's code and never by name
+		// — the household can hide that Category but not rename it, and the
+		// report must not depend on the second half of that being true. Only
+		// freelance: employment income arrives already taxed and a gift is not
+		// income, so counting either makes the percentage meaningless.
+		if err := db.QueryRow(`SELECT COALESCE(SUM(i.amount_cents), 0) FROM income i
+			JOIN category c ON c.id = i.category_id AND c.code = ?
+			WHERE i.payment_date IS NOT NULL AND substr(i.payment_date, 1, 4) = ?`,
+			codeFreelance, year).Scan(&s.ReceivedCents); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+
+		// And the half that is not cash: tax_year, not occurred_on. The
+		// Category is the join and the Tax year is the filter, because both
+		// have to hold — ADR-0008's Y is "Expenses in the taxes base Category,
+		// attributed by Tax year".
+		//
+		// The COALESCE is what makes a generated tax payment count. A Tax year
+		// is an override of a default rather than a fact only a form can
+		// supply: checkExpense stores that default on anything typed, and
+		// materialise — which copies template fields and knows nothing about
+		// tax — leaves NULL. Applying the same default here rather than at
+		// generation covers the rows already generated on the Pi as well as
+		// the ones still to come, and there is then exactly one rule: a tax
+		// Expense that says nothing belongs to the year it was paid in.
+		//
+		// Both sides are integers so the comparison needs no affinity to be
+		// applied to it: the column is INTEGER, the substring is CAST, and the
+		// year is bound as a number rather than as the text it arrived as.
+		yearNumber, err := strconv.Atoi(year)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if err := db.QueryRow(`SELECT COALESCE(SUM(e.amount_cents), 0) FROM expense e
+			JOIN category c ON c.id = e.category_id AND c.code = ?
+			WHERE COALESCE(e.tax_year, CAST(substr(e.occurred_on, 1, 4) AS INTEGER)) = ?`,
+			codeTaxes, yearNumber).Scan(&s.TaxPaidCents); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+
+		s.NetCents = s.ReceivedCents - s.TaxPaidCents
+		if s.ReceivedCents > 0 {
+			percent := float64(s.NetCents) * 100 / float64(s.ReceivedCents)
+			s.NetPercent = &percent
+		}
+		writeJSON(w, http.StatusOK, s)
+	}
+}
+
+// monthsOf is the twelve months of a year, January first. Built by
+// concatenation rather than by date arithmetic: a year is the first four
+// characters of a month, so there is nothing to carry.
+//
+// year is trusted to be four digits by the time it arrives — the handlers are
+// where that is decided.
+func monthsOf(year string) []string {
+	months := make([]string, 0, 12)
+	for m := 1; m <= 12; m++ {
+		months = append(months, fmt.Sprintf("%s-%02d", year, m))
+	}
+	return months
+}
+
+// validYear accepts a year and nothing else, and is validMonth one level up:
+// the layout makes time.Parse strict about the shape, so "26" is refused for
+// the same reason "2026-3" is refused as a month. Everything downstream
+// compares these as text — including a Tax year, which is an integer in the
+// column and a year in every sentence about it.
+func validYear(what, value string) error {
+	if _, err := time.Parse(yearLayout, value); err != nil {
+		return errors.New(what + " must be a real year as YYYY")
+	}
+	return nil
 }

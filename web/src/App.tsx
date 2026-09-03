@@ -7,6 +7,7 @@ import { Incomes } from "@/Incomes"
 import { Login } from "@/Login"
 import { Month } from "@/Month"
 import { RecurringExpenses } from "@/RecurringExpenses"
+import { Year } from "@/Year"
 import { Button } from "@/components/ui/button"
 import { t } from "@/strings"
 
@@ -18,11 +19,13 @@ import { t } from "@/strings"
 type State = "checking" | "loggedOut" | "connected" | "unreachable"
 
 // The screens, in the order the nav lists them. The month view opens, because
-// where the month stands is the first question the app exists to answer;
-// logging an Expense is next, and the two management screens sit after it. The
-// keys are the strings-file keys too, so the nav labels itself.
+// where the month stands is the first question the app exists to answer; the
+// year beside it is the same question one step out, logging an Expense is
+// next, and the two management screens sit after that. The keys are the
+// strings-file keys too, so the nav labels itself.
 const screens = [
   "month",
+  "year",
   "expenses",
   "incomes",
   "recurring",
@@ -90,6 +93,7 @@ export function App() {
         </div>
       )}
       {screen === "month" && <Month />}
+      {screen === "year" && <Year />}
       {screen === "expenses" && <Expenses />}
       {screen === "incomes" && <Incomes />}
       {screen === "recurring" && <RecurringExpenses />}

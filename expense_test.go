@@ -20,6 +20,11 @@ type expenseJSON struct {
 	PaymentMethod string     `json:"payment_method"`
 	Note          string     `json:"note"`
 	Items         []itemJSON `json:"items"`
+
+	// The year a tax payment relates to, and 0 on every Expense that is not
+	// one. Ticket 15: tax on 2026's income is paid during 2027, so the year
+	// it is attributed to is not the year it left the account.
+	TaxYear int `json:"tax_year"`
 }
 
 // An Item as the API hands it out. It carries no id: nothing addresses an Item
@@ -674,5 +679,127 @@ func TestEachExpenseKeepsItsOwnItems(t *testing.T) {
 		if !reflect.DeepEqual(*found, want) {
 			t.Errorf("Expense %d reads %+v, want %+v", want.ID, *found, want)
 		}
+	}
+}
+
+// expense reads one Expense back out of the list, or fails the test. There is
+// no GET for a single one — the list is how the screens read them — so this is
+// what "what a later request sees" means for one row.
+func (a *testApp) expense(t *testing.T, id int64) expenseJSON {
+	t.Helper()
+	for _, e := range a.expenses(t) {
+		if e.ID == id {
+			return e
+		}
+	}
+	t.Fatalf("no Expense with id %d in the list", id)
+	return expenseJSON{}
+}
+
+// taxes is the Expense-side Base category, and the only one a Tax year is
+// kept on.
+func (a *testApp) taxes(t *testing.T) categoryJSON {
+	t.Helper()
+	return a.category(t, seedTaxesName)
+}
+
+// The default that makes the common case free: tax paid in a year is tax on
+// that year until someone says otherwise, so nothing has to be typed for the
+// payment that lands in the year it belongs to.
+func TestATaxExpenseDefaultsItsTaxYearToTheYearItWasPaid(t *testing.T) {
+	a := newTestApp(t)
+
+	created := a.addExpense(t, map[string]any{
+		"occurred_on": "2027-06-30", "amount_cents": 250000,
+		"category_id": a.taxes(t).ID,
+	})
+	if created.TaxYear != 2027 {
+		t.Errorf("tax_year = %d, want 2027 — the default is the year of the payment", created.TaxYear)
+	}
+	if stored := a.expense(t, created.ID); stored.TaxYear != 2027 {
+		t.Errorf("stored tax_year = %d, want 2027", stored.TaxYear)
+	}
+}
+
+// And the real case, which is the reason the field exists at all: the balance
+// paid in June 2027 is tax on 2026's income, and has to say so.
+func TestATaxYearIsEditableAndKeptAsTyped(t *testing.T) {
+	a := newTestApp(t)
+	taxes := a.taxes(t)
+
+	created := a.addExpense(t, map[string]any{
+		"occurred_on": "2027-06-30", "amount_cents": 250000,
+		"category_id": taxes.ID, "tax_year": 2026,
+	})
+	if created.TaxYear != 2026 {
+		t.Fatalf("tax_year on create = %d, want 2026", created.TaxYear)
+	}
+
+	if res := a.patch(t, expensePath(created.ID), map[string]any{"tax_year": 2025}, nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH tax_year = %d, want 200", res.StatusCode)
+	}
+	if stored := a.expense(t, created.ID); stored.TaxYear != 2025 {
+		t.Errorf("tax_year after edit = %d, want 2025", stored.TaxYear)
+	}
+
+	// An edit about something else leaves it alone: a PATCH merges onto the
+	// stored row, and correcting an amount is not a statement about the year.
+	a.patch(t, expensePath(created.ID), map[string]any{"amount_cents": 260000}, nil)
+	if stored := a.expense(t, created.ID); stored.TaxYear != 2025 {
+		t.Errorf("tax_year after an unrelated edit = %d, want 2025", stored.TaxYear)
+	}
+}
+
+// The field is a tax Category's, and nobody else's: the screens surface it
+// only there, and the server does not keep a year on a shopping trip that
+// sent one anyway.
+func TestAnExpenseOutsideATaxCategoryCarriesNoTaxYear(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+
+	created := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-02", "amount_cents": 4237,
+		"category_id": alimentari.ID, "tax_year": 2025,
+	})
+	if created.TaxYear != 0 {
+		t.Errorf("tax_year = %d, want 0 — only a tax expense has one", created.TaxYear)
+	}
+}
+
+// Moving an Expense out of the tax Category takes the year with it, and
+// moving one in gives it the default. The alternative is a stale year sitting
+// on a row nothing reads it from, waiting to be wrong if it is moved back.
+func TestATaxYearFollowsTheCategoryTheExpenseIsMovedTo(t *testing.T) {
+	a := newTestApp(t)
+	taxes, alimentari := a.taxes(t), a.category(t, "Alimentari")
+
+	created := a.addExpense(t, map[string]any{
+		"occurred_on": "2027-06-30", "amount_cents": 250000,
+		"category_id": taxes.ID, "tax_year": 2026,
+	})
+
+	a.patch(t, expensePath(created.ID), map[string]any{"category_id": alimentari.ID}, nil)
+	if stored := a.expense(t, created.ID); stored.TaxYear != 0 {
+		t.Errorf("tax_year after moving out of the tax category = %d, want 0", stored.TaxYear)
+	}
+
+	a.patch(t, expensePath(created.ID), map[string]any{"category_id": taxes.ID}, nil)
+	if stored := a.expense(t, created.ID); stored.TaxYear != 2027 {
+		t.Errorf("tax_year after moving back = %d, want 2027 — the default is the payment year", stored.TaxYear)
+	}
+}
+
+// A year that is not one is refused rather than stored: the column takes any
+// integer, and a 26 typed for 2026 would silently attribute the payment to
+// nothing at all.
+func TestATaxYearThatIsNotAYearIsRefused(t *testing.T) {
+	a := newTestApp(t)
+
+	res := a.post(t, "/api/expenses", map[string]any{
+		"occurred_on": "2027-06-30", "amount_cents": 250000,
+		"category_id": a.taxes(t).ID, "tax_year": 26,
+	}, nil)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Errorf("POST with tax_year 26 = %d, want 400", res.StatusCode)
 	}
 }

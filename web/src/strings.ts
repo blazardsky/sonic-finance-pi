@@ -105,6 +105,45 @@ export const t = {
   recentEntries: "Ultime registrazioni",
   noEntriesYet: "Nessuna registrazione ancora.",
 
+  // Year — the shape of a whole year, and the year in tax terms
+  year: "Anno",
+  previousYear: "Anno precedente",
+  nextYear: "Anno successivo",
+  byMonth: "Mese per mese",
+  // Short month names, January first, as the year's twelve rows label
+  // themselves. Lower case: they are labels in a table, not sentences.
+  monthsShort: [
+    "gen",
+    "feb",
+    "mar",
+    "apr",
+    "mag",
+    "giu",
+    "lug",
+    "ago",
+    "set",
+    "ott",
+    "nov",
+    "dic",
+  ],
+  taxSummary: "Riepilogo fiscale",
+  // "Incassato" and not "fatturato": the whole point of this figure is that it
+  // is the money that actually arrived, not the invoicing software's forecast.
+  received: "Incassato (freelance)",
+  taxPaid: "Tasse pagate",
+  net: "Netto",
+  netPercent: (percent: string) => `${percent}% di quanto incassato`,
+  // Why the two halves are counted differently, in one line: the household
+  // will otherwise compare this against a bank statement and find it wrong.
+  taxSummaryHint:
+    "Le tasse sono attribuite all'anno di competenza, non alla data in cui sono state pagate.",
+  taxYear: "Anno di competenza",
+  taxYearHint: "L'anno del reddito a cui si riferisce questo pagamento.",
+  // Named rather than "quest'anno", which would be a lie on every year but
+  // the current one — this screen steps back through them.
+  nothingReceived: (year: string) =>
+    `Nessuna entrata freelance incassata nel ${year}.`,
+
   // Pending payments — what is owed, and what looks unbilled
   pendingPayments: "In attesa di pagamento",
   // Days rather than a date, because chasing is based on a number: an invoice

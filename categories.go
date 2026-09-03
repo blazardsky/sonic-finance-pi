@@ -274,6 +274,23 @@ func categoryAccepts(db *sql.DB, id int64, applies string) (bool, error) {
 	return err == nil, err
 }
 
+// isTaxCategory reports whether this Category is the Taxes Base one — the
+// question a Tax year is only kept for the answer to. Resolved by code and not
+// by name, like every other read of a Base category: the household cannot
+// rename this one, but the report must not depend on that being true.
+//
+// Hidden is not part of it, for the reason it is not part of categoryAccepts:
+// a tax payment recorded under a Category since hidden is still a tax payment,
+// and the summary still has to count it.
+func isTaxCategory(db *sql.DB, id int64) (bool, error) {
+	var found int
+	err := db.QueryRow(`SELECT 1 FROM category WHERE id = ? AND code = ?`, id, codeTaxes).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 // acceptsCategory confirms one Category exists and can hold money of this
 // kind, writing the response itself on a refusal — a refusal being a bad
 // request the client can be told about, in the words the caller chose.

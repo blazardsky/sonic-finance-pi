@@ -192,7 +192,10 @@ export function Month() {
   )
 }
 
-function Row({
+// One label and one amount, the way both report screens read a total: the big
+// one is the answer the screen exists to give, and the only number that can be
+// negative — which the sign and the colour both say.
+export function Row({
   label,
   cents,
   big,

@@ -37,6 +37,12 @@ export type Expense = {
   // under a different Category. Always an array, empty for the €7 coffee.
   // Never the source of amount_cents — see ADR-0002.
   items: Item[]
+  // The year this payment's tax relates to, and 0 on every Expense that is not
+  // a tax one: tax on 2026's income is paid during 2027, so the yearly summary
+  // attributes it by this rather than by occurred_on (ADR-0008). The server
+  // derives it — 0 sent for a tax Expense comes back as the payment's year, and
+  // anything sent for any other Expense comes back as 0.
+  tax_year: number
 }
 
 // A part of an Expense under its own Category. No id: an Item is saved as one
@@ -83,11 +89,18 @@ export type Income = {
 // difference. Money in counts received Incomes only — an unpaid one is money
 // that has not arrived and is in none of these numbers (ADR-0003). net_cents
 // is negative in a month that spent more than it received.
-export type MonthTotals = {
+//
+// A year is twelve of these and nothing more — the shape of the year is drawn
+// from the three numbers, and no Category breakdown comes with them.
+export type MonthRow = {
   month: string
   income_cents: number
   expense_cents: number
   net_cents: number
+}
+
+// A month with what the money went on: what the month screen reads.
+export type MonthTotals = MonthRow & {
   // Where the money went, biggest share first, always summing to
   // expense_cents. An Item's amount is under the Item's Category and the
   // remainder under the Expense's own, so nothing is ever "uncategorised"
@@ -102,6 +115,35 @@ export type CategoryTotal = {
   category_id: number
   category: string
   amount_cents: number
+}
+
+// The shape of a whole year: the same three numbers a month answers with, over
+// twelve months, plus the twelve months themselves. months is always twelve
+// long, January first, whether or not anything happened in any of them — a
+// year view is a shape, and a missing month would be a gap in it.
+export type YearTotals = {
+  year: string
+  income_cents: number
+  expense_cents: number
+  net_cents: number
+  months: MonthRow[]
+}
+
+// The year in tax terms: the actual figures, as against the invoicing
+// software's forecasts. received_cents is freelance Income only and counts
+// received money alone (ADR-0003); tax_paid_cents is the tax Category
+// attributed by Tax year rather than by payment date, because tax on one
+// year's income is paid during the next (ADR-0008). One total, no per-tax-type
+// breakdown.
+//
+// net_percent is null rather than 0 when nothing was received: a percentage of
+// nothing is not zero percent, and the screen has to say nothing instead.
+export type TaxSummary = {
+  year: string
+  received_cents: number
+  tax_paid_cents: number
+  net_cents: number
+  net_percent: number | null
 }
 
 // One thing the household typed, in either direction, as the home screen's

@@ -38,6 +38,7 @@ const blankDraft = (): Draft => ({
   payer: "",
   payment_method: "",
   note: "",
+  tax_year: 0,
   items: [],
 })
 
@@ -52,6 +53,7 @@ const draftOf = (e: Expense): Draft => ({
   payer: e.payer,
   payment_method: e.payment_method,
   note: e.note,
+  tax_year: e.tax_year,
   items: e.items.map((it) => ({
     name: it.name,
     amount: toTyped(it.amount_cents),
@@ -203,6 +205,22 @@ export function Expenses() {
       categories.find((c) => c.id === chosen)
     )
 
+  // Whether the Tax year field belongs on screen, which is only for an Expense
+  // in a tax Category. A Base category on the expense side is the tax one:
+  // there are two Base categories and the other is income-only, so it can
+  // never be what this form has chosen. The code behind `base` is not
+  // published — it is an implementation detail of the reports — and this is
+  // the one question the boolean answers here.
+  const isTaxExpense = categories.some(
+    (c) => c.id === draft.category_id && c.base
+  )
+
+  // What the field shows before anything is typed: the year of the payment,
+  // which is the same default the server applies to a 0. The common case
+  // needs no typing, and the real case — tax paid in 2027 on 2026's income —
+  // is one edit away.
+  const taxYear = draft.tax_year || Number(draft.occurred_on.slice(0, 4)) || ""
+
   const setItem = (i: number, over: Partial<ItemDraft>) =>
     setDraft((d) => ({
       ...d,
@@ -273,6 +291,34 @@ export function Expenses() {
             </NativeSelect>
           </label>
         </div>
+
+        {/* Only for a tax payment, and outside the details disclosure: for
+            this one Expense the year it relates to is not a detail, it is the
+            field the yearly summary is computed from. It defaults to the year
+            of the payment and stays editable, because tax on 2026's income is
+            paid during 2027. */}
+        {isTaxExpense && (
+          <label className="flex flex-col gap-1.5 text-sm">
+            {t.taxYear}
+            {/* The bounds are the browser's to enforce: a number input with
+                min and max refuses a half-typed 202 itself, in the phone's own
+                language, and the server refuses the same range in English.
+                Clearing the field snaps back to the payment's year rather than
+                showing empty, so there is nothing to mark required. */}
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={1000}
+              max={9999}
+              value={taxYear}
+              onChange={(e) => set("tax_year", Number(e.target.value))}
+              className="h-10"
+            />
+            <span className="text-xs text-muted-foreground">
+              {t.taxYearHint}
+            </span>
+          </label>
+        )}
 
         {/* The details are what make an entry recognisable months later, and
             none of them is worth a tap at the till — so they are a native

@@ -68,6 +68,12 @@ export function thisMonth(): string {
   return today().slice(0, 7)
 }
 
+// thisYear is the year today falls in, read from the browser for the same
+// reason today() is.
+export function thisYear(): string {
+  return today().slice(0, 4)
+}
+
 // shiftMonth walks a YYYY-MM by whole months, in either direction. Date does
 // the carrying: month -1 of January 2026 is December 2025, without this having
 // to know it.

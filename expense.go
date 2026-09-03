@@ -36,6 +36,18 @@ type expense struct {
 	PaymentMethod string `json:"payment_method"`
 	Note          string `json:"note"`
 	Items         []item `json:"items"`
+
+	// The year this payment's tax relates to, and 0 on every Expense that is
+	// not a tax one. Tax on 2026's income is paid during 2027, so the year the
+	// money left is not the year the summary attributes it to — hence a field
+	// rather than four characters of occurred_on (ADR-0008).
+	//
+	// It is derived rather than trusted: checkExpense defaults it to the year
+	// of the payment and clears it outside a tax Category. It is an override
+	// of that default rather than the only place the default lives — a
+	// generated Expense goes nowhere near this handler, so the summary applies
+	// the same rule to a NULL column (see handleTaxSummary).
+	TaxYear int `json:"tax_year"`
 }
 
 // An item is a part of an Expense that belongs under a different Category — a
@@ -163,10 +175,11 @@ func handleCreateExpense(db *sql.DB, now func() time.Time) http.HandlerFunc {
 		defer tx.Rollback()
 
 		res, err := tx.Exec(`INSERT INTO expense
-			(occurred_on, amount_cents, category_id, store, payer, payment_method, note, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			e.OccurredOn, e.AmountCents, e.CategoryID,
-			e.Store, e.Payer, e.PaymentMethod, e.Note, now().Format(time.RFC3339))
+			(occurred_on, amount_cents, category_id, store, payer, payment_method, note,
+			 tax_year, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			e.OccurredOn, e.AmountCents, e.CategoryID, e.Store, e.Payer, e.PaymentMethod,
+			e.Note, nullYear(e.TaxYear), now().Format(time.RFC3339))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -188,14 +201,14 @@ func handleCreateExpense(db *sql.DB, now func() time.Time) http.HandlerFunc {
 }
 
 const expenseSelect = `SELECT id, occurred_on, amount_cents, category_id,
-	store, payer, payment_method, note FROM expense`
+	store, payer, payment_method, note, COALESCE(tax_year, 0) FROM expense`
 
 func scanExpense(row interface{ Scan(...any) error }) (expense, error) {
 	// The frontend maps over the breakdown, so an Expense without one has to
 	// marshal as [] rather than null. The caller fills in any Items there are.
 	e := expense{Items: []item{}}
 	err := row.Scan(&e.ID, &e.OccurredOn, &e.AmountCents, &e.CategoryID,
-		&e.Store, &e.Payer, &e.PaymentMethod, &e.Note)
+		&e.Store, &e.Payer, &e.PaymentMethod, &e.Note, &e.TaxYear)
 	return e, err
 }
 
@@ -218,6 +231,16 @@ func (e *expense) validate() error {
 	// both: it rejects "2026-3-5" for its shape and "2026-02-30" for its day.
 	if _, err := time.Parse(dateLayout, e.OccurredOn); err != nil {
 		return errors.New("occurred_on must be a real date as YYYY-MM-DD")
+	}
+	// 0 is the absence of a Tax year, and anything else has to be a year the
+	// summary can be asked for: the column takes any integer, so a 26 typed
+	// for 2026 would otherwise be stored and attributed to nothing at all.
+	// Through validYear rather than a range of its own, so "a year" has one
+	// definition in this codebase and not two that could drift.
+	if e.TaxYear != 0 {
+		if err := validYear("tax_year", strconv.Itoa(e.TaxYear)); err != nil {
+			return err
+		}
 	}
 
 	// The breakdown marshals as [] rather than null, and is checked against
@@ -301,9 +324,9 @@ func handlePatchExpense(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		if _, err := tx.Exec(`UPDATE expense SET occurred_on = ?, amount_cents = ?, category_id = ?,
-			store = ?, payer = ?, payment_method = ?, note = ? WHERE id = ?`,
-			e.OccurredOn, e.AmountCents, e.CategoryID,
-			e.Store, e.Payer, e.PaymentMethod, e.Note, e.ID); err != nil {
+			store = ?, payer = ?, payment_method = ?, note = ?, tax_year = ? WHERE id = ?`,
+			e.OccurredOn, e.AmountCents, e.CategoryID, e.Store, e.Payer, e.PaymentMethod,
+			e.Note, nullYear(e.TaxYear), e.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -434,6 +457,16 @@ func insertItems(tx *sql.Tx, expenseID int64, items []item) error {
 	return nil
 }
 
+// nullYear is nullDate for a Tax year: an Expense that has none stores NULL
+// rather than 0, so a summary asking for a year cannot match one that is not a
+// tax payment at all.
+func nullYear(year int) any {
+	if year == 0 {
+		return nil
+	}
+	return year
+}
+
 // checkExpense validates e and confirms its Category, writing the response
 // itself on a refusal. Create and edit share it, so an edit cannot smuggle
 // past a rule a create enforces.
@@ -450,6 +483,30 @@ func checkExpense(w http.ResponseWriter, db *sql.DB, e *expense) bool {
 		"that category is not one an expense can go in") {
 		return false
 	}
+	// The Tax year is derived here rather than taken on trust, which is what
+	// makes "an Expense with a tax_year" and "an Expense the tax summary
+	// counts" the same set of rows. Outside a tax Category it is cleared —
+	// including on an Expense moved out of one, which would otherwise keep a
+	// year nothing reads until the day it is moved back — and inside one it
+	// defaults to the year of the payment, editable because tax on 2026's
+	// income is paid during 2027 (ADR-0008).
+	//
+	// The first four characters of a date are its year: OccurredOn is the
+	// validated layout by now, and validate() has already refused anything
+	// else. The error is unreachable for the same reason, so it is dropped.
+	// Sliced by the layout's own length, like every other date slice here.
+	tax, err := isTaxCategory(db, e.CategoryID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return false
+	}
+	switch {
+	case !tax:
+		e.TaxYear = 0
+	case e.TaxYear == 0:
+		e.TaxYear, _ = strconv.Atoi(e.OccurredOn[:len(yearLayout)])
+	}
+
 	// An Item is money in a Category exactly as its Expense is, so it answers
 	// to the same rule. Sharing the Expense's own Category is deliberately not
 	// checked: pointless, but nobody's business to forbid.
