@@ -144,3 +144,38 @@ export type Recurring = {
   start_month: string
   end_month: string
 }
+
+// The two lists a freelancer used to get from reading a spreadsheet: money
+// genuinely owed, and invoices that look forgotten. Both are views over
+// Incomes and never records of their own — the word is "pending payment",
+// never "receivable".
+export type Pending = {
+  outstanding: OutstandingIncome[]
+  not_yet_invoiced: NotYetInvoicedClient[]
+}
+
+// One Income still waiting for its money, oldest first. days_waiting counts
+// calendar days from waiting_since — the invoice date, or the day the Income
+// was typed when no invoice was sent — and never counts backwards.
+//
+// client and category are names rather than ids: this list is read on a screen
+// that holds neither list, and a Client since hidden still has to say what it
+// is called. client is "" for an Income that names nobody.
+export type OutstandingIncome = {
+  id: number
+  amount_cents: number
+  client: string
+  category: string
+  waiting_since: string
+  days_waiting: number
+}
+
+// One Client billed in the previous three calendar months with no freelance
+// Income recorded this month. Freelance Income on both sides, so a gift from a
+// relative neither starts a nudge nor clears one.
+//
+// The id is what the list keys on: two Clients can share a name.
+export type NotYetInvoicedClient = {
+  client_id: number
+  client: string
+}

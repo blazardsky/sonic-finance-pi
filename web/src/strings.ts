@@ -105,6 +105,20 @@ export const t = {
   recentEntries: "Ultime registrazioni",
   noEntriesYet: "Nessuna registrazione ancora.",
 
+  // Pending payments — what is owed, and what looks unbilled
+  pendingPayments: "In attesa di pagamento",
+  // Days rather than a date, because chasing is based on a number: an invoice
+  // sent today has been waiting no days, which is "da oggi" and not "da 0".
+  waitingDays: (days: number) =>
+    days === 0
+      ? "in attesa da oggi"
+      : days === 1
+        ? "in attesa da 1 giorno"
+        : `in attesa da ${days} giorni`,
+  notYetInvoiced: "Forse da fatturare",
+  notYetInvoicedHint:
+    "Clienti fatturati negli ultimi mesi, ma non ancora questo mese.",
+
   // Recurring expenses — the rent, defined once
   recurring: "Ricorrenti",
   addRecurring: "Aggiungi spesa ricorrente",

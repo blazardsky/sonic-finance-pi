@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 
+import { PendingPayments } from "@/PendingPayments"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { apiJSON } from "@/api"
@@ -112,6 +113,12 @@ export function Month() {
           <Row label={t.difference} cents={totals.net_cents} big />
         </dl>
       )}
+
+      {/* What is owed and what looks unbilled, above the breakdown: it is a
+          notice rather than a report, and a forgotten invoice is worth more
+          than knowing which Category the shopping went under. It renders
+          nothing when nothing is pending. */}
+      <PendingPayments />
 
       {/* Where the money went. Every line is real spend — the breakdown adds
           up to the expense total above it, with an itemised shop split across
