@@ -25,11 +25,6 @@ var testClock = time.Date(2026, 3, 15, 10, 30, 0, 0, time.UTC)
 // time. The Pi pays that once a month; the suite would pay it per test.
 func TestMain(m *testing.M) {
 	bcryptCost = bcrypt.MinCost
-	// The real clockFloor is the month the binary was built, which is after
-	// testClock — every test would otherwise run as a Pi with no network time
-	// and generate nothing. Moved below the test clock rather than onto it, so
-	// a clock a test deliberately sets to 1970 is still obviously wrong.
-	clockFloor = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	m.Run()
 }
 

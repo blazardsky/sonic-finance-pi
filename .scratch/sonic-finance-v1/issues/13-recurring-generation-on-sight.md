@@ -27,7 +27,7 @@
 
 - **The clamp is Go arithmetic and a SQL `min()`.** The month's last day is `start.AddDate(0,1,0).AddDate(0,0,-1).Day()`, passed as a parameter, so the SQL is `printf('%s-%02d', ?, min(r.day_of_month, ?))` rather than a `date(…,'+1 month','-1 day')` expression nobody wants to decode at 3am. Verified on a 30-day month, a 31-day month, February, and a leap February.
 
-- **The clock floor is `2026-09-01`, and it is a `var` so the suite can move it.** The spec asks for a build-time constant; the honest one is the month the binary was built, which sits *after* the suite's fixed `testClock` of 2026-03-15 — every existing test would otherwise have run as a Pi with no network time. `TestMain` lowers it to 2020, the same bargain `bcryptCost` already makes, which leaves a test that sets the clock to 1970 still obviously wrong. Bumping the floor on a real deploy tightens the guard and costs one line.
+- **The clock floor is a `const`, and therefore a date string: `clockFloor = "2020-01-01"`.** A `time.Time` cannot be a Go constant, and this one has to be — nothing at runtime and nothing in the test suite may move the line generation refuses below — so it is compared as text, like every other date here. The value is not the build date on purpose: 1970 is what story 72 names and what a Zero W with no NTP actually reads, while a floor near the build would also refuse a Pi whose clock is merely stale by a few months, whose generated months would be real past months inside the window — the right answer rather than a wrong one. The suite needs no override, and the guard test's 1970 clock is still obviously wrong against it.
 
 - **Refusing to generate is not refusing to read.** A bad clock logs `CLOCK UNSET` (once at startup, and at every read that would have generated), returns `nil`, and the month still reports what was typed. `/api/health` gained `clock_ok`, and `App.tsx` warns on it in Italian above whatever screen is open. The frontend treats a missing field as fine, so a stale bundle against a new server warns about nothing rather than warning always.
 
@@ -45,7 +45,7 @@
 
 ## Spec deviation
 
-One, in wording rather than behaviour: the spec asks for the clock to be compared "against a build-time constant", and `clockFloor` is a `var` so `TestMain` can lower it below the suite's fixed clock. It is a compile-time literal that nothing but the test binary touches, and it follows the precedent `bcryptCost` already set.
+None. The spec's "build-time constant" is a `const` — see the clock-floor note for why its value is 1970's side of the problem rather than the build date.
 
 ## Not built, and not asked for by this ticket
 

@@ -348,25 +348,31 @@ func checkRecurring(w http.ResponseWriter, db *sql.DB, rec *recurringExpense) bo
 		"that category is not one an expense can go in")
 }
 
-// clockFloor is the build-time constant the Pi's clock is judged against. The
-// Zero W has no real-time clock: it boots at whatever the filesystem last saw,
-// or at 1970, and only becomes right once NTP answers. A now() below this
-// cannot be the truth, so generation refuses rather than writing a rent into
-// the wrong month — or into 1970, which no report would ever go looking for.
+// clockFloor is the date the Pi's clock is judged against, as a date rather
+// than a time.Time because a time.Time cannot be a constant and this has to be
+// one: nothing at runtime, and nothing in the test suite, is allowed to move
+// the line generation refuses below. Compared as text, like every other date
+// in this codebase.
+//
+// The Zero W has no real-time clock. It boots at 1970 until NTP answers, and
+// 1970 is what this exists to catch — story 72, "so that a boot without
+// network time does not write 1970 into my records". It is deliberately not
+// the build date: a floor near the build would also refuse a Pi whose clock is
+// merely stale by a few months, and for that Pi the months it would generate
+// are real past months inside the window, which is the right answer rather
+// than a wrong one. There is nothing to gain by refusing those and a household
+// with no rent to lose by it.
 //
 // Refusing is the recoverable half of the choice: nothing is generated until
 // the clock is right, and the next read after that generates everything the
 // window owes. Generating against a wrong clock is what cannot be undone.
-//
-// A var, not a const, because the test suite runs at a fixed clock of its own
-// and moves this out of its way — the same bargain bcryptCost makes.
-var clockFloor = time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+const clockFloor = "2020-01-01"
 
 // clockSane is the one question every caller asks of the clock: is now late
 // enough to be believed. /api/health publishes the answer so the screens can
 // say so out loud, because a household seeing no rent needs to know why.
 func clockSane(now func() time.Time) bool {
-	return !now().Before(clockFloor)
+	return now().Format(dateLayout) >= clockFloor
 }
 
 // logClockUnset says it loudly, and says it the same way wherever it is said:
@@ -376,7 +382,7 @@ func clockSane(now func() time.Time) bool {
 func logClockUnset(now func() time.Time) {
 	log.Printf("CLOCK UNSET: the clock reads %s, before %s — the Pi has booted without "+
 		"network time. REFUSING to generate recurring expenses until it is corrected",
-		now().Format(time.RFC3339), clockFloor.Format(dateLayout))
+		now().Format(time.RFC3339), clockFloor)
 }
 
 // materialise creates the Expenses the given month owes, and is the whole of
