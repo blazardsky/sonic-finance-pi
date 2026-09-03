@@ -174,6 +174,19 @@ func findClient(w http.ResponseWriter, db *sql.DB, rawID string) (client, bool) 
 	return c, true
 }
 
+// clientExists reports whether a Client row exists for id — checked
+// explicitly rather than left to the foreign key, for the same reason
+// categoryAccepts is: a bad id should read as an invalid request, not the 409
+// writeError turns a constraint failure into.
+func clientExists(db *sql.DB, id int64) (bool, error) {
+	var found int
+	err := db.QueryRow(`SELECT 1 FROM client WHERE id = ?`, id).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 const clientSelect = `SELECT id, name, hidden FROM client`
 
 func scanClient(row interface{ Scan(...any) error }) (client, error) {

@@ -280,7 +280,7 @@ func checkIncome(w http.ResponseWriter, db *sql.DB, in *income) bool {
 		writeInvalid(w, err)
 		return false
 	}
-	if !acceptsCategory(w, db, in.CategoryID, appliesIncome,
+	if !checkCategoryAccepts(w, db, in.CategoryID, appliesIncome,
 		"that category is not one an income can go in") {
 		return false
 	}
@@ -288,13 +288,12 @@ func checkIncome(w http.ResponseWriter, db *sql.DB, in *income) bool {
 	// pickers, not out of the app, and an Income being corrected months later
 	// still belongs to whoever paid it.
 	if in.ClientID != nil {
-		var found int
-		switch err := db.QueryRow(`SELECT 1 FROM client WHERE id = ?`, *in.ClientID).Scan(&found); {
-		case errors.Is(err, sql.ErrNoRows):
-			writeInvalid(w, errors.New("that client does not exist"))
-			return false
+		switch ok, err := clientExists(db, *in.ClientID); {
 		case err != nil:
 			writeError(w, http.StatusInternalServerError, err)
+			return false
+		case !ok:
+			writeInvalid(w, errors.New("that client does not exist"))
 			return false
 		}
 	}

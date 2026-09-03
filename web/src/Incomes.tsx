@@ -6,7 +6,7 @@ import { NativeSelect } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/api"
 import { formatCents, formatDate, toCents, toTyped } from "@/money"
-import { nameOf, withSaved } from "@/pickers"
+import { nameOf, pickableCategories, withSaved } from "@/pickers"
 import { t } from "@/strings"
 import type { Category, Client, Income, Lists } from "@/types"
 
@@ -159,8 +159,9 @@ export function Incomes() {
   // What the reason picker offers, which is the narrower list: no hidden
   // Category, and nothing expense-only — "Alimentari" is never an Income.
   // Plus whichever one the entry being edited already carries.
-  const pickableCategories = withSaved(
-    categories.filter((c) => !c.hidden && c.applies_to !== "expense"),
+  const pickable = pickableCategories(
+    categories,
+    "income",
     categories.find((c) => c.id === draft.category_id)
   )
 
@@ -205,7 +206,7 @@ export function Incomes() {
               className="h-10"
             >
               <option value="">{t.chooseCategory}</option>
-              {pickableCategories.map((c) => (
+              {pickable.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>

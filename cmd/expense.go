@@ -479,7 +479,7 @@ func checkExpense(w http.ResponseWriter, db *sql.DB, e *expense) bool {
 		writeInvalid(w, err)
 		return false
 	}
-	if !acceptsCategory(w, db, e.CategoryID, appliesExpense,
+	if !checkCategoryAccepts(w, db, e.CategoryID, appliesExpense,
 		"that category is not one an expense can go in") {
 		return false
 	}
@@ -511,7 +511,7 @@ func checkExpense(w http.ResponseWriter, db *sql.DB, e *expense) bool {
 	// to the same rule. Sharing the Expense's own Category is deliberately not
 	// checked: pointless, but nobody's business to forbid.
 	for _, it := range e.Items {
-		if !acceptsCategory(w, db, it.CategoryID, appliesExpense,
+		if !checkCategoryAccepts(w, db, it.CategoryID, appliesExpense,
 			fmt.Sprintf("the item %q is not in a category an expense can go in", it.Name)) {
 			return false
 		}

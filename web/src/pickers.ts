@@ -3,6 +3,27 @@
 // for Expenses and both are exactly as true of Incomes, so they live here
 // rather than in two copies that can drift apart.
 
+import type { Applies, Category } from "@/types"
+
+// What a Category picker offers: no hidden Category, and nothing that
+// belongs to the other side — "Freelance" is never an Expense, "Alimentari"
+// is never an Income — plus whichever one the entry being edited already
+// carries, whatever it is.
+export function pickableCategories(
+  categories: Category[],
+  side: Exclude<Applies, "both">,
+  chosen: Category | undefined
+): Category[] {
+  return withSaved(
+    categories.filter((c) => !c.hidden && c.applies_to !== opposite(side)),
+    chosen
+  )
+}
+
+function opposite(side: Exclude<Applies, "both">): Applies {
+  return side === "expense" ? "income" : "expense"
+}
+
 // A picker keeps whatever the entry being edited was saved with, even when the
 // list no longer offers it: a hidden Category, a Client since hidden, and a
 // Payer renamed out of the list are all still what that entry says, and a

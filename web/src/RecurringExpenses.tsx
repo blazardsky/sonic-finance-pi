@@ -13,7 +13,7 @@ import {
   toCents,
   toTyped,
 } from "@/money"
-import { nameOf, withSaved } from "@/pickers"
+import { nameOf, pickableCategories, withSaved } from "@/pickers"
 import { t } from "@/strings"
 import type { Category, Lists, Recurring } from "@/types"
 
@@ -217,8 +217,9 @@ export function RecurringExpenses() {
 
   // What the picker offers: no hidden Category, and nothing income-only — plus
   // whichever one the definition being edited already carries.
-  const pickable = withSaved(
-    categories.filter((c) => !c.hidden && c.applies_to !== "income"),
+  const pickable = pickableCategories(
+    categories,
+    "expense",
     categories.find((c) => c.id === draft.category_id)
   )
 

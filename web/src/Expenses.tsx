@@ -6,7 +6,7 @@ import { NativeSelect } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/api"
 import { formatCents, formatDate, toCents, today, toTyped } from "@/money"
-import { nameOf, withSaved } from "@/pickers"
+import { nameOf, pickableCategories, withSaved } from "@/pickers"
 import { t } from "@/strings"
 import type { Category, Expense, Lists } from "@/types"
 
@@ -200,8 +200,9 @@ export function Expenses() {
   // the entry being edited already carries, whatever it is. An Item answers to
   // the same rule as its Expense, so both pickers come from here.
   const pickable = (chosen: number | "") =>
-    withSaved(
-      categories.filter((c) => !c.hidden && c.applies_to !== "income"),
+    pickableCategories(
+      categories,
+      "expense",
       categories.find((c) => c.id === chosen)
     )
 

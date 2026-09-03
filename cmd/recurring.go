@@ -344,7 +344,7 @@ func checkRecurring(w http.ResponseWriter, db *sql.DB, rec *recurringExpense) bo
 		writeInvalid(w, err)
 		return false
 	}
-	return acceptsCategory(w, db, rec.CategoryID, appliesExpense,
+	return checkCategoryAccepts(w, db, rec.CategoryID, appliesExpense,
 		"that category is not one an expense can go in")
 }
 

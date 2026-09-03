@@ -174,6 +174,11 @@ func handlePatchCategory(db *sql.DB) http.HandlerFunc {
 		if !ok {
 			return
 		}
+		// Decoded onto a presence-detecting struct rather than straight onto c,
+		// unlike a Client or Expense PATCH: the Base-category guard below has to
+		// know whether name/applies_to were sent at all, even a same-value
+		// resend, and decoding onto the loaded row directly cannot tell that
+		// apart from the field being merely omitted.
 		var body struct {
 			Name      *string `json:"name"`
 			AppliesTo *string `json:"applies_to"`
@@ -291,11 +296,11 @@ func isTaxCategory(db *sql.DB, id int64) (bool, error) {
 	return err == nil, err
 }
 
-// acceptsCategory confirms one Category exists and can hold money of this
+// checkCategoryAccepts confirms one Category exists and can hold money of this
 // kind, writing the response itself on a refusal — a refusal being a bad
 // request the client can be told about, in the words the caller chose.
 // Expenses, their Items and Incomes all answer to the same rule, from here.
-func acceptsCategory(w http.ResponseWriter, db *sql.DB, id int64, applies, refusal string) bool {
+func checkCategoryAccepts(w http.ResponseWriter, db *sql.DB, id int64, applies, refusal string) bool {
 	switch ok, err := categoryAccepts(db, id, applies); {
 	case err != nil:
 		writeError(w, http.StatusInternalServerError, err)
