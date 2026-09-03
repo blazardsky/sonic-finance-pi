@@ -84,3 +84,46 @@ func TestAnEmptyListIsRefused(t *testing.T) {
 		t.Errorf("payers = %v, want the refused edits to have changed nothing (%v)", after.Payers, before.Payers)
 	}
 }
+
+// The bargain the schema makes: a Payer is label text on the Expense, not a
+// reference into the list. Renaming one in Settings is therefore a change to
+// what new entries can be, and to nothing already recorded — the November
+// entry keeps reading "Nicco" whatever the list says in March.
+//
+// The same holds in both directions, because an Income carries the same field.
+func TestRenamingAPayerLeavesRecordedEntriesReadingExactlyAsBefore(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+
+	expense := a.addExpense(t, map[string]any{
+		"occurred_on":    "2026-03-14",
+		"amount_cents":   4210,
+		"category_id":    alimentari.ID,
+		"payer":          "Nicco",
+		"payment_method": "Contanti",
+	})
+	income := a.addIncome(t, map[string]any{
+		"amount_cents": 90000,
+		"category_id":  a.freelance(t).ID,
+		"payer":        "Nicco",
+		"payment_date": "2026-03-10",
+	})
+
+	if res := a.put(t, settingsPath, map[string]any{
+		"payers":          []string{"Niccolò", seedPayerBoth, seedPayerSomeoneElse},
+		"payment_methods": []string{"Contante"},
+	}, nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("PUT %s = %d, want 200", settingsPath, res.StatusCode)
+	}
+
+	if got := a.expense(t, expense.ID); got.Payer != "Nicco" || got.PaymentMethod != "Contanti" {
+		t.Errorf("expense reads %q / %q, want the %q / %q it was saved with",
+			got.Payer, got.PaymentMethod, "Nicco", "Contanti")
+	}
+
+	for _, got := range a.incomes(t) {
+		if got.ID == income.ID && got.Payer != "Nicco" {
+			t.Errorf("income reads %q, want the %q it was saved with", got.Payer, "Nicco")
+		}
+	}
+}

@@ -4,10 +4,10 @@
 
 **Blocked by:** 06, 09
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] The Payer list is editable in the app
-- [ ] The Payment method list is editable in the app
-- [ ] Editing a list never rewrites existing Expenses: they keep the label text they were saved with
-- [ ] The password can be changed without a redeploy
-- [ ] Tests confirm that renaming a Payer leaves historical entries reading exactly as before
+- [x] The Payer list is editable in the app
+- [x] The Payment method list is editable in the app
+- [x] Editing a list never rewrites existing Expenses: they keep the label text they were saved with
+- [x] The password can be changed without a redeploy
+- [x] Tests confirm that renaming a Payer leaves historical entries reading exactly as before

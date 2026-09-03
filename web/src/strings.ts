@@ -199,4 +199,32 @@ export const t = {
   confirmDeleteClient: (name: string) => `Eliminare il cliente "${name}"?`,
   clientInUse:
     "Questo cliente è usato da entrate registrate. Nascondilo invece di eliminarlo.",
+
+  // Settings — the two configured lists, and the password
+  settings: "Impostazioni",
+  // The Payer list is one list read in both directions, so it is named after
+  // the people on it rather than after either wording the pickers use.
+  payersList: "Persone",
+  paymentMethodsList: "Metodi di pagamento",
+  onePerLine: "Una per riga. L'ordine è quello dei menù.",
+  // The bargain worth stating out loud on the screen that makes it: a Payer is
+  // label text on the entry, so renaming one here is a change to what the next
+  // entry can say and to nothing already recorded.
+  listsHistorySafe:
+    "Le spese e le entrate già registrate non cambiano: conservano il testo con cui sono state salvate.",
+  listsSaved: "Elenchi salvati.",
+  listsNotSaved: "Elenchi non salvati. Riprova.",
+  emptyList: "Ogni elenco vuole almeno una voce.",
+
+  changePassword: "Cambia password",
+  currentPassword: "Password attuale",
+  newPassword: "Nuova password",
+  // Changing it signs every other device out, because the session signature is
+  // derived from the password. Said before the fact, not discovered after it.
+  changePasswordHint:
+    "Cambiando la password gli altri dispositivi dovranno accedere di nuovo.",
+  passwordChanged: "Password aggiornata.",
+  passwordNotChanged: "Password non aggiornata. Riprova.",
+  wrongCurrentPassword: "Password attuale errata.",
+  passwordTooShort: "La password deve avere almeno 8 caratteri.",
 } as const

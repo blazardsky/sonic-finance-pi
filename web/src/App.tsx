@@ -7,6 +7,7 @@ import { Incomes } from "@/Incomes"
 import { Login } from "@/Login"
 import { Month } from "@/Month"
 import { RecurringExpenses } from "@/RecurringExpenses"
+import { Settings } from "@/Settings"
 import { Year } from "@/Year"
 import { Button } from "@/components/ui/button"
 import { t } from "@/strings"
@@ -31,6 +32,7 @@ const screens = [
   "recurring",
   "categories",
   "clients",
+  "settings",
 ] as const
 type Screen = (typeof screens)[number]
 
@@ -99,6 +101,7 @@ export function App() {
       {screen === "recurring" && <RecurringExpenses />}
       {screen === "categories" && <Categories />}
       {screen === "clients" && <Clients />}
+      {screen === "settings" && <Settings />}
       <div className="mx-auto flex w-full max-w-md justify-end gap-1 px-6 pb-8">
         {screens.map(
           (key) =>

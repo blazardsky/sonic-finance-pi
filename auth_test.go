@@ -197,3 +197,88 @@ func (a *testApp) getWithSession(t *testing.T, path, session string) *http.Respo
 	t.Cleanup(func() { res.Body.Close() })
 	return res
 }
+
+const passwordPath = settingsPath + "/password"
+
+// Rotating the password needs no redeploy, and the session that rotated it
+// keeps working — the household changes the password on the phone it is
+// holding, and being logged out by the act of changing it would read as the
+// app breaking.
+func TestChangingThePasswordTakesEffectAndKeepsTheCallerLoggedIn(t *testing.T) {
+	a := newTestApp(t)
+
+	res := a.post(t, passwordPath, map[string]string{
+		"current_password": a.password,
+		"new_password":     "una password nuova",
+	}, nil)
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("POST %s = %d, want 204", passwordPath, res.StatusCode)
+	}
+
+	if res := a.get(t, "/api/health", nil); res.StatusCode != http.StatusOK {
+		t.Errorf("GET /api/health after changing the password = %d, want the caller still logged in", res.StatusCode)
+	}
+
+	if res := a.post(t, "/api/login", map[string]string{"password": "una password nuova"}, nil); res.StatusCode != http.StatusNoContent {
+		t.Errorf("logging in with the new password = %d, want 204", res.StatusCode)
+	}
+	if res := a.post(t, "/api/login", map[string]string{"password": a.password}, nil); res.StatusCode != http.StatusUnauthorized {
+		t.Errorf("logging in with the old password = %d, want 401", res.StatusCode)
+	}
+}
+
+// Every other device is logged out, which is the whole point of rotating a
+// shared password: the session held by whoever you are rotating it away from
+// stops working.
+func TestChangingThePasswordEndsSessionsHeldElsewhere(t *testing.T) {
+	a := newTestApp(t)
+	elsewhere := a.sessionCookieFromLogin(t)
+
+	a.post(t, passwordPath, map[string]string{
+		"current_password": a.password,
+		"new_password":     "una password nuova",
+	}, nil)
+
+	if res := a.getWithSession(t, "/api/health", elsewhere); res.StatusCode != http.StatusUnauthorized {
+		t.Errorf("a session issued before the change = %d, want 401", res.StatusCode)
+	}
+}
+
+// Holding a session is not the same as knowing the password: an unattended
+// phone must not be enough to lock the household out of its own finances.
+func TestChangingThePasswordIsRefusedWithoutTheCurrentOne(t *testing.T) {
+	a := newTestApp(t)
+
+	for name, body := range map[string]map[string]string{
+		"a wrong current password": {"current_password": a.password + "-nope", "new_password": "una password nuova"},
+		"no current password":      {"new_password": "una password nuova"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if res := a.post(t, passwordPath, body, nil); res.StatusCode != http.StatusUnauthorized {
+				t.Errorf("POST %s with %s = %d, want 401", passwordPath, name, res.StatusCode)
+			}
+		})
+	}
+
+	if res := a.post(t, "/api/login", map[string]string{"password": a.password}, nil); res.StatusCode != http.StatusNoContent {
+		t.Errorf("the old password stopped working after a refused change: %d", res.StatusCode)
+	}
+}
+
+// A password short enough to guess is worth refusing at the boundary rather
+// than in the form, which is the half a determined browser can skip.
+func TestATooShortPasswordIsRefused(t *testing.T) {
+	a := newTestApp(t)
+
+	res := a.post(t, passwordPath, map[string]string{
+		"current_password": a.password,
+		"new_password":     strings.Repeat("a", minPasswordLength-1),
+	}, nil)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("POST %s with a short password = %d, want 400", passwordPath, res.StatusCode)
+	}
+
+	if res := a.post(t, "/api/login", map[string]string{"password": a.password}, nil); res.StatusCode != http.StatusNoContent {
+		t.Errorf("a refused change replaced the password anyway: %d", res.StatusCode)
+	}
+}

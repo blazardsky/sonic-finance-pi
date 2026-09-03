@@ -58,6 +58,7 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 
 	mux.HandleFunc("GET "+settingsPath, handleGetLists(db))
 	mux.HandleFunc("PUT "+settingsPath, handlePutLists(db))
+	mux.HandleFunc("POST "+settingsPath+"/password", handleChangePassword(db, now))
 
 	mux.HandleFunc("POST /api/login", handleLogin(db, now))
 	mux.HandleFunc("POST /api/logout", handleLogout)

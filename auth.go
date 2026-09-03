@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -188,4 +189,70 @@ func setSessionCookie(w http.ResponseWriter, c *http.Cookie) {
 	c.HttpOnly = true
 	c.SameSite = http.SameSiteLaxMode
 	http.SetCookie(w, c)
+}
+
+// minPasswordLength is the one rule on a new password. There is no complexity
+// policy: one shared password on a tailnet-only Pi, typed by two people, and a
+// rule they resent would be worked around with something worse.
+const minPasswordLength = 8
+
+// handleChangePassword rotates the shared password without a redeploy. The
+// current one is required even though the caller already holds a session: an
+// unattended phone is the realistic threat here, and being locked out of your
+// own household finances by someone who walked past your desk is the outcome
+// worth one extra field.
+//
+// Changing it invalidates every outstanding session, because sessionKey is
+// derived from the hash — including the session that made this request, so a
+// fresh cookie is issued before answering. Every other device is logged out,
+// which is exactly what rotating a shared password is for.
+func handleChangePassword(db *sql.DB, now func() time.Time) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			CurrentPassword string `json:"current_password"`
+			NewPassword     string `json:"new_password"`
+		}
+		if err := decodeJSON(w, r, &body); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+
+		hash, err := passwordHash(db)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(body.CurrentPassword)); err != nil {
+			writeError(w, http.StatusUnauthorized, err)
+			return
+		}
+		if len(body.NewPassword) < minPasswordLength {
+			writeInvalid(w, fmt.Errorf("a password needs at least %d characters", minPasswordLength))
+			return
+		}
+
+		hashed, err := bcrypt.GenerateFromPassword([]byte(body.NewPassword), bcryptCost)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if err := setSetting(db, passwordHashKey, string(hashed)); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+
+		key, err := sessionKey(db)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		expiry := now().Add(sessionTTL)
+		setSessionCookie(w, &http.Cookie{
+			Name:    sessionCookie,
+			Value:   sessionValue(key, expiry),
+			Expires: expiry,
+			MaxAge:  int(sessionTTL.Seconds()),
+		})
+		w.WriteHeader(http.StatusNoContent)
+	}
 }
