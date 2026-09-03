@@ -282,3 +282,19 @@ func TestATooShortPasswordIsRefused(t *testing.T) {
 		t.Errorf("a refused change replaced the password anyway: %d", res.StatusCode)
 	}
 }
+
+// The rule reads "8 characters", and an accented character an Italian
+// household actually types — è, à, ù — is more than one byte. A password
+// short on runes but long enough in bytes must be refused exactly like any
+// other password under the limit.
+func TestAPasswordWithFewerRunesThanBytesIsStillRefused(t *testing.T) {
+	a := newTestApp(t)
+
+	res := a.post(t, passwordPath, map[string]string{
+		"current_password": a.password,
+		"new_password":     "aaaaéé", // 6 runes, 8 bytes
+	}, nil)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("POST %s with 6 runes packed into 8 bytes = %d, want 400", passwordPath, res.StatusCode)
+	}
+}

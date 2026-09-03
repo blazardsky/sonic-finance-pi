@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -152,20 +153,31 @@ func handleLogin(db *sql.DB, now func() time.Time) http.HandlerFunc {
 			return
 		}
 
-		key, err := sessionKey(db)
-		if err != nil {
+		if err := issueSession(w, db, now); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		expiry := now().Add(sessionTTL)
-		setSessionCookie(w, &http.Cookie{
-			Name:    sessionCookie,
-			Value:   sessionValue(key, expiry),
-			Expires: expiry,
-			MaxAge:  int(sessionTTL.Seconds()),
-		})
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+// issueSession sets a fresh session cookie, signed with the current password
+// hash. Login and a password change both end in exactly this, and a password
+// change needs its own fresh cookie anyway — the one the caller arrived with
+// was signed with the hash that just changed.
+func issueSession(w http.ResponseWriter, db *sql.DB, now func() time.Time) error {
+	key, err := sessionKey(db)
+	if err != nil {
+		return err
+	}
+	expiry := now().Add(sessionTTL)
+	setSessionCookie(w, &http.Cookie{
+		Name:    sessionCookie,
+		Value:   sessionValue(key, expiry),
+		Expires: expiry,
+		MaxAge:  int(sessionTTL.Seconds()),
+	})
+	return nil
 }
 
 // handleLogout clears the cookie, which is all a stateless session can be
@@ -226,7 +238,12 @@ func handleChangePassword(db *sql.DB, now func() time.Time) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, err)
 			return
 		}
-		if len(body.NewPassword) < minPasswordLength {
+		// RuneCountInString, not len: len counts bytes, and an accented
+		// character an Italian household actually types — è, à, ù — is
+		// multiple bytes but one character. Counting bytes would silently
+		// admit a password shorter than the rule this checks and the message
+		// below both claim.
+		if utf8.RuneCountInString(body.NewPassword) < minPasswordLength {
 			writeInvalid(w, fmt.Errorf("a password needs at least %d characters", minPasswordLength))
 			return
 		}
@@ -241,18 +258,10 @@ func handleChangePassword(db *sql.DB, now func() time.Time) http.HandlerFunc {
 			return
 		}
 
-		key, err := sessionKey(db)
-		if err != nil {
+		if err := issueSession(w, db, now); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		expiry := now().Add(sessionTTL)
-		setSessionCookie(w, &http.Cookie{
-			Name:    sessionCookie,
-			Value:   sessionValue(key, expiry),
-			Expires: expiry,
-			MaxAge:  int(sessionTTL.Seconds()),
-		})
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
