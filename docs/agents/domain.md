@@ -19,7 +19,7 @@ This is a single-context repo:
 ├── docs/adr/
 │   ├── 0001-wal-journal-mode.md
 │   └── 0002-embedded-static-assets.md
-└── main.go
+└── cmd/main.go
 ```
 
 ## Use the glossary's vocabulary

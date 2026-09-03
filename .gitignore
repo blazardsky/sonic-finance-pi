@@ -9,9 +9,13 @@ api-armv6
 # macOS
 .DS_Store
 
-# Frontend build output (static/.gitkeep is committed: go:embed needs a non-empty dir)
-static/*
-!static/.gitkeep
+# Frontend build output (cmd/static/.gitkeep is committed: go:embed needs a non-empty dir)
+cmd/static/*
+!cmd/static/.gitkeep
 node_modules/
 sonic-finance-pi
 build/*
+
+
+.env
+.env*

@@ -12,5 +12,5 @@ pnpm --dir web install --frozen-lockfile
 pnpm --dir web build
 
 mkdir -p build
-go build -o build/sonic-finance-pi .
-CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=6 go build -o build/api-armv6 .
+go build -o build/sonic-finance-pi ./cmd
+CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=6 go build -o build/api-armv6 ./cmd

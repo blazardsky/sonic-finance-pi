@@ -4,6 +4,7 @@ import (
 	"embed"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -13,7 +14,10 @@ import (
 var staticFiles embed.FS
 
 func main() {
-	db, err := openDB("sonic.db")
+	if err := os.MkdirAll("db", 0o755); err != nil {
+		log.Fatal(err)
+	}
+	db, err := openDB("db/sonic.db")
 	if err != nil {
 		log.Fatal(err)
 	}

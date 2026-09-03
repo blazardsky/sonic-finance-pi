@@ -28,7 +28,7 @@ Write it down: it is logged once and never shown again. If it is lost,
 
 ## Development
 
-`./build.sh` builds the frontend into `static/`, which the binary embeds, then
+`./build.sh` builds the frontend into `cmd/static/`, which the binary embeds, then
 compiles both binaries into the gitignored `build/`: `build/api-armv6` is the
 single file to copy to the Pi, and `build/sonic-finance-pi` is the same code
 for this machine. The dev loop — the Go server and the Vite dev server side by
