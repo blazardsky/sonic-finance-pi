@@ -4,10 +4,10 @@
 
 **Blocked by:** 06, 09
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] A download button streams a consistent copy of the database, taken with `VACUUM INTO` so it is safe while the app is running
-- [ ] The temporary copy is removed after streaming
-- [ ] CSV export for Expenses and for Incomes
-- [ ] Items appear in the expense CSV on their own rows, referencing their Expense
-- [ ] Copying the backup off the Pi stays manual; scheduled off-device backups are out of scope
+- [x] A download button streams a consistent copy of the database, taken with `VACUUM INTO` so it is safe while the app is running
+- [x] The temporary copy is removed after streaming
+- [x] CSV export for Expenses and for Incomes
+- [x] Items appear in the expense CSV on their own rows, referencing their Expense
+- [x] Copying the backup off the Pi stays manual; scheduled off-device backups are out of scope

@@ -110,6 +110,7 @@ export function Settings() {
       </form>
 
       <PasswordForm />
+      <BackupLinks />
     </div>
   )
 }
@@ -189,5 +190,26 @@ function PasswordForm() {
         {t.changePassword}
       </Button>
     </form>
+  )
+}
+
+// Native links, not fetches: the session cookie goes with the click, and the
+// browser handles the file. Wrapping them in api() would JSON-header a
+// database and then have nowhere to put the bytes.
+function BackupLinks() {
+  return (
+    <div className="flex flex-col gap-4 border-t border-border pt-8">
+      <h2 className="text-sm font-medium">{t.backupAndExport}</h2>
+      <p className="text-sm text-muted-foreground">{t.backupHint}</p>
+      <Button asChild size="lg">
+        <a href="/api/backup">{t.downloadBackup}</a>
+      </Button>
+      <Button asChild size="lg" variant="outline">
+        <a href="/api/export/expenses.csv">{t.exportExpenses}</a>
+      </Button>
+      <Button asChild size="lg" variant="outline">
+        <a href="/api/export/incomes.csv">{t.exportIncomes}</a>
+      </Button>
+    </div>
   )
 }

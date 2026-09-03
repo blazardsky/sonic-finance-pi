@@ -227,4 +227,13 @@ export const t = {
   passwordNotChanged: "Password non aggiornata. Riprova.",
   wrongCurrentPassword: "Password attuale errata.",
   passwordTooShort: "La password deve avere almeno 8 caratteri.",
+
+  // Backup — a button, then the copying is yours. The spreadsheet had no
+  // way out; a .db and two CSVs are the way out of this app.
+  backupAndExport: "Backup ed esportazione",
+  downloadBackup: "Scarica il database",
+  exportExpenses: "Esporta spese (CSV)",
+  exportIncomes: "Esporta entrate (CSV)",
+  backupHint:
+    "Una copia da spostare altrove a mano — Proton Drive, un altro disco. L'app non lo fa da sola.",
 } as const
