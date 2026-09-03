@@ -9,7 +9,7 @@
 :root {
     --background: oklch(1 0 0);
     --foreground: oklch(0.145 0.008 326);
-    --card: oklch(1 0 0);
+    --card: oklch(100% 0.00011 271.152);
     --card-foreground: oklch(0.145 0.008 326);
     --popover: oklch(1 0 0);
     --popover-foreground: oklch(0.145 0.008 326);
@@ -30,7 +30,7 @@
     --chart-3: oklch(0.546 0.245 262.881);
     --chart-4: oklch(0.488 0.243 264.376);
     --chart-5: oklch(0.424 0.199 265.638);
-    --radius: 0.45rem;
+    --radius: 0.15rem; 
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0.008 326);
     --sidebar-primary: oklch(0.212 0.019 322.12);
@@ -39,6 +39,13 @@
     --sidebar-accent-foreground: oklch(0.212 0.019 322.12);
     --sidebar-border: oklch(0.922 0.005 325.62);
     --sidebar-ring: oklch(0.711 0.019 323.02);
+    /* App shell chrome: same blue family as --chart-2/3/4, not the mauve
+       base — used only for the page frame, header bar and brand box. */
+    --shell: oklch(0.93 0.035 259.815);
+    --header: oklch(0.24 0.05 259.815);
+    --header-foreground: oklch(0.98 0 0);
+    --brand: oklch(0.623 0.214 259.815);
+    --brand-foreground: oklch(0.98 0 0);
 }
 
 .dark {
@@ -73,6 +80,11 @@
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.542 0.034 322.5);
+    --shell: oklch(0.18 0.02 259.815);
+    --header: oklch(0.16 0.04 259.815);
+    --header-foreground: oklch(0.98 0 0);
+    --brand: oklch(0.623 0.214 259.815);
+    --brand-foreground: oklch(0.98 0 0);
 }
 
 @theme inline {
@@ -86,6 +98,11 @@
     --color-sidebar-primary: var(--sidebar-primary);
     --color-sidebar-foreground: var(--sidebar-foreground);
     --color-sidebar: var(--sidebar);
+    --color-shell: var(--shell);
+    --color-header: var(--header);
+    --color-header-foreground: var(--header-foreground);
+    --color-brand: var(--brand);
+    --color-brand-foreground: var(--brand-foreground);
     --color-chart-5: var(--chart-5);
     --color-chart-4: var(--chart-4);
     --color-chart-3: var(--chart-3);

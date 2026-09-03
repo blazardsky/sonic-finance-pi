@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react"
 
-import { Row } from "@/Month"
+import { Row } from "@/pages/Month"
 import { Button } from "@/components/ui/button"
-import { apiJSON } from "@/api"
-import { formatCents, thisYear } from "@/money"
-import { t } from "@/strings"
+import { apiJSON } from "@/lib/api"
+import { formatCents, thisYear } from "@/lib/money"
+import { t } from "@/lib/strings"
 import type { TaxSummary, YearTotals } from "@/types"
 
 // The year screen: the shape of a whole year, and the year in tax terms. Two

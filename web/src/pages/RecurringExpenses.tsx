@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea"
-import { api, apiJSON } from "@/api"
+import { api, apiJSON } from "@/lib/api"
 import {
   formatCents,
   formatMonth,
@@ -12,9 +12,9 @@ import {
   thisMonth,
   toCents,
   toTyped,
-} from "@/money"
-import { nameOf, pickableCategories, withSaved } from "@/pickers"
-import { t } from "@/strings"
+} from "@/lib/money"
+import { nameOf, pickableCategories, withSaved } from "@/lib/pickers"
+import { t } from "@/lib/strings"
 import type { Category, Lists, Recurring } from "@/types"
 
 // What the form holds: the amount and the day as they were typed, everything
@@ -66,7 +66,11 @@ const draftOf = (r: Recurring): Draft => ({
 // was ended — still offering to end it — would be the screen disagreeing with
 // the tap that just happened. It still covers this month, which is what the
 // window line says; it is no longer running, which is what the label says.
-const running = (r: Recurring) => !r.end_month || r.end_month > thisMonth()
+// Not a component, so fast refresh objects to it being exported alongside
+// RecurringExpenses below — same shape as buttonVariants in ui/button.tsx.
+// eslint-disable-next-line react-refresh/only-export-components
+export const running = (r: Recurring) =>
+  !r.end_month || r.end_month > thisMonth()
 
 // Whichever template details were filled in, on one quiet line — empty when
 // there are none, which is the same question as whether to show the line.

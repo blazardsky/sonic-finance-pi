@@ -3,8 +3,8 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { api, apiJSON } from "@/api"
-import { t } from "@/strings"
+import { api, apiJSON } from "@/lib/api"
+import { t } from "@/lib/strings"
 import type { Lists } from "@/types"
 
 // Adding a Payer used to mean an SSH session. This screen is the whole of what

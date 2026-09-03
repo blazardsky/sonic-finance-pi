@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react"
 
-import { PendingPayments } from "@/PendingPayments"
+import { PendingPayments } from "@/pages/PendingPayments"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { apiJSON } from "@/api"
-import { formatCents, formatDate, shiftMonth, thisMonth } from "@/money"
-import { t } from "@/strings"
+import { apiJSON } from "@/lib/api"
+import { formatCents, formatDate, shiftMonth, thisMonth } from "@/lib/money"
+import { t } from "@/lib/strings"
 import type { MonthTotals, RecentEntry } from "@/types"
 
 // The screen the app opens on: where does this month stand. Three numbers,

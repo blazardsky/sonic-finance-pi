@@ -93,6 +93,32 @@ export const t = {
   confirmDeleteIncome: (amount: string) =>
     `Eliminare l'entrata di € ${amount}?`,
 
+  // Sidebar groups — the same altitude the screens are already ordered at:
+  // where things stand, what gets typed, what gets managed.
+  navOverview: "Riepilogo",
+  navEntries: "Registrazioni",
+  navManagement: "Gestione",
+
+  // Dashboard — the home screen's recap of where the year stands
+  dashboard: "Panoramica",
+  yearIncome: "Entrate dell'anno",
+  yearExpenses: "Spese dell'anno",
+  latestExpenses: "Ultime spese",
+  noRecentExpenses: "Nessuna spesa recente.",
+  upcomingRecurring: "Prossime scadenze",
+  noUpcomingRecurring: "Nessuna scadenza in arrivo.",
+  // "tra" reads naturally before a day count in Italian; "oggi"/"domani" are
+  // said the way a person would say them rather than as "tra 0/1 giorni".
+  dueIn: (days: number) =>
+    days === 0 ? "oggi" : days === 1 ? "domani" : `tra ${days} giorni`,
+  taxEstimate: "Stima tasse",
+  estimatedTax: "Tasse stimate",
+  projectedIncome: "Entrate previste",
+  projectedExpenses: "Spese previste",
+  // Said once, next to every projected figure: it is arithmetic on the months
+  // so far, not a forecast that knows December is coming.
+  projectionHint: "Proiezione sull'anno in corso, non una previsione reale.",
+
   // Month — where the month stands
   month: "Mese",
   difference: "Differenza",

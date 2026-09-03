@@ -3,8 +3,8 @@ import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/native-select"
-import { api } from "@/api"
-import { t } from "@/strings"
+import { api } from "@/lib/api"
+import { t } from "@/lib/strings"
 import type { Applies, Category } from "@/types"
 
 const appliesLabels: Record<Applies, string> = {

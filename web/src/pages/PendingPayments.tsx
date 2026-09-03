@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react"
 
-import { apiJSON } from "@/api"
-import { formatCents } from "@/money"
-import { t } from "@/strings"
+import { apiJSON } from "@/lib/api"
+import { formatCents } from "@/lib/money"
+import { t } from "@/lib/strings"
 import type { Pending } from "@/types"
 
 // The notice the freelancer used to get from reading a spreadsheet carefully:

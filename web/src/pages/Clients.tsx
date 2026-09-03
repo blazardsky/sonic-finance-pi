@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { api } from "@/api"
-import { t } from "@/strings"
+import { api } from "@/lib/api"
+import { t } from "@/lib/strings"
 import type { Client } from "@/types"
 
 // The Client management screen: add, rename, hide, delete. Hidden Clients stay

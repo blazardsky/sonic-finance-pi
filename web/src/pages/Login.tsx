@@ -2,7 +2,7 @@ import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { t } from "@/strings"
+import { t } from "@/lib/strings"
 
 // The login screen ships in the static bundle, which the server hands out
 // without a session — the shell has to be able to render its own way in.

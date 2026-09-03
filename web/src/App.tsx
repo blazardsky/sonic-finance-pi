@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useState } from "react"
 
-import { Categories } from "@/Categories"
-import { Clients } from "@/Clients"
-import { Expenses } from "@/Expenses"
-import { Incomes } from "@/Incomes"
-import { Login } from "@/Login"
-import { Month } from "@/Month"
-import { RecurringExpenses } from "@/RecurringExpenses"
-import { Settings } from "@/Settings"
-import { Year } from "@/Year"
-import { Button } from "@/components/ui/button"
-import { t } from "@/strings"
+import { Categories } from "@/pages/Categories"
+import { Clients } from "@/pages/Clients"
+import { Dashboard } from "@/pages/Dashboard"
+import { Expenses } from "@/pages/Expenses"
+import { Incomes } from "@/pages/Incomes"
+import { Login } from "@/pages/Login"
+import { Month } from "@/pages/Month"
+import { RecurringExpenses } from "@/pages/RecurringExpenses"
+import { Settings } from "@/pages/Settings"
+import { Year } from "@/pages/Year"
+import { AppSidebar } from "@/components/app-sidebar"
+import { SiteHeader } from "@/components/site-header"
+import { SidebarProvider } from "@/components/ui/sidebar"
+import { t } from "@/lib/strings"
 
 // /api/health doubles as the session check: it sits behind auth like every
 // other /api/ route, so a 401 is how the app learns it needs to show the login
@@ -19,26 +22,23 @@ import { t } from "@/strings"
 // one on every cold load.
 type State = "checking" | "loggedOut" | "connected" | "unreachable"
 
-// The screens, in the order the nav lists them. The month view opens, because
-// where the month stands is the first question the app exists to answer; the
-// year beside it is the same question one step out, logging an Expense is
-// next, and the two management screens sit after that. The keys are the
-// strings-file keys too, so the nav labels itself.
-const screens = [
-  "month",
-  "year",
-  "expenses",
-  "incomes",
-  "recurring",
-  "categories",
-  "clients",
-  "settings",
-] as const
-type Screen = (typeof screens)[number]
+// The screens. Their sidebar grouping and order lives in app-sidebar.tsx,
+// which reads this same type — the keys are the strings-file keys too, so
+// the nav labels itself.
+export type Screen =
+  | "dashboard"
+  | "month"
+  | "year"
+  | "expenses"
+  | "incomes"
+  | "recurring"
+  | "categories"
+  | "clients"
+  | "settings"
 
 export function App() {
   const [state, setState] = useState<State>("checking")
-  const [screen, setScreen] = useState<Screen>("month")
+  const [screen, setScreen] = useState<Screen>("dashboard")
   // The Pi has no RTC. When its clock is unset it generates no Recurring
   // expenses, and a month short a rent with nothing said about it is how a
   // household concludes the app has lost the rent. Assumed fine until health
@@ -83,41 +83,36 @@ export function App() {
     )
   }
 
-  // A row of text links, one per screen, the current one not offered. A later
-  // ticket will earn a real nav — this is not it yet.
+  // Header on top, full width; the sidebar and the main content sit in a row
+  // below it. Both the frame around everything and the header are the app's
+  // blue, distinct from the sidebar and main content's light background.
   return (
-    <>
-      {!clockOK && (
-        <div className="mx-auto w-full max-w-md px-6 pt-6">
-          <p role="alert" className="text-sm text-destructive">
-            {t.clockUnset}
-          </p>
+    <SidebarProvider>
+      <div className="flex min-h-svh w-full flex-col gap-2 bg-shell p-2 md:gap-3 md:p-3">
+        <SiteHeader screen={screen} />
+        <div className="flex min-h-0 flex-1 gap-2 md:gap-3">
+          <AppSidebar screen={screen} onNavigate={setScreen} />
+          <main className="min-h-0 flex-1 overflow-auto rounded-sm bg-background shadow-sm">
+            {!clockOK && (
+              <div className="mx-auto w-full max-w-md px-6 pt-6">
+                <p role="alert" className="text-sm text-destructive">
+                  {t.clockUnset}
+                </p>
+              </div>
+            )}
+            {screen === "dashboard" && <Dashboard />}
+            {screen === "month" && <Month />}
+            {screen === "year" && <Year />}
+            {screen === "expenses" && <Expenses />}
+            {screen === "incomes" && <Incomes />}
+            {screen === "recurring" && <RecurringExpenses />}
+            {screen === "categories" && <Categories />}
+            {screen === "clients" && <Clients />}
+            {screen === "settings" && <Settings />}
+          </main>
         </div>
-      )}
-      {screen === "month" && <Month />}
-      {screen === "year" && <Year />}
-      {screen === "expenses" && <Expenses />}
-      {screen === "incomes" && <Incomes />}
-      {screen === "recurring" && <RecurringExpenses />}
-      {screen === "categories" && <Categories />}
-      {screen === "clients" && <Clients />}
-      {screen === "settings" && <Settings />}
-      <div className="mx-auto flex w-full max-w-md justify-end gap-1 px-6 pb-8">
-        {screens.map(
-          (key) =>
-            key !== screen && (
-              <Button
-                key={key}
-                size="sm"
-                variant="ghost"
-                onClick={() => setScreen(key)}
-              >
-                {t[key]}
-              </Button>
-            )
-        )}
       </div>
-    </>
+    </SidebarProvider>
   )
 }
 
