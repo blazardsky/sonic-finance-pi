@@ -33,3 +33,8 @@ compiles both binaries into the gitignored `build/`: `build/api-armv6` is the
 single file to copy to the Pi, and `build/sonic-finance-pi` is the same code
 for this machine. The dev loop — the Go server and the Vite dev server side by
 side — is in `web/README.md`.
+
+
+### Localhost testing
+
+Run the command `pnpm --dir web dev` for the Vite app, run the command `go run ./cmd` for the Go server.
