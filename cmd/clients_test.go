@@ -13,6 +13,11 @@ type clientJSON struct {
 	ID     int64  `json:"id"`
 	Name   string `json:"name"`
 	Hidden bool   `json:"hidden"`
+
+	// Ticket 04: the default Income Category prefill, and the computed
+	// all-time total earned from this Client's received Incomes.
+	DefaultCategoryID *int64 `json:"default_category_id"`
+	TotalEarnedCents  int64  `json:"total_earned_cents"`
 }
 
 // clientPath addresses one Client the way the API does.
@@ -236,5 +241,107 @@ func TestClientsAreListedCaseInsensitivelyByName(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("the list is %v, want %v", got, want)
 		}
+	}
+}
+
+// Ticket 04: a default Income Category is a plain PATCH-able field, exactly
+// like hidden — a new Client starts with none, and one it is given can later
+// be taken away.
+func TestAClientsDefaultCategoryCanBeSetReadAndCleared(t *testing.T) {
+	a := newTestApp(t)
+	freelance := a.freelance(t)
+	c := a.createClient(t, "Studio Rossi")
+
+	if c.DefaultCategoryID != nil {
+		t.Fatalf("a new Client's default category = %v, want nil", c.DefaultCategoryID)
+	}
+
+	var withDefault clientJSON
+	res := a.patch(t, clientPath(c.ID), map[string]any{"default_category_id": freelance.ID}, &withDefault)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("setting a default category: PATCH = %d, want 200", res.StatusCode)
+	}
+	if withDefault.DefaultCategoryID == nil || *withDefault.DefaultCategoryID != freelance.ID {
+		t.Fatalf("default_category_id after setting it = %v, want %d", withDefault.DefaultCategoryID, freelance.ID)
+	}
+
+	list := a.clients(t)
+	if len(list) != 1 || list[0].DefaultCategoryID == nil || *list[0].DefaultCategoryID != freelance.ID {
+		t.Fatalf("the list is %v, want the default category to stick", list)
+	}
+
+	var cleared clientJSON
+	a.patch(t, clientPath(c.ID), map[string]any{"default_category_id": nil}, &cleared)
+	if cleared.DefaultCategoryID != nil {
+		t.Errorf("default_category_id after clearing it = %v, want nil", cleared.DefaultCategoryID)
+	}
+}
+
+// Ticket 04's whole computation: received Incomes count, an invoice sent but
+// not yet paid does not, and a Client with no Incomes at all reads as zero
+// rather than erroring — the case the ticket calls out by name.
+func TestTotalEarnedCountsOnlyThatClientsReceivedIncomes(t *testing.T) {
+	a := newTestApp(t)
+	freelance := a.freelance(t)
+
+	paid := a.createClient(t, "Studio Rossi")
+	unpaidOnly := a.createClient(t, "Cliente Lento")
+	untouched := a.createClient(t, "Cliente Nuovo")
+
+	a.addIncome(t, map[string]any{
+		"amount_cents": 50000,
+		"category_id":  freelance.ID,
+		"client_id":    paid.ID,
+		"payment_date": "2026-03-10",
+	})
+	a.addIncome(t, map[string]any{
+		"amount_cents": 30000,
+		"category_id":  freelance.ID,
+		"client_id":    paid.ID,
+		"payment_date": "2026-04-01",
+	})
+	// Invoiced but not yet paid: not money in hand, so it must not count
+	// (ADR-0003) — and must not count against a different Client either.
+	a.addIncome(t, map[string]any{
+		"amount_cents":      99999,
+		"category_id":       freelance.ID,
+		"client_id":         unpaidOnly.ID,
+		"invoice_sent_date": "2026-04-01",
+	})
+
+	byID := map[int64]clientJSON{}
+	for _, c := range a.clients(t) {
+		byID[c.ID] = c
+	}
+
+	if got := byID[paid.ID].TotalEarnedCents; got != 80000 {
+		t.Errorf("total earned for %s = %d, want 80000", paid.Name, got)
+	}
+	if got := byID[unpaidOnly.ID].TotalEarnedCents; got != 0 {
+		t.Errorf("total earned for %s = %d, want 0 — its only Income is unpaid", unpaidOnly.Name, got)
+	}
+	if got := byID[untouched.ID].TotalEarnedCents; got != 0 {
+		t.Errorf("total earned for %s = %d, want 0 — it has no Incomes at all", untouched.Name, got)
+	}
+}
+
+// total_earned_cents is computed, not stored: a PATCH claiming one must not
+// be able to make it say anything but the truth.
+func TestPatchingAClientCannotForgeTotalEarned(t *testing.T) {
+	a := newTestApp(t)
+	freelance := a.freelance(t)
+	c := a.createClient(t, "Studio Rossi")
+	a.addIncome(t, map[string]any{
+		"amount_cents": 50000,
+		"category_id":  freelance.ID,
+		"client_id":    c.ID,
+		"payment_date": "2026-03-10",
+	})
+
+	var got clientJSON
+	a.patch(t, clientPath(c.ID),
+		map[string]any{"name": "Studio Rossi Srl", "total_earned_cents": 999999999}, &got)
+	if got.TotalEarnedCents != 50000 {
+		t.Errorf("total_earned_cents after a PATCH claiming otherwise = %d, want the real 50000", got.TotalEarnedCents)
 	}
 }

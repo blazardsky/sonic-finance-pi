@@ -23,6 +23,13 @@ export type Client = {
   id: number
   name: string
   hidden: boolean
+  // The Income Category the Income form's picker prefills once this Client
+  // is chosen — a suggestion only, never enforced: the picker stays freely
+  // editable. Null when this Client has none set.
+  default_category_id: number | null
+  // The sum of this Client's received Incomes (payment_date set, ADR-0003),
+  // computed at read time and never stored.
+  total_earned_cents: number
 }
 
 export type HoldingType = "etf" | "crypto" | "stock" | "bond" | "other"

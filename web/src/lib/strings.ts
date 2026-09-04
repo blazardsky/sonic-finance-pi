@@ -244,6 +244,8 @@ export const t = {
   confirmDeleteClient: (name: string) => `Eliminare il cliente "${name}"?`,
   clientInUse:
     "Questo cliente è usato da entrate registrate. Nascondilo invece di eliminarlo.",
+  defaultCategory: "Categoria predefinita",
+  totalEarned: "Totale incassato",
 
   // Holdings — the fixed list of stocks/ETFs/crypto/bonds the household
   // invests in (ticket 03 is what records buying and selling one)

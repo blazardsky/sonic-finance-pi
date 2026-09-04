@@ -22,6 +22,21 @@ type client struct {
 	ID     int64  `json:"id"`
 	Name   string `json:"name"`
 	Hidden bool   `json:"hidden"`
+
+	// The Income Category the Income form's picker prefills once this Client
+	// is chosen — a suggestion only, never enforced: an Income from this
+	// Client can still be saved under any other Income Category (ticket 04).
+	// Nil when the Client has none set. A plain reference, like ClientID on an
+	// Income: hiding or deleting the Category leaves this column exactly as
+	// it is, and nothing here requires it to still accept Income.
+	DefaultCategoryID *int64 `json:"default_category_id"`
+
+	// The sum of this Client's received Incomes — payment_date set,
+	// ADR-0003 — computed at read time and never stored (ticket 04). Every
+	// read goes through clientSelect, so this is never stale; a PATCH must
+	// not let a request smuggle a different number in, which is why
+	// handlePatchClient restores it after decoding.
+	TotalEarnedCents int64 `json:"total_earned_cents"`
 }
 
 // migrateClients is schema step 5. Nothing is seeded: who the household is
@@ -115,18 +130,20 @@ func handlePatchClient(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		id := c.ID
+		totalEarned := c.TotalEarnedCents // computed, not a stored column — see below
 		if err := decodeJSON(w, r, &c); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		c.ID = id // an id in the body is not a way to move the row
+		c.ID = id                        // an id in the body is not a way to move the row
+		c.TotalEarnedCents = totalEarned // and nor is total_earned_cents a way to change it
 		if err := c.validate(); err != nil {
 			writeInvalid(w, err)
 			return
 		}
 
-		if _, err := db.Exec(`UPDATE client SET name = ?, hidden = ? WHERE id = ?`,
-			c.Name, c.Hidden, c.ID); err != nil {
+		if _, err := db.Exec(`UPDATE client SET name = ?, hidden = ?, default_category_id = ? WHERE id = ?`,
+			c.Name, c.Hidden, c.DefaultCategoryID, c.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -187,11 +204,18 @@ func clientExists(db *sql.DB, id int64) (bool, error) {
 	return err == nil, err
 }
 
-const clientSelect = `SELECT id, name, hidden FROM client`
+// The subquery is the whole of ticket 04's total-earned figure: a plain SUM
+// scoped to this Client and to received Incomes only (ADR-0003), run at read
+// time rather than kept as a column that could drift from what income.go
+// actually stores.
+const clientSelect = `SELECT id, name, hidden, default_category_id,
+	(SELECT COALESCE(SUM(amount_cents), 0) FROM income
+		WHERE income.client_id = client.id AND income.payment_date IS NOT NULL)
+	FROM client`
 
 func scanClient(row interface{ Scan(...any) error }) (client, error) {
 	var c client
-	err := row.Scan(&c.ID, &c.Name, &c.Hidden)
+	err := row.Scan(&c.ID, &c.Name, &c.Hidden, &c.DefaultCategoryID, &c.TotalEarnedCents)
 	return c, err
 }
 

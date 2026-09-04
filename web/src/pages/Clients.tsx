@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { NativeSelect } from "@/components/ui/native-select"
 import {
   Table,
   TableBody,
@@ -10,9 +11,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { api } from "@/lib/api"
+import { api, apiJSON } from "@/lib/api"
+import { formatCents } from "@/lib/money"
+import { pickableCategories } from "@/lib/pickers"
 import { t } from "@/lib/strings"
-import type { Client } from "@/types"
+import type { Category, Client } from "@/types"
 
 // The Client management screen: add, rename, hide, delete. Hidden Clients stay
 // on this list — it is the only place one can be brought back from — and are
@@ -22,15 +25,21 @@ import type { Client } from "@/types"
 // and nothing protected, because no report resolves a Client by identity.
 export function Clients() {
   const [clients, setClients] = useState<Client[] | null>(null)
+  const [categories, setCategories] = useState<Category[]>([])
   const [error, setError] = useState("")
   const [name, setName] = useState("")
   const [editing, setEditing] = useState<number | null>(null)
 
   const load = useCallback(
     () =>
-      api("/api/clients")
-        .then((res) => res.json())
-        .then(setClients)
+      Promise.all([
+        apiJSON<Client[]>("/api/clients"),
+        apiJSON<Category[]>("/api/categories"),
+      ])
+        .then(([cl, c]) => {
+          setClients(cl)
+          setCategories(c)
+        })
         .catch(() => setError(t.serverUnreachable)),
     []
   )
@@ -113,6 +122,8 @@ export function Clients() {
         <TableHeader>
           <TableRow>
             <TableHead>{t.clientName}</TableHead>
+            <TableHead>{t.defaultCategory}</TableHead>
+            <TableHead className="text-right">{t.totalEarned}</TableHead>
             <TableHead>{t.actions}</TableHead>
           </TableRow>
         </TableHeader>
@@ -137,6 +148,35 @@ export function Clients() {
                     {c.hidden && ` · ${t.hiddenClient}`}
                   </span>
                 )}
+              </TableCell>
+              <TableCell>
+                <NativeSelect
+                  value={c.default_category_id ?? ""}
+                  onChange={(e) =>
+                    void write(`/api/clients/${c.id}`, {
+                      method: "PATCH",
+                      body: JSON.stringify({
+                        default_category_id:
+                          e.target.value === "" ? null : Number(e.target.value),
+                      }),
+                    })
+                  }
+                  className="h-9"
+                >
+                  <option value="">{t.notSet}</option>
+                  {pickableCategories(
+                    categories,
+                    "income",
+                    categories.find((cat) => cat.id === c.default_category_id)
+                  ).map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </TableCell>
+              <TableCell className="text-right tabular-nums">
+                € {formatCents(c.total_earned_cents)}
               </TableCell>
               <TableCell>
                 <div className="flex gap-1">

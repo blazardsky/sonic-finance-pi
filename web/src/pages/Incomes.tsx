@@ -241,12 +241,19 @@ export function Incomes() {
               value={draft.client_id}
               // Back to the blank option is "" and not Number("") — 0, which
               // no Client has, would travel as a Client the server refuses.
-              onChange={(e) =>
-                set(
-                  "client_id",
+              onChange={(e) => {
+                const clientId =
                   e.target.value === "" ? "" : Number(e.target.value)
-                )
-              }
+                set("client_id", clientId)
+                // A one-time prefill, not a lock (ticket 04): picking a
+                // Client with a default Income Category loads it into the
+                // reason picker, which stays freely editable from here.
+                const defaultCategoryId = clients.find(
+                  (c) => c.id === clientId
+                )?.default_category_id
+                if (defaultCategoryId != null)
+                  set("category_id", defaultCategoryId)
+              }}
               className="h-10"
             >
               <option value="">{t.notSet}</option>
