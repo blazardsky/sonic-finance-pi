@@ -10,7 +10,12 @@ import { apiJSON } from "@/lib/api"
 import { formatCents, formatDate, shiftMonth, thisMonth } from "@/lib/money"
 import { t } from "@/lib/strings"
 import { categoriesIn, weeklyBuckets } from "@/lib/trend"
-import type { DailyCategoryTotal, MonthTotals, RecentEntry } from "@/types"
+import type {
+  BudgetReport,
+  DailyCategoryTotal,
+  MonthTotals,
+  RecentEntry,
+} from "@/types"
 
 // The screen the app opens on: where does this month stand. Three numbers,
 // where the money went, and the last few things typed — the totals answer the
@@ -30,6 +35,7 @@ export function Month() {
   const [totals, setTotals] = useState<MonthTotals | null>(null)
   const [recent, setRecent] = useState<RecentEntry[]>([])
   const [daily, setDaily] = useState<DailyCategoryTotal[]>([])
+  const [budget, setBudget] = useState<BudgetReport | null>(null)
   const [error, setError] = useState("")
 
   // The last few entries are not this month's — they are the last few typed,
@@ -74,6 +80,26 @@ export function Month() {
     apiJSON<DailyCategoryTotal[]>(`/api/reports/month/${month}/daily`)
       .then((d) => current && setDaily(d))
       .catch(() => current && setDaily([]))
+    return () => {
+      current = false
+    }
+  }, [month])
+
+  // Budget/Target/Goal describe "now," not an arbitrary month (ticket 04) —
+  // fetched only while the current real month is on screen, and cleared the
+  // moment the household steps away from it so a past month never shows this
+  // month's figures under its own heading.
+  useEffect(() => {
+    let current = true
+    if (month === thisMonth()) {
+      apiJSON<BudgetReport>("/api/reports/budget")
+        .then((b) => current && setBudget(b))
+        .catch(() => current && setBudget(null))
+    } else {
+      // setState belongs in a callback, not the effect body itself — deferred
+      // the same way the fetch above defers it, just with nothing to await.
+      Promise.resolve().then(() => current && setBudget(null))
+    }
     return () => {
       current = false
     }
@@ -130,6 +156,32 @@ export function Month() {
               both say. */}
           <Row label={t.difference} cents={totals.net_cents} big />
         </dl>
+      )}
+
+      {/* Budget (computed), Target and Goal (household-set) — ticket 04.
+          Only for the current real month: a past or future month has no
+          "this month's target" to speak of. Target/Goal show even when
+          Budget itself has too little history, since they are just settings;
+          only Budget's own row waits for enough data. */}
+      {budget && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t.budgetTargetGoal}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <dl className="flex flex-col divide-y divide-border">
+              {budget.available ? (
+                <Row label={t.budget} cents={budget.budget_cents} />
+              ) : (
+                <p className="py-3 text-sm text-muted-foreground">
+                  {t.budgetUnavailable}
+                </p>
+              )}
+              <Row label={t.target} cents={budget.target_cents} />
+              <Row label={t.savingsGoal} cents={budget.goal_cents} />
+            </dl>
+          </CardContent>
+        </Card>
       )}
 
       {/* What is owed and what looks unbilled, above the breakdown: it is a

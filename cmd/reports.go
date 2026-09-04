@@ -184,6 +184,25 @@ func readBreakdown(db *sql.DB, month string) ([]categoryTotal, error) {
 	return out, rows.Err()
 }
 
+// readExpenseCentsExcludingInvestments is readMonthRow's Expense query with
+// the Investments category left out — the exclusion Budget/Target (ticket 04)
+// and the yearly Estimate (ticket 05) share: both exist to answer "is this
+// normal spending," and a lumpy stock buy would wreck that (ADR-0009). It
+// materialises first, for the same reason readMonthRow does: a past month
+// nobody has opened yet must not read as an empty one just because Budget is
+// the first thing to ask about it.
+func readExpenseCentsExcludingInvestments(db *sql.DB, now func() time.Time, month string) (int64, error) {
+	if err := materialise(db, now, month); err != nil {
+		return 0, err
+	}
+	var cents int64
+	err := db.QueryRow(`SELECT COALESCE(SUM(e.amount_cents), 0) FROM expense e
+		JOIN category c ON c.id = e.category_id
+		WHERE substr(e.occurred_on, 1, 7) = ? AND IFNULL(c.code, '') != ?`,
+		month, codeInvestments).Scan(&cents)
+	return cents, err
+}
+
 // dailyCategoryTotal is readBreakdown's categoryTotal with a day column: one
 // Category's share of one day's spend, the shape both trend charts read.
 type dailyCategoryTotal struct {

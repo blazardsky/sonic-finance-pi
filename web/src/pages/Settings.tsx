@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/lib/api"
+import { toCents, toTyped } from "@/lib/money"
 import { t } from "@/lib/strings"
 import type { Lists } from "@/types"
 
@@ -25,6 +26,11 @@ const toList = (text: string) =>
 export function Settings() {
   const [payers, setPayers] = useState("")
   const [paymentMethods, setPaymentMethods] = useState("")
+  // Target and Goal (ticket 04) ride the same settings payload as the two
+  // lists above, so one save covers all four fields in one request — same
+  // amount-typing convention as the Expense/Income forms (toCents/toTyped).
+  const [target, setTarget] = useState("")
+  const [goal, setGoal] = useState("")
   const [listsMessage, setListsMessage] = useState("")
   const [listsError, setListsError] = useState("")
 
@@ -33,6 +39,8 @@ export function Settings() {
       .then((l) => {
         setPayers(toText(l.payers))
         setPaymentMethods(toText(l.payment_methods))
+        setTarget(toTyped(l.target_cents))
+        setGoal(toTyped(l.goal_cents))
       })
       .catch(() => setListsError(t.serverUnreachable))
   }, [])
@@ -41,9 +49,17 @@ export function Settings() {
     event.preventDefault()
     setListsMessage("")
     setListsError("")
+    const targetCents = toCents(target)
+    const goalCents = toCents(goal)
+    if (targetCents === null || goalCents === null) {
+      setListsError(t.invalidAmount)
+      return
+    }
     const body = {
       payers: toList(payers),
       payment_methods: toList(paymentMethods),
+      target_cents: targetCents,
+      goal_cents: goalCents,
     }
     // Refused here as well as by the server: a picker with no options is a
     // dead end, and the household should hear about it before the round trip.
@@ -61,6 +77,8 @@ export function Settings() {
       // the pickers will actually offer.
       setPayers(toText(saved.payers))
       setPaymentMethods(toText(saved.payment_methods))
+      setTarget(toTyped(saved.target_cents))
+      setGoal(toTyped(saved.goal_cents))
       setListsMessage(t.listsSaved)
     } catch (res) {
       setListsError(
@@ -94,6 +112,27 @@ export function Settings() {
         </label>
         <p className="text-sm text-muted-foreground">{t.onePerLine}</p>
         <p className="text-sm text-muted-foreground">{t.listsHistorySafe}</p>
+
+        <label className="flex flex-col gap-1.5 text-sm">
+          {t.target}
+          <Input
+            inputMode="decimal"
+            value={target}
+            onChange={(e) => setTarget(e.target.value)}
+            className="h-9"
+          />
+        </label>
+        <p className="text-sm text-muted-foreground">{t.targetHint}</p>
+        <label className="flex flex-col gap-1.5 text-sm">
+          {t.savingsGoal}
+          <Input
+            inputMode="decimal"
+            value={goal}
+            onChange={(e) => setGoal(e.target.value)}
+            className="h-9"
+          />
+        </label>
+
         {listsError && (
           <p role="alert" className="text-sm text-destructive">
             {listsError}

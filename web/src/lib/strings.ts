@@ -150,6 +150,19 @@ export const t = {
   recentEntries: "Ultime registrazioni",
   noEntriesYet: "Nessuna registrazione ancora.",
 
+  // Budget / Target / Goal (ticket 04) — shown on the Month page only for the
+  // current real month (CONTEXT.md: Budget/Target are about Expenses, Goal is
+  // about savings — three distinct words, kept distinct here too). The same
+  // two labels are reused on the Settings screen, where Target and Goal are
+  // actually edited.
+  budgetTargetGoal: "Budget, target e obiettivo",
+  budget: "Budget",
+  target: "Target",
+  savingsGoal: "Obiettivo di risparmio",
+  budgetUnavailable:
+    "Servono almeno 3 mesi di storico per calcolare il budget.",
+  targetHint: "Parte uguale al budget calcolato, poi resta quello che scegli.",
+
   // Year — the shape of a whole year, and the year in tax terms
   year: "Anno",
   previousYear: "Anno precedente",

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -26,6 +27,22 @@ func setSetting(db *sql.DB, key, value string) error {
 	_, err := db.Exec(`INSERT INTO setting (key, value) VALUES (?, ?)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
 	return err
+}
+
+// getSettingCents reads a setting stored as a whole number of cents,
+// defaulting to 0 when it has never been set. Unlike Target (cmd/budget.go),
+// nothing here has a stickiness rule of its own to protect — this is the
+// plain reader any cents-shaped setting can use.
+func getSettingCents(db *sql.DB, key string) (int64, error) {
+	v, err := getSetting(db, key)
+	if err != nil || v == "" {
+		return 0, err
+	}
+	return strconv.ParseInt(v, 10, 64)
+}
+
+func putSettingCents(db *sql.DB, key string, cents int64) error {
+	return setSetting(db, key, strconv.FormatInt(cents, 10))
 }
 
 // settingsPath is the endpoint the spec's API section gives the editable
@@ -60,6 +77,14 @@ var (
 type lists struct {
 	Payers         []string `json:"payers"`
 	PaymentMethods []string `json:"payment_methods"`
+
+	// Target and Goal (ticket 04) ride the same payload rather than a second
+	// endpoint. Target's default-then-sticky behaviour lives in
+	// cmd/budget.go, the one place with a Budget to default it from — this
+	// struct only round-trips whatever is already stored, same as the two
+	// lists above.
+	TargetCents int64 `json:"target_cents"`
+	GoalCents   int64 `json:"goal_cents"`
 }
 
 // migrateLists is schema step 3: the seed values for both lists. Seeding
@@ -107,7 +132,13 @@ func readLists(db *sql.DB) (lists, error) {
 	if l.Payers, err = getList(db, payersKey); err != nil {
 		return l, err
 	}
-	l.PaymentMethods, err = getList(db, paymentMethodsKey)
+	if l.PaymentMethods, err = getList(db, paymentMethodsKey); err != nil {
+		return l, err
+	}
+	if l.TargetCents, err = getSettingCents(db, targetCentsKey); err != nil {
+		return l, err
+	}
+	l.GoalCents, err = getSettingCents(db, goalCentsKey)
 	return l, err
 }
 
@@ -150,6 +181,14 @@ func handlePutLists(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		if err := putList(db, paymentMethodsKey, l.PaymentMethods); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if err := putSettingCents(db, targetCentsKey, l.TargetCents); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if err := putSettingCents(db, goalCentsKey, l.GoalCents); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}

@@ -80,10 +80,25 @@ export type Item = {
   category_id: number
 }
 
-// The two short configured lists the Expense form picks from.
+// The two short configured lists the Expense form picks from, plus Target and
+// Goal (ticket 04) riding the same settings payload — household-set figures,
+// not lists, but read/written the same way.
 export type Lists = {
   payers: string[]
   payment_methods: string[]
+  target_cents: number
+  goal_cents: number
+}
+
+// Budget (computed), Target and Goal (household-set) — cmd/budget.go's
+// GET /api/reports/budget. target_cents/goal_cents are always real numbers,
+// independent of whether Budget itself is available (they are just
+// settings); budget_cents is 0 and meaningless when available is false.
+export type BudgetReport = {
+  available: boolean
+  budget_cents: number
+  target_cents: number
+  goal_cents: number
 }
 
 // Money owed to or received by the household. It exists from the moment it is
