@@ -25,6 +25,9 @@ type expenseJSON struct {
 	// one. Ticket 15: tax on 2026's income is paid during 2027, so the year
 	// it is attributed to is not the year it left the account.
 	TaxYear int `json:"tax_year"`
+
+	// Ticket 03: the Holding a buy Expense is for, nil on every other Expense.
+	HoldingID *int64 `json:"holding_id"`
 }
 
 // An Item as the API hands it out. It carries no id: nothing addresses an Item
@@ -717,6 +720,14 @@ func (a *testApp) taxes(t *testing.T) categoryJSON {
 	return a.category(t, seedTaxesName)
 }
 
+// investments is the promoted Base category a buy/sell is recorded under
+// (ticket 03) — applies_to 'both', so it works from both this file and
+// income_test.go.
+func (a *testApp) investments(t *testing.T) categoryJSON {
+	t.Helper()
+	return a.category(t, seedInvestmentiName)
+}
+
 // The default that makes the common case free: tax paid in a year is tax on
 // that year until someone says otherwise, so nothing has to be typed for the
 // payment that lands in the year it belongs to.
@@ -815,5 +826,76 @@ func TestATaxYearThatIsNotAYearIsRefused(t *testing.T) {
 	}, nil)
 	if res.StatusCode != http.StatusBadRequest {
 		t.Errorf("POST with tax_year 26 = %d, want 400", res.StatusCode)
+	}
+}
+
+// Ticket 03: buying a Holding is an ordinary Expense with a holding_id set —
+// the whole ticket's backend half in one round trip.
+func TestABuyExpenseKeepsItsHoldingID(t *testing.T) {
+	a := newTestApp(t)
+	vwce := a.createHolding(t, "VWCE", holdingETF)
+
+	created := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 20000,
+		"category_id": a.investments(t).ID, "holding_id": vwce.ID,
+	})
+	if created.HoldingID == nil || *created.HoldingID != vwce.ID {
+		t.Fatalf("holding_id = %v, want %d", created.HoldingID, vwce.ID)
+	}
+
+	if stored := a.expense(t, created.ID); stored.HoldingID == nil || *stored.HoldingID != vwce.ID {
+		t.Errorf("stored holding_id = %v, want %d", stored.HoldingID, vwce.ID)
+	}
+}
+
+// An ordinary Expense carries no Holding at all — nil, not a made-up id.
+func TestAnOrdinaryExpenseCarriesNoHoldingID(t *testing.T) {
+	a := newTestApp(t)
+
+	created := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 4237,
+		"category_id": a.category(t, "Alimentari").ID,
+	})
+	if created.HoldingID != nil {
+		t.Errorf("holding_id = %v, want nil", *created.HoldingID)
+	}
+}
+
+// A PATCH can set, change, or clear the Holding a buy Expense points at, the
+// same partial bargain client_id makes on an Income.
+func TestAHoldingIDCanBeSetChangedAndClearedByPatch(t *testing.T) {
+	a := newTestApp(t)
+	investments := a.investments(t).ID
+	vwce := a.createHolding(t, "VWCE", holdingETF)
+	btc := a.createHolding(t, "BTC", holdingCrypto)
+
+	logged := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 20000, "category_id": investments,
+	})
+	if logged.HoldingID != nil {
+		t.Fatalf("holding_id = %v, want nil before it is set", logged.HoldingID)
+	}
+
+	var got expenseJSON
+	a.patch(t, expensePath(logged.ID), map[string]any{"holding_id": vwce.ID}, &got)
+	if got.HoldingID == nil || *got.HoldingID != vwce.ID {
+		t.Fatalf("holding_id after setting it = %v, want %d", got.HoldingID, vwce.ID)
+	}
+
+	a.patch(t, expensePath(logged.ID), map[string]any{"holding_id": btc.ID}, &got)
+	if got.HoldingID == nil || *got.HoldingID != btc.ID {
+		t.Fatalf("holding_id after changing it = %v, want %d", got.HoldingID, btc.ID)
+	}
+
+	// An edit about something else leaves it alone: a PATCH merges onto the
+	// stored row.
+	a.patch(t, expensePath(logged.ID), map[string]any{"amount_cents": 21000}, &got)
+	if got.HoldingID == nil || *got.HoldingID != btc.ID {
+		t.Errorf("holding_id after an unrelated edit = %v, want it still %d", got.HoldingID, btc.ID)
+	}
+
+	a.patch(t, expensePath(logged.ID), map[string]any{"holding_id": nil}, &got)
+	if got.HoldingID != nil {
+		t.Errorf("holding_id after clearing it = %v, want nil", got.HoldingID)
 	}
 }

@@ -9,6 +9,7 @@ import { Incomes } from "@/pages/Incomes"
 import { Login } from "@/pages/Login"
 import { Month } from "@/pages/Month"
 import { RecurringExpenses } from "@/pages/RecurringExpenses"
+import { Savings } from "@/pages/Savings"
 import { Settings } from "@/pages/Settings"
 import { Year } from "@/pages/Year"
 import { AppSidebar } from "@/components/app-sidebar"
@@ -33,6 +34,7 @@ export type Screen =
   | "expenses"
   | "incomes"
   | "recurring"
+  | "savings"
   | "categories"
   | "clients"
   | "holdings"
@@ -108,6 +110,7 @@ export function App() {
             {screen === "expenses" && <Expenses />}
             {screen === "incomes" && <Incomes />}
             {screen === "recurring" && <RecurringExpenses />}
+            {screen === "savings" && <Savings />}
             {screen === "categories" && <Categories />}
             {screen === "clients" && <Clients />}
             {screen === "holdings" && <Holdings />}

@@ -55,6 +55,9 @@ export type Expense = {
   // derives it — 0 sent for a tax Expense comes back as the payment's year, and
   // anything sent for any other Expense comes back as 0.
   tax_year: number
+  // The Holding this Expense bought, or null on every Expense that is not a
+  // buy — meaningful only under the Investments base category (ticket 03).
+  holding_id: number | null
 }
 
 // A part of an Expense under its own Category. No id: an Item is saved as one
@@ -95,6 +98,9 @@ export type Income = {
   payment_date: string
   invoice_sent_date: string
   note: string
+  // The Holding this Income sold, or null on every Income that is not a sell
+  // — meaningful only under the Investments base category (ticket 03).
+  holding_id: number | null
 }
 
 // Where a calendar month stands: what came in, what went out, and the

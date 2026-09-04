@@ -40,6 +40,13 @@ type income struct {
 	InvoiceSentDate string `json:"invoice_sent_date"`
 
 	Note string `json:"note"`
+
+	// The Holding this Income sold, and nil on every Income that is not a
+	// sell — meaningful only under the Investments base category (ticket 03).
+	// Set directly on insert like CategoryID, and never read by a report
+	// outside Investments. A pointer, like ClientID, because "no Holding" is a
+	// real answer for every non-Investments Income.
+	HoldingID *int64 `json:"holding_id"`
 }
 
 // migrateIncomes is schema step 6. client_id is a plain reference: not
@@ -120,10 +127,10 @@ func handleCreateIncome(db *sql.DB, now func() time.Time) http.HandlerFunc {
 		}
 
 		res, err := db.Exec(`INSERT INTO income
-			(amount_cents, category_id, client_id, payer, payment_date, invoice_sent_date, note, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			(amount_cents, category_id, client_id, payer, payment_date, invoice_sent_date, note, holding_id, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			in.AmountCents, in.CategoryID, in.ClientID, in.Payer,
-			nullDate(in.PaymentDate), nullDate(in.InvoiceSentDate), in.Note,
+			nullDate(in.PaymentDate), nullDate(in.InvoiceSentDate), in.Note, in.HoldingID,
 			now().Format(time.RFC3339))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
@@ -162,9 +169,9 @@ func handlePatchIncome(db *sql.DB) http.HandlerFunc {
 		}
 
 		if _, err := db.Exec(`UPDATE income SET amount_cents = ?, category_id = ?, client_id = ?,
-			payer = ?, payment_date = ?, invoice_sent_date = ?, note = ? WHERE id = ?`,
+			payer = ?, payment_date = ?, invoice_sent_date = ?, note = ?, holding_id = ? WHERE id = ?`,
 			in.AmountCents, in.CategoryID, in.ClientID, in.Payer,
-			nullDate(in.PaymentDate), nullDate(in.InvoiceSentDate), in.Note, in.ID); err != nil {
+			nullDate(in.PaymentDate), nullDate(in.InvoiceSentDate), in.Note, in.HoldingID, in.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -212,12 +219,12 @@ func findIncome(w http.ResponseWriter, db *sql.DB, rawID string) (income, bool) 
 // it. The two nullable dates are flattened to ” on the way out, because that
 // is the shape the API publishes and the shape a PATCH merges onto.
 const incomeSelect = `SELECT id, amount_cents, category_id, client_id, payer,
-	COALESCE(payment_date, ''), COALESCE(invoice_sent_date, ''), note FROM income`
+	COALESCE(payment_date, ''), COALESCE(invoice_sent_date, ''), note, holding_id FROM income`
 
 func scanIncome(row interface{ Scan(...any) error }) (income, error) {
 	var in income
 	err := row.Scan(&in.ID, &in.AmountCents, &in.CategoryID, &in.ClientID, &in.Payer,
-		&in.PaymentDate, &in.InvoiceSentDate, &in.Note)
+		&in.PaymentDate, &in.InvoiceSentDate, &in.Note, &in.HoldingID)
 	return in, err
 }
 

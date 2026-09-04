@@ -20,7 +20,15 @@ import type { Category, Expense, Lists } from "@/types"
 
 // What the form holds: the amount as it was typed, and everything else as the
 // API's own field names, so submitting is one spread rather than a mapping.
-type Draft = Omit<Expense, "id" | "amount_cents" | "category_id" | "items"> & {
+// holding_id is left out of the draft entirely: this form never shows a
+// Holding picker (ticket 03's Buy/Sell form on the Savings page does), and
+// omitting the key from the submitted body — rather than sending null — is
+// what leaves a buy's holding_id untouched when it is later edited here for
+// some other reason, e.g. its amount.
+type Draft = Omit<
+  Expense,
+  "id" | "amount_cents" | "category_id" | "items" | "holding_id"
+> & {
   amount: string
   // "" is the unchosen picker, which the required select refuses to submit.
   category_id: number | ""
@@ -224,13 +232,13 @@ export function Expenses() {
     )
 
   // Whether the Tax year field belongs on screen, which is only for an Expense
-  // in a tax Category. A Base category on the expense side is the tax one:
-  // there are two Base categories and the other is income-only, so it can
-  // never be what this form has chosen. The code behind `base` is not
-  // published — it is an implementation detail of the reports — and this is
-  // the one question the boolean answers here.
+  // in a tax Category. Ticket 03: Investments is also a Base category now, and
+  // it applies to both sides — so `base` alone no longer picks out Taxes
+  // uniquely, and the expense-only half of it is what does. The code behind
+  // `base` is not published — it is an implementation detail of the reports —
+  // and this is the one question the boolean answers here.
   const isTaxExpense = categories.some(
-    (c) => c.id === draft.category_id && c.base
+    (c) => c.id === draft.category_id && c.base && c.applies_to === "expense"
   )
 
   // What the field shows before anything is typed: the year of the payment,

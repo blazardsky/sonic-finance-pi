@@ -259,6 +259,21 @@ export const t = {
   holdingTypeBond: "Obbligazione",
   holdingTypeOther: "Altro",
 
+  // Savings — the dedicated Buy/Sell form (ticket 03): a buy posts to
+  // /api/expenses and a sell to /api/incomes, both under the Investments
+  // category, so this screen's own vocabulary is deliberately thin.
+  savings: "Risparmi",
+  buy: "Acquisto",
+  sell: "Vendita",
+  holding: "Investimento",
+  chooseHolding: "Scegli un investimento",
+  noHoldingsToBuySell:
+    "Nessun investimento in elenco. Aggiungine uno nella pagina Investimenti.",
+  buySellNotSaved: "Operazione non salvata. Riprova.",
+  recordBuy: "Registra acquisto",
+  recordSell: "Registra vendita",
+  noBuysSellsYet: "Nessun acquisto o vendita registrato.",
+
   // Settings — the two configured lists, and the password
   settings: "Impostazioni",
   // The Payer list is one list read in both directions, so it is named after

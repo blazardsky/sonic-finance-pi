@@ -20,6 +20,9 @@ type incomeJSON struct {
 	PaymentDate     string `json:"payment_date"`
 	InvoiceSentDate string `json:"invoice_sent_date"`
 	Note            string `json:"note"`
+
+	// Ticket 03: the Holding a sell Income is for, nil on every other Income.
+	HoldingID *int64 `json:"holding_id"`
 }
 
 // incomePath addresses one Income the way the API does.
@@ -493,5 +496,75 @@ func TestRenamingAPayerLeavesExistingIncomesReadingAsBefore(t *testing.T) {
 
 	if got := a.incomes(t)[0]; got.Payer != "Persona 1" {
 		t.Errorf("payer = %q, want it still reading %q", got.Payer, "Persona 1")
+	}
+}
+
+// Ticket 03: selling a Holding is an ordinary Income with a holding_id set —
+// the whole ticket's backend half in one round trip.
+func TestASellIncomeKeepsItsHoldingID(t *testing.T) {
+	a := newTestApp(t)
+	vwce := a.createHolding(t, "VWCE", holdingETF)
+
+	created := a.addIncome(t, map[string]any{
+		"amount_cents": 20000, "category_id": a.investments(t).ID,
+		"payment_date": "2026-03-15", "holding_id": vwce.ID,
+	})
+	if created.HoldingID == nil || *created.HoldingID != vwce.ID {
+		t.Fatalf("holding_id = %v, want %d", created.HoldingID, vwce.ID)
+	}
+
+	if got := a.incomes(t)[0]; got.HoldingID == nil || *got.HoldingID != vwce.ID {
+		t.Errorf("stored holding_id = %v, want %d", got.HoldingID, vwce.ID)
+	}
+}
+
+// An ordinary Income carries no Holding at all — nil, not a made-up id.
+func TestAnOrdinaryIncomeCarriesNoHoldingID(t *testing.T) {
+	a := newTestApp(t)
+
+	created := a.addIncome(t, map[string]any{
+		"amount_cents": 5000, "category_id": a.category(t, "Regali").ID,
+	})
+	if created.HoldingID != nil {
+		t.Errorf("holding_id = %v, want nil", *created.HoldingID)
+	}
+}
+
+// A PATCH can set, change, or clear the Holding a sell Income points at, the
+// same partial bargain client_id already makes.
+func TestAnIncomeHoldingIDCanBeSetChangedAndClearedByPatch(t *testing.T) {
+	a := newTestApp(t)
+	investments := a.investments(t).ID
+	vwce := a.createHolding(t, "VWCE", holdingETF)
+	btc := a.createHolding(t, "BTC", holdingCrypto)
+
+	logged := a.addIncome(t, map[string]any{
+		"amount_cents": 20000, "category_id": investments, "payment_date": "2026-03-15",
+	})
+	if logged.HoldingID != nil {
+		t.Fatalf("holding_id = %v, want nil before it is set", logged.HoldingID)
+	}
+
+	var got incomeJSON
+	a.patch(t, incomePath(logged.ID), map[string]any{"holding_id": vwce.ID}, &got)
+	if got.HoldingID == nil || *got.HoldingID != vwce.ID {
+		t.Fatalf("holding_id after setting it = %v, want %d", got.HoldingID, vwce.ID)
+	}
+
+	a.patch(t, incomePath(logged.ID), map[string]any{"holding_id": btc.ID}, &got)
+	if got.HoldingID == nil || *got.HoldingID != btc.ID {
+		t.Fatalf("holding_id after changing it = %v, want %d", got.HoldingID, btc.ID)
+	}
+
+	// An edit about something else leaves it alone: a PATCH merges onto the
+	// stored row.
+	a.patch(t, incomePath(logged.ID), map[string]any{"amount_cents": 21000}, &got)
+	if got.HoldingID == nil || *got.HoldingID != btc.ID {
+		t.Errorf("holding_id after an unrelated edit = %v, want it still %d", got.HoldingID, btc.ID)
+	}
+
+	a.patch(t, incomePath(logged.ID), map[string]any{"holding_id": nil}, &got)
+	if got.HoldingID != nil {
+		t.Errorf("holding_id after clearing it = %v, want nil", got.HoldingID)
 	}
 }

@@ -22,9 +22,14 @@ import type { Category, Client, Income, Lists } from "@/types"
 // API's own field names, so submitting is one spread rather than a mapping.
 // "" is the unchosen picker for both references — a Client is optional, so ""
 // is a real answer there and travels as null.
+// holding_id is left out of the draft entirely: this form never shows a
+// Holding picker (ticket 03's Buy/Sell form on the Savings page does), and
+// omitting the key from the submitted body — rather than sending null — is
+// what leaves a sell's holding_id untouched when it is later edited here for
+// some other reason, e.g. recording its payment date.
 type Draft = Omit<
   Income,
-  "id" | "amount_cents" | "category_id" | "client_id"
+  "id" | "amount_cents" | "category_id" | "client_id" | "holding_id"
 > & {
   amount: string
   category_id: number | ""
