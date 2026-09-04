@@ -308,6 +308,15 @@ export const t = {
   recordSell: "Registra vendita",
   noBuysSellsYet: "Nessun acquisto o vendita registrato.",
 
+  // Savings total, starting balance, and portfolio breakdown (ticket 07) —
+  // GET /api/reports/savings. The starting balance is edited right here and
+  // saved through the same /api/settings payload Target and Goal use.
+  startingBalance: "Saldo di partenza",
+  startingBalanceHint: "Il risparmio accumulato prima di usare l'app.",
+  startingBalanceNotSaved: "Saldo di partenza non salvato. Riprova.",
+  portfolio: "Portafoglio",
+  noHoldingsInPortfolio: "Nessun investimento in portafoglio.",
+
   // Settings — the two configured lists, and the password
   settings: "Impostazioni",
   // The Payer list is one list read in both directions, so it is named after

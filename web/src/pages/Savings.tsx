@@ -12,10 +12,28 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { api, apiJSON } from "@/lib/api"
-import { formatCents, formatDate, toCents, today } from "@/lib/money"
+import { formatCents, formatDate, toCents, toTyped, today } from "@/lib/money"
 import { nameOf, withSaved } from "@/lib/pickers"
 import { t } from "@/lib/strings"
-import type { Category, Expense, Holding, Income, Lists } from "@/types"
+import type {
+  Category,
+  Expense,
+  Holding,
+  HoldingType,
+  Income,
+  Lists,
+  SavingsReport,
+} from "@/types"
+
+// Same labels Holdings.tsx uses for the fixed type list — each screen keeps
+// its own copy rather than sharing one, the existing convention here.
+const typeLabels: Record<HoldingType, string> = {
+  etf: t.holdingTypeETF,
+  crypto: t.holdingTypeCrypto,
+  stock: t.holdingTypeStock,
+  bond: t.holdingTypeBond,
+  other: t.holdingTypeOther,
+}
 
 type Kind = "buy" | "sell"
 
@@ -55,12 +73,25 @@ type Transaction = {
 export function Savings() {
   const [holdings, setHoldings] = useState<Holding[]>([])
   const [categories, setCategories] = useState<Category[]>([])
-  const [lists, setLists] = useState<Lists>({ payers: [], payment_methods: [] })
+  const [lists, setLists] = useState<Lists>({
+    payers: [],
+    payment_methods: [],
+    target_cents: 0,
+    goal_cents: 0,
+    savings_starting_balance_cents: 0,
+  })
   const [records, setRecords] = useState<Transaction[]>([])
   const [error, setError] = useState("")
 
   const [kind, setKind] = useState<Kind>("buy")
   const [draft, setDraft] = useState<Draft>(blankDraft)
+
+  // The computed total and the portfolio breakdown (ticket 07) — one report,
+  // read alongside everything else this page already loads.
+  const [savings, setSavings] = useState<SavingsReport | null>(null)
+  const [startingBalance, setStartingBalance] = useState("")
+  const [balanceError, setBalanceError] = useState("")
+  const [balanceMessage, setBalanceMessage] = useState("")
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
@@ -73,11 +104,14 @@ export function Savings() {
         apiJSON<Lists>("/api/settings"),
         apiJSON<Expense[]>("/api/expenses"),
         apiJSON<Income[]>("/api/incomes"),
+        apiJSON<SavingsReport>("/api/reports/savings"),
       ])
-        .then(([h, c, l, expenses, incomes]) => {
+        .then(([h, c, l, expenses, incomes, s]) => {
           setHoldings(h)
           setCategories(c)
           setLists(l)
+          setSavings(s)
+          setStartingBalance(toTyped(s.starting_balance_cents))
           setRecords(
             [
               ...expenses
@@ -159,9 +193,105 @@ export function Savings() {
     await load()
   }
 
+  // The starting balance rides the same /api/settings payload as Target and
+  // Goal (cmd/setting.go) — sending just this one field leaves payers,
+  // payment methods, Target and Goal exactly as they were read.
+  async function saveStartingBalance(event: React.FormEvent) {
+    event.preventDefault()
+    setBalanceError("")
+    setBalanceMessage("")
+    const cents = toCents(startingBalance)
+    if (cents === null) {
+      setBalanceError(t.invalidAmount)
+      return
+    }
+    try {
+      const saved = await apiJSON<Lists>("/api/settings", {
+        method: "PUT",
+        body: JSON.stringify({ savings_starting_balance_cents: cents }),
+      })
+      setLists(saved)
+      setStartingBalance(toTyped(saved.savings_starting_balance_cents))
+      setBalanceMessage(t.listsSaved)
+      await load()
+    } catch {
+      setBalanceError(t.startingBalanceNotSaved)
+    }
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-6 p-6">
       <h1 className="font-medium">{t.savings}</h1>
+
+      <div className="rounded-md border border-border p-4">
+        <p className="text-2xl font-medium tabular-nums">
+          € {formatCents(savings?.savings_cents ?? 0)}
+        </p>
+      </div>
+
+      <form
+        onSubmit={saveStartingBalance}
+        className="flex flex-col gap-1.5 text-sm"
+      >
+        {t.startingBalance}
+        <div className="flex gap-2">
+          <Input
+            inputMode="decimal"
+            value={startingBalance}
+            onChange={(e) => setStartingBalance(e.target.value)}
+            className="h-9"
+          />
+          <Button type="submit" variant="outline">
+            {t.save}
+          </Button>
+        </div>
+        <span className="text-xs text-muted-foreground">
+          {t.startingBalanceHint}
+        </span>
+        {balanceError && (
+          <p role="alert" className="text-sm text-destructive">
+            {balanceError}
+          </p>
+        )}
+        {balanceMessage && (
+          <p role="status" className="text-sm text-muted-foreground">
+            {balanceMessage}
+          </p>
+        )}
+      </form>
+
+      <div className="flex flex-col gap-2">
+        <h2 className="text-sm font-medium">{t.portfolio}</h2>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t.holding}</TableHead>
+              <TableHead>{t.holdingType}</TableHead>
+              <TableHead className="text-right">{t.amount}</TableHead>
+              <TableHead className="text-right">%</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {(savings?.holdings ?? []).map((h) => (
+              <TableRow key={h.holding_id}>
+                <TableCell>{h.name}</TableCell>
+                <TableCell>{typeLabels[h.type]}</TableCell>
+                <TableCell className="text-right tabular-nums">
+                  € {formatCents(h.net_cents)}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {h.percent.toFixed(1)}%
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        {(savings?.holdings ?? []).length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            {t.noHoldingsInPortfolio}
+          </p>
+        )}
+      </div>
 
       <form onSubmit={submit} className="flex flex-col gap-3">
         <div className="flex gap-2">

@@ -88,6 +88,9 @@ export type Lists = {
   payment_methods: string[]
   target_cents: number
   goal_cents: number
+  // Savings' one-time starting balance (ticket 07), for pre-app savings —
+  // rides the same payload as Target and Goal.
+  savings_starting_balance_cents: number
 }
 
 // Budget (computed), Target and Goal (household-set) — cmd/budget.go's
@@ -192,6 +195,30 @@ export type CategoryTotal = {
   category_id: number
   category: string
   amount_cents: number
+}
+
+// One Holding's share of the portfolio (ticket 07): what was put in net of
+// what was taken out, as a percentage of the total across every other
+// Holding still standing. A Holding fully sold off nets to zero and is
+// simply not one of these rows, never shown at 0% (CONTEXT.md).
+export type HoldingBreakdown = {
+  holding_id: number
+  name: string
+  type: HoldingType
+  net_cents: number
+  percent: number
+}
+
+// The Savings page's one request (ticket 07) — cmd/savings.go's
+// GET /api/reports/savings: the computed, ledger-free Savings figure
+// (cumulative received Income minus Expense, excluding Investments, plus
+// the one-time starting balance this already folds in), that starting
+// balance on its own so the page can show and edit it separately, and the
+// portfolio breakdown.
+export type SavingsReport = {
+  savings_cents: number
+  starting_balance_cents: number
+  holdings: HoldingBreakdown[]
 }
 
 // A CategoryTotal with the day it belongs to — the shape both trend charts
