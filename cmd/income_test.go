@@ -23,6 +23,9 @@ type incomeJSON struct {
 
 	// Ticket 03: the Holding a sell Income is for, nil on every other Income.
 	HoldingID *int64 `json:"holding_id"`
+
+	// Ticket 05: the Contract this Income counts toward, nil for "Extra".
+	ContractID *int64 `json:"contract_id"`
 }
 
 // incomePath addresses one Income the way the API does.

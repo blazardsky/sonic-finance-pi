@@ -13,15 +13,22 @@ import {
 } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/lib/api"
-import { formatCents, formatDate, toCents, toTyped } from "@/lib/money"
+import {
+  formatCents,
+  formatDate,
+  formatMonth,
+  toCents,
+  toTyped,
+} from "@/lib/money"
 import { nameOf, pickableCategories, withSaved } from "@/lib/pickers"
 import { t } from "@/lib/strings"
-import type { Category, Client, Income, Lists } from "@/types"
+import type { Category, Client, Contract, Income, Lists } from "@/types"
 
 // What the form holds: the amount as it was typed, and everything else as the
 // API's own field names, so submitting is one spread rather than a mapping.
 // "" is the unchosen picker for both references — a Client is optional, so ""
-// is a real answer there and travels as null.
+// is a real answer there and travels as null, and so is a Contract (ticket
+// 05): unlinked ("Extra") is a real, common answer, never guessed.
 // holding_id is left out of the draft entirely: this form never shows a
 // Holding picker (ticket 03's Buy/Sell form on the Savings page does), and
 // omitting the key from the submitted body — rather than sending null — is
@@ -29,11 +36,17 @@ import type { Category, Client, Income, Lists } from "@/types"
 // some other reason, e.g. recording its payment date.
 type Draft = Omit<
   Income,
-  "id" | "amount_cents" | "category_id" | "client_id" | "holding_id"
+  | "id"
+  | "amount_cents"
+  | "category_id"
+  | "client_id"
+  | "holding_id"
+  | "contract_id"
 > & {
   amount: string
   category_id: number | ""
   client_id: number | ""
+  contract_id: number | ""
 }
 
 // Neither date is defaulted. An invoice sent today and a gift that arrived
@@ -44,6 +57,7 @@ const blankDraft = (): Draft => ({
   amount: "",
   category_id: "",
   client_id: "",
+  contract_id: "",
   payer: "",
   payment_date: "",
   invoice_sent_date: "",
@@ -57,6 +71,7 @@ const draftOf = (income: Income): Draft => ({
   amount: toTyped(income.amount_cents),
   category_id: income.category_id,
   client_id: income.client_id ?? "",
+  contract_id: income.contract_id ?? "",
   payer: income.payer,
   payment_date: income.payment_date,
   invoice_sent_date: income.invoice_sent_date,
@@ -77,8 +92,31 @@ export function Incomes() {
   const [draft, setDraft] = useState<Draft>(blankDraft)
   const [editing, setEditing] = useState<number | null>(null)
 
+  // The picked Client's own Contracts, scoped by re-fetching whenever
+  // client_id changes — never all Clients' Contracts at once, since only one
+  // Client's are ever relevant to the form open at a time.
+  const [clientContracts, setClientContracts] = useState<Contract[]>([])
+
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
+
+  useEffect(() => {
+    if (draft.client_id === "") {
+      setClientContracts([])
+      return
+    }
+    let cancelled = false
+    apiJSON<Contract[]>(`/api/clients/${draft.client_id}/contracts`)
+      .then((cs) => {
+        if (!cancelled) setClientContracts(cs)
+      })
+      .catch(() => {
+        if (!cancelled) setClientContracts([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [draft.client_id])
 
   // Tapping (or, from the keyboard, activating) a row is how an entry gets
   // corrected — shared by the row's click and its Enter/Space handling below,
@@ -135,6 +173,7 @@ export function Incomes() {
           amount: undefined,
           amount_cents: cents,
           client_id: draft.client_id === "" ? null : draft.client_id,
+          contract_id: draft.contract_id === "" ? null : draft.contract_id,
         }),
       })
     } catch {
@@ -245,6 +284,10 @@ export function Incomes() {
                 const clientId =
                   e.target.value === "" ? "" : Number(e.target.value)
                 set("client_id", clientId)
+                // A different Client means a different Contract picker, and
+                // the one just picked would otherwise dangle: unlinked is the
+                // only safe carry-over, never a guess at the new Client's own.
+                set("contract_id", "")
                 // A one-time prefill, not a lock (ticket 04): picking a
                 // Client with a default Income Category loads it into the
                 // reason picker, which stays freely editable from here.
@@ -265,6 +308,32 @@ export function Incomes() {
             </NativeSelect>
           </label>
         </div>
+
+        {/* Only shown once a Client with at least one Contract is picked:
+            "Extra" (unlinked) is always the default, never guessed, so a
+            Client with no Contracts has nothing to offer here at all. */}
+        {clientContracts.length > 0 && (
+          <label className="flex flex-col gap-1.5 text-sm">
+            {t.contract}
+            <NativeSelect
+              value={draft.contract_id}
+              onChange={(e) =>
+                set(
+                  "contract_id",
+                  e.target.value === "" ? "" : Number(e.target.value)
+                )
+              }
+              className="h-10"
+            >
+              <option value="">{t.extraIncome}</option>
+              {clientContracts.map((ct) => (
+                <option key={ct.id} value={ct.id}>
+                  {formatMonth(ct.start_month)} – {formatMonth(ct.end_month)}
+                </option>
+              ))}
+            </NativeSelect>
+          </label>
+        )}
 
         {/* The two dates, side by side, because the whole point of this screen
             is that they are different questions: when the invoice went out,
@@ -393,7 +462,7 @@ export function Incomes() {
                   .filter(Boolean)
                   .join(" · ")}
               </TableCell>
-              <TableCell className="whitespace-normal text-xs text-muted-foreground">
+              <TableCell className="text-xs whitespace-normal text-muted-foreground">
                 {[income.payer, income.note].filter(Boolean).join(" · ")}
               </TableCell>
               <TableCell className="whitespace-normal">

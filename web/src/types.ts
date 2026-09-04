@@ -112,6 +112,39 @@ export type Income = {
   // The Holding this Income sold, or null on every Income that is not a sell
   // — meaningful only under the Investments base category (ticket 03).
   holding_id: number | null
+  // The Contract this Income counts toward, or null for "Extra" — real
+  // income from this Client, just outside any agreed total (ticket 05).
+  contract_id: number | null
+}
+
+// A total the household expects from a Client over a date range (ticket 05).
+// A Client can have more than one over time; two of a Client's Contracts
+// never overlap in range (checked at write time). Everything past
+// total_cents is computed at read time from the range and whatever Incomes
+// ended up linked to it via Income.contract_id, and none of it is stored
+// (ADR-0012) — reading the same Contract twice in the same month always
+// answers with the same numbers, but reading it next month will not.
+export type Contract = {
+  id: number
+  client_id: number
+  start_month: string
+  end_month: string
+  total_cents: number
+  // A straight-line share of time elapsed, capped at total_cents once
+  // end_month has passed.
+  expected_so_far_cents: number
+  // Paid Incomes linked to this Contract (payment_date set, ADR-0003).
+  received_cents: number
+  // Every Income linked to this Contract regardless of payment status —
+  // an invoice already sent counts here even before it is paid, so it is
+  // never suggested for invoicing twice.
+  accounted_cents: number
+  // (total_cents − accounted_cents) ÷ months remaining, recomputed on every
+  // read (ADR-0012) — this is not a stored schedule. Once end_month has
+  // passed this is the whole remaining shortfall instead, and overdue is
+  // true.
+  invoice_target_this_month_cents: number
+  overdue: boolean
 }
 
 // Where a calendar month stands: what came in, what went out, and the

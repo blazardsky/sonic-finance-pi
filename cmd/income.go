@@ -47,6 +47,14 @@ type income struct {
 	// outside Investments. A pointer, like ClientID, because "no Holding" is a
 	// real answer for every non-Investments Income.
 	HoldingID *int64 `json:"holding_id"`
+
+	// The Contract this Income counts toward, and nil for "Extra" — real
+	// income from this Client, just outside any agreed total (ticket 05). A
+	// pointer for the same reason ClientID is one: unlinked is a real, common
+	// answer, not an omission. checkIncome refuses a Contract that does not
+	// belong to ClientID, so linking across Clients is not a state a write can
+	// reach even though nothing at the database layer forbids it.
+	ContractID *int64 `json:"contract_id"`
 }
 
 // migrateIncomes is schema step 6. client_id is a plain reference: not
@@ -127,10 +135,10 @@ func handleCreateIncome(db *sql.DB, now func() time.Time) http.HandlerFunc {
 		}
 
 		res, err := db.Exec(`INSERT INTO income
-			(amount_cents, category_id, client_id, payer, payment_date, invoice_sent_date, note, holding_id, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			(amount_cents, category_id, client_id, payer, payment_date, invoice_sent_date, note, holding_id, contract_id, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			in.AmountCents, in.CategoryID, in.ClientID, in.Payer,
-			nullDate(in.PaymentDate), nullDate(in.InvoiceSentDate), in.Note, in.HoldingID,
+			nullDate(in.PaymentDate), nullDate(in.InvoiceSentDate), in.Note, in.HoldingID, in.ContractID,
 			now().Format(time.RFC3339))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
@@ -169,9 +177,9 @@ func handlePatchIncome(db *sql.DB) http.HandlerFunc {
 		}
 
 		if _, err := db.Exec(`UPDATE income SET amount_cents = ?, category_id = ?, client_id = ?,
-			payer = ?, payment_date = ?, invoice_sent_date = ?, note = ?, holding_id = ? WHERE id = ?`,
+			payer = ?, payment_date = ?, invoice_sent_date = ?, note = ?, holding_id = ?, contract_id = ? WHERE id = ?`,
 			in.AmountCents, in.CategoryID, in.ClientID, in.Payer,
-			nullDate(in.PaymentDate), nullDate(in.InvoiceSentDate), in.Note, in.HoldingID, in.ID); err != nil {
+			nullDate(in.PaymentDate), nullDate(in.InvoiceSentDate), in.Note, in.HoldingID, in.ContractID, in.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -219,12 +227,12 @@ func findIncome(w http.ResponseWriter, db *sql.DB, rawID string) (income, bool) 
 // it. The two nullable dates are flattened to ” on the way out, because that
 // is the shape the API publishes and the shape a PATCH merges onto.
 const incomeSelect = `SELECT id, amount_cents, category_id, client_id, payer,
-	COALESCE(payment_date, ''), COALESCE(invoice_sent_date, ''), note, holding_id FROM income`
+	COALESCE(payment_date, ''), COALESCE(invoice_sent_date, ''), note, holding_id, contract_id FROM income`
 
 func scanIncome(row interface{ Scan(...any) error }) (income, error) {
 	var in income
 	err := row.Scan(&in.ID, &in.AmountCents, &in.CategoryID, &in.ClientID, &in.Payer,
-		&in.PaymentDate, &in.InvoiceSentDate, &in.Note, &in.HoldingID)
+		&in.PaymentDate, &in.InvoiceSentDate, &in.Note, &in.HoldingID, &in.ContractID)
 	return in, err
 }
 
@@ -309,6 +317,24 @@ func checkIncome(w http.ResponseWriter, db *sql.DB, in *income) bool {
 			return false
 		case !ok:
 			writeInvalid(w, errors.New("that client does not exist"))
+			return false
+		}
+	}
+	// Linking is always an explicit choice, never a guess (spec, Out of
+	// Scope), but it is not a free one: a Contract belongs to one Client, and
+	// an Income linked to a Contract from some other Client would make that
+	// Contract's received/accounted figures count money that was never its
+	// own. Unlinked stays the default an omitted contract_id gives for free.
+	if in.ContractID != nil {
+		switch clientID, ok, err := contractClientID(db, *in.ContractID); {
+		case err != nil:
+			writeError(w, http.StatusInternalServerError, err)
+			return false
+		case !ok:
+			writeInvalid(w, errors.New("that contract does not exist"))
+			return false
+		case in.ClientID == nil || *in.ClientID != clientID:
+			writeInvalid(w, errors.New("a contract can only be linked to an income from its own client"))
 			return false
 		}
 	}

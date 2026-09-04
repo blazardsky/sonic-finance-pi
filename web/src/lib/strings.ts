@@ -247,6 +247,25 @@ export const t = {
   defaultCategory: "Categoria predefinita",
   totalEarned: "Totale incassato",
 
+  // Contracts — an agreed total from a Client over a date range (ticket 05).
+  // startMonth/endMonth/save/notSet above are reused as-is, same concept.
+  contracts: "Contratti",
+  addContract: "Aggiungi contratto",
+  noContractsYet: "Nessun contratto per questo cliente.",
+  contractTotal: "Totale contratto",
+  contractNotSaved:
+    "Contratto non salvato: controlla le date o sovrappone un altro contratto di questo cliente.",
+  expectedSoFar: "Dovuto finora",
+  contractReceived: "Incassato",
+  invoiceTarget: "Da fatturare questo mese",
+  contractOverdue: "scaduto",
+  // The Income form's Contract picker, scoped to the selected Client's own
+  // Contracts. Unlinked is the default and stays a real, common choice — an
+  // Income from a Client with a Contract is not automatically that
+  // Contract's money (spec, Out of Scope: no auto-guessing).
+  contract: "Contratto",
+  extraIncome: "Extra (nessun contratto)",
+
   // Holdings — the fixed list of stocks/ETFs/crypto/bonds the household
   // invests in (ticket 03 is what records buying and selling one)
   holdings: "Investimenti",
