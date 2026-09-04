@@ -32,6 +32,7 @@ import { addDays, categoriesIn, dailyBuckets } from "@/lib/trend"
 import type {
   Category,
   DailyCategoryTotal,
+  EstimateReport,
   MonthRow,
   Pending,
   RecentEntry,
@@ -78,12 +79,6 @@ const daysUntil = (date: string) => {
   return Math.round(ms / 86_400_000)
 }
 
-// ponytail: the two progress bars' targets, fixed at the figure the ticket
-// asked for rather than a household setting. Wire these up to a real yearly
-// target (Settings, presumably) if the household ever wants to change them.
-const ESTIMATE_INCOME_CENTS = 50_000 * 100
-const ESTIMATE_EXPENSE_CENTS = 50_000 * 100
-
 // The home screen: the year's three totals against a target, what is coming
 // due, what was just typed in either direction, and whether the freelance
 // side of things looks handled this month. Every number here is either a
@@ -96,6 +91,7 @@ export function Dashboard() {
   const [categories, setCategories] = useState<Category[]>([])
   const [year, setYear] = useState<YearTotals | null>(null)
   const [tax, setTax] = useState<TaxSummary | null>(null)
+  const [estimate, setEstimate] = useState<EstimateReport | null>(null)
   const [pending, setPending] = useState<Pending | null>(null)
   const [daily, setDaily] = useState<DailyCategoryTotal[]>([])
   const [error, setError] = useState("")
@@ -108,15 +104,17 @@ export function Dashboard() {
         apiJSON<Category[]>("/api/categories"),
         apiJSON<YearTotals>(`/api/reports/year/${thisYear()}`),
         apiJSON<TaxSummary>(`/api/reports/tax/${thisYear()}`),
+        apiJSON<EstimateReport>(`/api/reports/estimate/${thisYear()}`),
         apiJSON<Pending>("/api/pending-payments"),
         apiJSON<DailyCategoryTotal[]>("/api/reports/daily"),
       ])
-        .then(([r, rec, cat, y, s, p, d]) => {
+        .then(([r, rec, cat, y, s, e, p, d]) => {
           setRecent(r)
           setRecurring(rec)
           setCategories(cat)
           setYear(y)
           setTax(s)
+          setEstimate(e)
           setPending(p)
           setDaily(d)
         })
@@ -154,14 +152,14 @@ export function Dashboard() {
             icon={RiWallet3Line}
             label={t.yearIncome}
             cents={year.income_cents}
-            estimateCents={ESTIMATE_INCOME_CENTS}
+            estimateCents={estimate?.income_estimate_cents ?? undefined}
             footnote={t.ofWhichExtra(formatCents(year.extra_income_cents || 0))}
           />
           <TotalsCard
             icon={RiShoppingBag3Line}
             label={t.yearExpenses}
             cents={year.expense_cents}
-            estimateCents={ESTIMATE_EXPENSE_CENTS}
+            estimateCents={estimate?.expense_estimate_cents ?? undefined}
             footnote={
               tax ? t.ofWhichTax(formatCents(tax.tax_paid_cents)) : undefined
             }
@@ -212,10 +210,16 @@ export function Dashboard() {
 }
 
 // One of the three headline cards: the actual figure, big. Income and
-// expenses also draw a bar against a fixed target; the difference does
-// not — it is not an estimate — and draws the running leftover instead.
-// Income names the non-work slice; expenses name the tax paid against
-// this year (ADR-0008: by tax year, not payment date).
+// expenses also draw a bar against estimateCents — cmd/estimate.go's
+// projected year-end figure, not a fixed target — labeled "stimati" in the
+// caption underneath so it never reads as a second actual total (ADR-0010:
+// this is the app's only projected, non-cash-basis number). estimateCents is
+// undefined rather than 0 when that projection has no prior year to be built
+// from, and the bar simply does not render — no Estimate beats a fabricated
+// one. The difference does not draw a bar at all — it is not an estimate —
+// and draws the running leftover instead. Income names the non-work slice;
+// expenses name the tax paid against this year (ADR-0008: by tax year, not
+// payment date).
 function TotalsCard({
   icon: Icon,
   label,

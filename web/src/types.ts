@@ -238,6 +238,26 @@ export type TaxSummary = {
   net_percent: number | null
 }
 
+// The Dashboard's one projected figure (ADR-0010: the app's first and only
+// non-cash-basis number) — cmd/estimate.go's GET /api/reports/estimate/{year}.
+// Each *_estimate_cents is last year's full-year total scaled by how this
+// year's pace so far (whole completed months) compares to last year's at the
+// same point, excluding Investments on the income/expense side (ADR-0009);
+// tax is attributed by Tax year (ADR-0008) instead.
+//
+// Null rather than 0 when its own ratio is undefined — last year had no
+// YTD-at-the-same-point to compare against — the same convention
+// TaxSummary.net_percent already uses, so the Dashboard skips that one bar
+// rather than draw it against a fabricated number. available is false only
+// when every metric is: there is no prior year to project any of them from.
+export type EstimateReport = {
+  year: string
+  available: boolean
+  income_estimate_cents: number | null
+  expense_estimate_cents: number | null
+  tax_estimate_cents: number | null
+}
+
 // One thing the household typed, in either direction, as the home screen's
 // list reads it. Not month-scoped and ordered by when it was typed rather than
 // by the date on it: the list exists to confirm an entry landed, including one
