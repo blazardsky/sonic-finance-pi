@@ -93,9 +93,11 @@ export function YearlyReport() {
         </p>
       )}
 
-      {full && (
+      {full && totals && (
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Figure label={t.expenseExcludingTax} cents={full.expense_excluding_tax_cents} />
+          {/* Calendar-year tax (occurred_on): the amount the neighbouring figure left out, not ADR-0008's tax-year attribution. */}
+          <Figure label={t.taxes} cents={totals.expense_cents - full.expense_excluding_tax_cents} />
           <Figure
             label={t.savingsAtStartOfYear(year)}
             cents={full.savings_at_start_cents}

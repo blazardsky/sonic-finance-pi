@@ -211,6 +211,7 @@ export const t = {
   runningTotal: "Progressivo",
   total: "Totale",
   expenseExcludingTax: "Spese, esclusa Tasse",
+  taxes: "Tasse",
   savingsAtStartOfYear: (year: string) => `Risparmi a inizio ${year}`,
   financesPath: "Andamento dell'anno",
   medianExpense: "Spesa mediana",
