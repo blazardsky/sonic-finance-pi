@@ -65,6 +65,11 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 	mux.HandleFunc("GET /api/reports/recent", handleRecentEntries(db))
 	mux.HandleFunc("GET /api/pending-payments", handlePendingPayments(db, now))
 
+	mux.HandleFunc("GET /api/reminders", handleListReminders(db, now))
+	mux.HandleFunc("POST /api/reminders", handleCreateReminder(db))
+	mux.HandleFunc("PATCH /api/reminders/{id}", handlePatchReminder(db, now))
+	mux.HandleFunc("DELETE /api/reminders/{id}", handleDeleteReminder(db))
+
 	mux.HandleFunc("GET "+settingsPath, handleGetLists(db))
 	mux.HandleFunc("PUT "+settingsPath, handlePutLists(db))
 	mux.HandleFunc("POST "+settingsPath+"/password", handleChangePassword(db, now))

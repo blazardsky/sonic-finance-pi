@@ -11,6 +11,7 @@ import { Area, AreaChart } from "recharts"
 import { running } from "@/pages/RecurringExpenses"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -18,10 +19,12 @@ import {
   ChartContainer,
   ChartTooltip,
 } from "@/components/ui/chart"
+import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import { CategoryTrendChart } from "@/components/CategoryTrendChart"
 import { SpoilerAmount } from "@/components/SpoilerAmount"
 import { Progress } from "@/components/ui/progress"
-import { apiJSON } from "@/lib/api"
+import { api, apiJSON } from "@/lib/api"
 import { formatCents, formatDate, thisMonth, thisYear, today } from "@/lib/money"
 import { nameOf } from "@/lib/pickers"
 import { t } from "@/lib/strings"
@@ -33,6 +36,7 @@ import type {
   Pending,
   RecentEntry,
   Recurring,
+  Reminder,
   TaxSummary,
   YearTotals,
 } from "@/types"
@@ -182,6 +186,7 @@ export function Dashboard() {
         <div className="flex flex-col gap-4">
           <UpcomingCard upcoming={upcoming} categories={categories} />
           {pending && <ClientsCard pending={pending} />}
+          <RemindersCard />
         </div>
 
         {/* The two recent lists stacked in the two columns Prossime scadenze
@@ -469,6 +474,115 @@ function ClientAlert({
             ))}
       </AlertDescription>
     </Alert>
+  )
+}
+
+// A household-managed list of on/off toggles for a manual action the app
+// doesn't automate (ticket 06) — created, toggled and deleted right here.
+// Nothing else in the app references a Reminder, so there is no separate
+// management screen behind this card, and enabled already comes back
+// collapsed from the server: this component never compares months itself.
+function RemindersCard() {
+  const [reminders, setReminders] = useState<Reminder[]>([])
+  const [label, setLabel] = useState("")
+  const [error, setError] = useState("")
+
+  const load = useCallback(
+    () =>
+      apiJSON<Reminder[]>("/api/reminders")
+        .then(setReminders)
+        .catch(() => setError(t.serverUnreachable)),
+    []
+  )
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  async function write(path: string, init: RequestInit) {
+    setError("")
+    try {
+      await api(path, init)
+      await load()
+    } catch {
+      setError(t.reminderNotSaved)
+    }
+  }
+
+  async function add(event: React.FormEvent) {
+    event.preventDefault()
+    if (!label.trim()) return
+    await write("/api/reminders", {
+      method: "POST",
+      body: JSON.stringify({ label }),
+    })
+    setLabel("")
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t.reminders}</CardTitle>
+      </CardHeader>
+      <CardContent
+        elevated={reminders.length === 0}
+        className="flex flex-col gap-3"
+      >
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
+        {reminders.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t.noRemindersYet}</p>
+        ) : (
+          <ul className="flex flex-col divide-y divide-border">
+            {reminders.map((r) => (
+              <li
+                key={r.id}
+                className="flex items-center justify-between gap-3 py-2"
+              >
+                <label className="flex min-w-0 flex-1 items-center gap-2">
+                  <Switch
+                    checked={r.enabled}
+                    onCheckedChange={(checked) =>
+                      void write(`/api/reminders/${r.id}`, {
+                        method: "PATCH",
+                        body: JSON.stringify({ enabled: checked }),
+                      })
+                    }
+                  />
+                  <span className="truncate text-sm">{r.label}</span>
+                </label>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => {
+                    if (confirm(t.confirmDeleteReminder(r.label)))
+                      void write(`/api/reminders/${r.id}`, {
+                        method: "DELETE",
+                      })
+                  }}
+                >
+                  {t.delete}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <form onSubmit={(event) => void add(event)} className="flex gap-2">
+          <Input
+            value={label}
+            onChange={(event) => setLabel(event.target.value)}
+            placeholder={t.reminderLabel}
+          />
+          <Button type="submit" size="sm">
+            {t.addReminder}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   )
 }
 

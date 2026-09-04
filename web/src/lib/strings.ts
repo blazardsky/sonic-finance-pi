@@ -323,6 +323,17 @@ export const t = {
   wrongCurrentPassword: "Password attuale errata.",
   passwordTooShort: "La password deve avere almeno 8 caratteri.",
 
+  // Reminders — labeled on/off toggles for a manual action the app doesn't
+  // automate (ticket 06). CONTEXT.md is explicit these are not alerts,
+  // notifications or tasks: a Reminder never fires anything on its own.
+  reminders: "Promemoria",
+  addReminder: "Aggiungi promemoria",
+  reminderLabel: "Es. Bonifico affitto",
+  noRemindersYet: "Nessun promemoria.",
+  reminderNotSaved: "Promemoria non salvato. Riprova.",
+  confirmDeleteReminder: (label: string) =>
+    `Eliminare il promemoria "${label}"?`,
+
   // Backup — a button, then the copying is yours. The spreadsheet had no
   // way out; a .db and two CSVs are the way out of this app.
   backupAndExport: "Backup ed esportazione",

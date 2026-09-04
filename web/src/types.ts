@@ -272,6 +272,16 @@ export type Recurring = {
   end_month: string
 }
 
+// A labeled on/off toggle for a manual action the app doesn't automate — a
+// bank transfer, a payment made by hand (ticket 06). set_for_month never
+// crosses the API: enabled already comes back collapsed to false once the
+// server's clock has moved past the month it was last turned on for.
+export type Reminder = {
+  id: number
+  label: string
+  enabled: boolean
+}
+
 // The two lists a freelancer used to get from reading a spreadsheet: money
 // genuinely owed, and invoices that look forgotten. Both are views over
 // Incomes and never records of their own — the word is "pending payment",
