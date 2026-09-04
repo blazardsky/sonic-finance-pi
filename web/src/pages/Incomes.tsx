@@ -3,6 +3,14 @@ import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/native-select"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/lib/api"
 import { formatCents, formatDate, toCents, toTyped } from "@/lib/money"
@@ -66,6 +74,15 @@ export function Incomes() {
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
+
+  // Tapping (or, from the keyboard, activating) a row is how an entry gets
+  // corrected — shared by the row's click and its Enter/Space handling below,
+  // which is the table's replacement for the list's own <button>.
+  const selectIncome = (income: Income) => {
+    setEditing(income.id)
+    setDraft(draftOf(income))
+    scrollTo({ top: 0, behavior: "smooth" })
+  }
 
   const load = useCallback(
     () =>
@@ -329,59 +346,72 @@ export function Incomes() {
         </p>
       )}
 
-      <ul className="flex flex-col divide-y divide-border">
-        {incomes?.map((income) => (
-          <li key={income.id}>
-            <button
-              type="button"
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t.incomeReason}</TableHead>
+            <TableHead>{t.details}</TableHead>
+            <TableHead>{t.date}</TableHead>
+            <TableHead className="text-right">{t.amount}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {incomes?.map((income) => (
+            <TableRow
+              key={income.id}
+              role="button"
+              tabIndex={0}
               aria-label={t.editIncome}
-              onClick={() => {
-                setEditing(income.id)
-                setDraft(draftOf(income))
-                scrollTo({ top: 0, behavior: "smooth" })
+              onClick={() => selectIncome(income)}
+              onKeyDown={(ev) => {
+                if (ev.target !== ev.currentTarget) return
+                if (ev.key !== "Enter" && ev.key !== " ") return
+                ev.preventDefault()
+                selectIncome(income)
               }}
-              className={`flex w-full flex-col gap-0.5 py-2.5 text-left ${
+              className={`cursor-pointer ${
                 editing === income.id ? "opacity-50" : ""
               }`}
             >
-              <span className="flex items-baseline justify-between gap-2">
-                <span className="truncate">
-                  {[
-                    nameOf(categories, income.category_id),
-                    nameOf(clients, income.client_id),
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </span>
-                <span className="flex items-baseline gap-3">
+              <TableCell className="truncate">
+                {[
+                  nameOf(categories, income.category_id),
+                  nameOf(clients, income.client_id),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </TableCell>
+              <TableCell className="whitespace-normal text-xs text-muted-foreground">
+                {[income.payer, income.note].filter(Boolean).join(" · ")}
+              </TableCell>
+              <TableCell className="whitespace-normal">
+                <div className="flex flex-col gap-0.5">
                   <span className="text-xs text-muted-foreground">
                     {income.payment_date ? formatDate(income.payment_date) : ""}
                   </span>
-                  <span className="font-medium tabular-nums">
-                    € {formatCents(income.amount_cents)}
-                  </span>
-                </span>
-              </span>
-              {/* An unpaid Income says so, because that is the one thing the
-                  amount does not tell you: this money has not arrived and
-                  counts toward nothing. Ticket 14 turns these into a list of
-                  their own; here they only have to be recognisable. */}
-              {!income.payment_date && (
-                <span className="text-xs text-destructive">
-                  {t.notPaidYet}
-                  {income.invoice_sent_date &&
-                    ` · ${t.waitingSince(formatDate(income.invoice_sent_date))}`}
-                </span>
-              )}
-              {[income.payer, income.note].filter(Boolean).length > 0 && (
-                <span className="truncate text-xs text-muted-foreground">
-                  {[income.payer, income.note].filter(Boolean).join(" · ")}
-                </span>
-              )}
-            </button>
-          </li>
-        ))}
-      </ul>
+                  {/* An unpaid Income says so, because that is the one thing
+                      the amount does not tell you: this money has not
+                      arrived and counts toward nothing. Ticket 14 turns
+                      these into a list of their own; here they only have to
+                      be recognisable. */}
+                  {!income.payment_date && (
+                    <span className="text-xs text-destructive">
+                      {t.notPaidYet}
+                      {income.invoice_sent_date &&
+                        ` · ${t.waitingSince(
+                          formatDate(income.invoice_sent_date)
+                        )}`}
+                    </span>
+                  )}
+                </div>
+              </TableCell>
+              <TableCell className="text-right font-medium tabular-nums">
+                € {formatCents(income.amount_cents)}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
       {incomes?.length === 0 && (
         <p className="text-sm text-muted-foreground">{t.noIncomesYet}</p>
       )}

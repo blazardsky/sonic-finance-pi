@@ -3,6 +3,14 @@ import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/native-select"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/lib/api"
 import {
@@ -96,6 +104,15 @@ export function RecurringExpenses() {
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
+
+  // Tapping (or, from the keyboard, activating) a row is how a definition
+  // gets corrected — shared by the row's click and its Enter/Space handling
+  // below, which is the table's replacement for the list's own <button>.
+  const selectRecurring = (r: Recurring) => {
+    setEditing(r.id)
+    setDraft(draftOf(r))
+    scrollTo({ top: 0, behavior: "smooth" })
+  }
 
   const load = useCallback(
     () =>
@@ -394,74 +411,105 @@ export function RecurringExpenses() {
         <p className="text-sm text-muted-foreground">{t.noRecurringYet}</p>
       )}
 
-      <ul className="flex flex-col divide-y divide-border">
-        {recurring?.map((r) => (
-          <li key={r.id} className="flex flex-col gap-1.5 py-2.5">
-            <button
-              type="button"
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t.category}</TableHead>
+            <TableHead>{t.details}</TableHead>
+            <TableHead className="text-right">{t.amount}</TableHead>
+            <TableHead>{t.actions}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {recurring?.map((r) => (
+            <TableRow
+              key={r.id}
+              role="button"
+              tabIndex={0}
               aria-label={t.editRecurring}
-              onClick={() => {
-                setEditing(r.id)
-                setDraft(draftOf(r))
-                scrollTo({ top: 0, behavior: "smooth" })
+              onClick={() => selectRecurring(r)}
+              onKeyDown={(ev) => {
+                if (ev.target !== ev.currentTarget) return
+                if (ev.key !== "Enter" && ev.key !== " ") return
+                ev.preventDefault()
+                selectRecurring(r)
               }}
-              className={`flex w-full flex-col gap-0.5 text-left ${
+              className={`cursor-pointer ${
                 editing === r.id ? "opacity-50" : ""
               }`}
             >
-              <span className="flex items-baseline justify-between gap-2">
-                <span className={running(r) ? "" : "text-muted-foreground"}>
-                  {nameOf(categories, r.category_id)}
-                </span>
-                <span className="font-medium tabular-nums">
-                  € {formatCents(r.amount_cents)}
-                </span>
-              </span>
-              {/* Whether it is still running, said in words rather than by a
-                  colour alone, next to the window it is read from. */}
-              <span className="text-xs text-muted-foreground">
-                {r.day_of_month} · {windowOf(r)} ·{" "}
-                {running(r) ? t.ongoing : t.endedIn(formatMonth(r.end_month))}
-              </span>
-              {details(r) && (
-                <span className="truncate text-xs text-muted-foreground">
-                  {details(r)}
-                </span>
-              )}
-            </button>
-            <div className="flex gap-1">
-              {running(r) && (
-                <>
-                  <Button size="xs" variant="ghost" onClick={() => void end(r)}>
-                    {t.end}
-                  </Button>
+              <TableCell
+                className={running(r) ? "" : "text-muted-foreground"}
+              >
+                {nameOf(categories, r.category_id)}
+              </TableCell>
+              <TableCell className="whitespace-normal">
+                <div className="flex flex-col gap-0.5">
+                  {/* Whether it is still running, said in words rather than
+                      by a colour alone, next to the window it is read
+                      from. */}
+                  <span className="text-xs text-muted-foreground">
+                    {r.day_of_month} · {windowOf(r)} ·{" "}
+                    {running(r)
+                      ? t.ongoing
+                      : t.endedIn(formatMonth(r.end_month))}
+                  </span>
+                  {details(r) && (
+                    <span className="truncate text-xs text-muted-foreground">
+                      {details(r)}
+                    </span>
+                  )}
+                </div>
+              </TableCell>
+              <TableCell className="text-right font-medium tabular-nums">
+                € {formatCents(r.amount_cents)}
+              </TableCell>
+              {/* Stopped here, at both the click and the key that would
+                  otherwise bubble up to the row's own edit-select — these
+                  buttons are a second action on the row, not a way into it. */}
+              <TableCell
+                onClick={(ev) => ev.stopPropagation()}
+                onKeyDown={(ev) => ev.stopPropagation()}
+              >
+                <div className="flex gap-1">
+                  {running(r) && (
+                    <>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        onClick={() => void end(r)}
+                      >
+                        {t.end}
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        onClick={() => void replace(r)}
+                      >
+                        {t.newAmount}
+                      </Button>
+                    </>
+                  )}
                   <Button
                     size="xs"
-                    variant="ghost"
-                    onClick={() => void replace(r)}
+                    variant="destructive"
+                    onClick={() => {
+                      if (confirm(t.confirmDeleteRecurring))
+                        void write(
+                          `/api/recurring/${r.id}`,
+                          { method: "DELETE" },
+                          t.recurringInUse
+                        )
+                    }}
                   >
-                    {t.newAmount}
+                    {t.delete}
                   </Button>
-                </>
-              )}
-              <Button
-                size="xs"
-                variant="destructive"
-                onClick={() => {
-                  if (confirm(t.confirmDeleteRecurring))
-                    void write(
-                      `/api/recurring/${r.id}`,
-                      { method: "DELETE" },
-                      t.recurringInUse
-                    )
-                }}
-              >
-                {t.delete}
-              </Button>
-            </div>
-          </li>
-        ))}
-      </ul>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </div>
   )
 }

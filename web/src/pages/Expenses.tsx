@@ -3,6 +3,14 @@ import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/native-select"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/lib/api"
 import { formatCents, formatDate, toCents, today, toTyped } from "@/lib/money"
@@ -88,6 +96,15 @@ export function Expenses() {
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
+
+  // Tapping (or, from the keyboard, activating) a row is how an entry gets
+  // corrected — shared by the row's click and its Enter/Space handling below,
+  // which is the table's replacement for the list's own <button>.
+  const selectExpense = (e: Expense) => {
+    setEditing(e.id)
+    setDraft(draftOf(e))
+    scrollTo({ top: 0, behavior: "smooth" })
+  }
 
   const load = useCallback(
     () =>
@@ -524,60 +541,73 @@ export function Expenses() {
         </p>
       )}
 
-      <ul className="flex flex-col divide-y divide-border">
-        {expenses?.map((e) => (
-          <li key={e.id}>
-            <button
-              type="button"
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t.category}</TableHead>
+            <TableHead>{t.details}</TableHead>
+            <TableHead>{t.date}</TableHead>
+            <TableHead className="text-right">{t.amount}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {expenses?.map((e) => (
+            <TableRow
+              key={e.id}
+              role="button"
+              tabIndex={0}
               aria-label={t.editExpense}
-              onClick={() => {
-                setEditing(e.id)
-                setDraft(draftOf(e))
-                scrollTo({ top: 0, behavior: "smooth" })
+              onClick={() => selectExpense(e)}
+              onKeyDown={(ev) => {
+                // Only the row itself, not a bubbled key from something
+                // inside it — this row has nothing else focusable, but the
+                // guard is what keeps this honest as rows change shape.
+                if (ev.target !== ev.currentTarget) return
+                if (ev.key !== "Enter" && ev.key !== " ") return
+                ev.preventDefault()
+                selectExpense(e)
               }}
-              className={`flex w-full flex-col gap-0.5 py-2.5 text-left ${
-                editing === e.id ? "opacity-50" : ""
-              }`}
+              className={`cursor-pointer ${editing === e.id ? "opacity-50" : ""}`}
             >
-              <span className="flex items-baseline justify-between gap-2">
-                <span>{nameOf(categories, e.category_id)}</span>
-                <span className="flex items-baseline gap-3">
-                  <span className="text-xs text-muted-foreground">
-                    {formatDate(e.occurred_on)}
-                  </span>
-                  <span className="font-medium tabular-nums">
-                    € {formatCents(e.amount_cents)}
-                  </span>
-                </span>
-              </span>
-              {/* Whichever details were filled in, on one quiet line: it is
-                  what the household reads the list for. */}
-              {details(e) && (
-                <span className="truncate text-xs text-muted-foreground">
-                  {details(e)}
-                </span>
-              )}
-              {/* Each Item on its own line, indented under the Expense it was
-                  broken out of: the point of an Item is that this part of the
-                  €62 shop counts as something else, so the row has to say so
-                  and name the Category it went to. */}
-              {e.items.map((it, i) => (
-                <span
-                  key={i}
-                  className="flex items-baseline justify-between gap-2 pl-3 text-xs text-muted-foreground"
-                >
-                  <span className="truncate">
-                    ↳ {it.name} · {nameOf(categories, it.category_id)}
-                  </span>
-                  <span className="tabular-nums">
-                    € {formatCents(it.amount_cents)}
-                  </span>
-                </span>
-              ))}
-            </button>
-          </li>
-        ))}
-      </ul>
+              <TableCell>{nameOf(categories, e.category_id)}</TableCell>
+              <TableCell className="whitespace-normal">
+                <div className="flex flex-col gap-0.5">
+                  {/* Whichever details were filled in, on one quiet line: it
+                      is what the household reads the list for. */}
+                  {details(e) && (
+                    <span className="truncate text-xs text-muted-foreground">
+                      {details(e)}
+                    </span>
+                  )}
+                  {/* Each Item on its own line, indented under the Expense it
+                      was broken out of: the point of an Item is that this
+                      part of the €62 shop counts as something else, so the
+                      row has to say so and name the Category it went to. */}
+                  {e.items.map((it, i) => (
+                    <span
+                      key={i}
+                      className="flex items-baseline justify-between gap-2 pl-3 text-xs text-muted-foreground"
+                    >
+                      <span className="truncate">
+                        ↳ {it.name} · {nameOf(categories, it.category_id)}
+                      </span>
+                      <span className="tabular-nums">
+                        € {formatCents(it.amount_cents)}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              </TableCell>
+              <TableCell className="text-xs text-muted-foreground">
+                {formatDate(e.occurred_on)}
+              </TableCell>
+              <TableCell className="text-right font-medium tabular-nums">
+                € {formatCents(e.amount_cents)}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
       {expenses?.length === 0 && (
         <p className="text-sm text-muted-foreground">{t.noExpensesYet}</p>
       )}

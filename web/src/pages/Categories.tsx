@@ -3,6 +3,14 @@ import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/native-select"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { api } from "@/lib/api"
 import { t } from "@/lib/strings"
 import type { Applies, Category } from "@/types"
@@ -119,73 +127,85 @@ export function Categories() {
         </p>
       )}
 
-      <ul className="flex flex-col divide-y divide-border">
-        {categories?.map((c) => (
-          <li key={c.id} className="flex flex-col gap-1.5 py-2.5">
-            {editing === c.id ? (
-              <Input
-                autoFocus
-                defaultValue={c.name}
-                className="h-9"
-                onBlur={(e) => void rename(c, e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") e.currentTarget.blur()
-                  if (e.key === "Escape") setEditing(null)
-                }}
-              />
-            ) : (
-              <div className="flex items-baseline justify-between gap-2">
-                <span className={c.hidden ? "text-muted-foreground" : ""}>
-                  {c.name}
-                  {c.hidden && ` · ${t.hidden}`}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {appliesLabels[c.applies_to]}
-                </span>
-              </div>
-            )}
-            <div className="flex gap-1">
-              {/* The server refuses these two on a Base category; disabling
-                  them here is so the household is not offered the refusal. */}
-              <Button
-                size="xs"
-                variant="ghost"
-                disabled={c.base}
-                onClick={() => setEditing(c.id)}
-              >
-                {t.rename}
-              </Button>
-              <Button
-                size="xs"
-                variant="ghost"
-                onClick={() =>
-                  void write(`/api/categories/${c.id}`, {
-                    method: "PATCH",
-                    body: JSON.stringify({ hidden: !c.hidden }),
-                  })
-                }
-              >
-                {c.hidden ? t.unhide : t.hide}
-              </Button>
-              <Button
-                size="xs"
-                variant="destructive"
-                disabled={c.base}
-                onClick={() => {
-                  if (confirm(t.confirmDeleteCategory(c.name)))
-                    void write(
-                      `/api/categories/${c.id}`,
-                      { method: "DELETE" },
-                      t.categoryInUse
-                    )
-                }}
-              >
-                {t.delete}
-              </Button>
-            </div>
-          </li>
-        ))}
-      </ul>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t.categoryName}</TableHead>
+            <TableHead>{t.appliesTo}</TableHead>
+            <TableHead>{t.actions}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {categories?.map((c) => (
+            <TableRow key={c.id}>
+              <TableCell className="whitespace-normal">
+                {editing === c.id ? (
+                  <Input
+                    autoFocus
+                    defaultValue={c.name}
+                    className="h-9"
+                    onBlur={(e) => void rename(c, e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.currentTarget.blur()
+                      if (e.key === "Escape") setEditing(null)
+                    }}
+                  />
+                ) : (
+                  <span className={c.hidden ? "text-muted-foreground" : ""}>
+                    {c.name}
+                    {c.hidden && ` · ${t.hidden}`}
+                  </span>
+                )}
+              </TableCell>
+              <TableCell className="text-xs text-muted-foreground">
+                {appliesLabels[c.applies_to]}
+              </TableCell>
+              <TableCell>
+                <div className="flex gap-1">
+                  {/* The server refuses these two on a Base category;
+                      disabling them here is so the household is not offered
+                      the refusal. */}
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    disabled={c.base}
+                    onClick={() => setEditing(c.id)}
+                  >
+                    {t.rename}
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() =>
+                      void write(`/api/categories/${c.id}`, {
+                        method: "PATCH",
+                        body: JSON.stringify({ hidden: !c.hidden }),
+                      })
+                    }
+                  >
+                    {c.hidden ? t.unhide : t.hide}
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="destructive"
+                    disabled={c.base}
+                    onClick={() => {
+                      if (confirm(t.confirmDeleteCategory(c.name)))
+                        void write(
+                          `/api/categories/${c.id}`,
+                          { method: "DELETE" },
+                          t.categoryInUse
+                        )
+                    }}
+                  >
+                    {t.delete}
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </div>
   )
 }

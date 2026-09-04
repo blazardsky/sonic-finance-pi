@@ -15,6 +15,12 @@ export const t = {
   clockUnset:
     "L'orologio del server non è ancora sincronizzato: le spese ricorrenti non vengono generate. Riprova tra qualche minuto.",
 
+  // Table swap — column headers shared across the record-management screens
+  // (Expenses, Incomes, Categories, Clients, Recurring). Everything else a
+  // column shows already has its own string above/below, screen by screen.
+  details: "Dettagli",
+  actions: "Azioni",
+
   // Login
   password: "Password",
   logIn: "Accedi",

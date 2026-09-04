@@ -2,6 +2,14 @@ import { useCallback, useEffect, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { api } from "@/lib/api"
 import { t } from "@/lib/strings"
 import type { Client } from "@/types"
@@ -101,64 +109,76 @@ export function Clients() {
         <p className="text-sm text-muted-foreground">{t.noClientsYet}</p>
       )}
 
-      <ul className="flex flex-col divide-y divide-border">
-        {clients?.map((c) => (
-          <li key={c.id} className="flex flex-col gap-1.5 py-2.5">
-            {editing === c.id ? (
-              <Input
-                autoFocus
-                defaultValue={c.name}
-                className="h-9"
-                onBlur={(e) => void rename(c, e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") e.currentTarget.blur()
-                  if (e.key === "Escape") setEditing(null)
-                }}
-              />
-            ) : (
-              <span className={c.hidden ? "text-muted-foreground" : ""}>
-                {c.name}
-                {c.hidden && ` · ${t.hiddenClient}`}
-              </span>
-            )}
-            <div className="flex gap-1">
-              <Button
-                size="xs"
-                variant="ghost"
-                onClick={() => setEditing(c.id)}
-              >
-                {t.rename}
-              </Button>
-              <Button
-                size="xs"
-                variant="ghost"
-                onClick={() =>
-                  void write(`/api/clients/${c.id}`, {
-                    method: "PATCH",
-                    body: JSON.stringify({ hidden: !c.hidden }),
-                  })
-                }
-              >
-                {c.hidden ? t.unhide : t.hide}
-              </Button>
-              <Button
-                size="xs"
-                variant="destructive"
-                onClick={() => {
-                  if (confirm(t.confirmDeleteClient(c.name)))
-                    void write(
-                      `/api/clients/${c.id}`,
-                      { method: "DELETE" },
-                      t.clientInUse
-                    )
-                }}
-              >
-                {t.delete}
-              </Button>
-            </div>
-          </li>
-        ))}
-      </ul>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t.clientName}</TableHead>
+            <TableHead>{t.actions}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {clients?.map((c) => (
+            <TableRow key={c.id}>
+              <TableCell className="whitespace-normal">
+                {editing === c.id ? (
+                  <Input
+                    autoFocus
+                    defaultValue={c.name}
+                    className="h-9"
+                    onBlur={(e) => void rename(c, e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.currentTarget.blur()
+                      if (e.key === "Escape") setEditing(null)
+                    }}
+                  />
+                ) : (
+                  <span className={c.hidden ? "text-muted-foreground" : ""}>
+                    {c.name}
+                    {c.hidden && ` · ${t.hiddenClient}`}
+                  </span>
+                )}
+              </TableCell>
+              <TableCell>
+                <div className="flex gap-1">
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => setEditing(c.id)}
+                  >
+                    {t.rename}
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() =>
+                      void write(`/api/clients/${c.id}`, {
+                        method: "PATCH",
+                        body: JSON.stringify({ hidden: !c.hidden }),
+                      })
+                    }
+                  >
+                    {c.hidden ? t.unhide : t.hide}
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="destructive"
+                    onClick={() => {
+                      if (confirm(t.confirmDeleteClient(c.name)))
+                        void write(
+                          `/api/clients/${c.id}`,
+                          { method: "DELETE" },
+                          t.clientInUse
+                        )
+                    }}
+                  >
+                    {t.delete}
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </div>
   )
 }
