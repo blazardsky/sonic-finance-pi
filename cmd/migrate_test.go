@@ -114,6 +114,64 @@ func TestInvestmentsMigrationAddsHoldingTableAndColumns(t *testing.T) {
 	}
 }
 
+// Schema step 10: client.default_category_id, the new contract table,
+// income.contract_id, and the new reminder table. The Gift promotion itself
+// is covered by categories_test.go's TestRegaliIsPromotedInPlaceNotDuplicated
+// — this test is the raw-SQL check for the shapes that have no HTTP surface
+// yet (tickets 04-06 are what add one).
+func TestGiftContractsRemindersMigrationAddsTablesAndColumns(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "contracts.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	res, err := db.Exec(`INSERT INTO client (name) VALUES ('Acme')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var categoryID int64
+	if err := db.QueryRow(`SELECT id FROM category WHERE code = ?`, codeGift).Scan(&categoryID); err != nil {
+		t.Fatalf("no category with code = gift: %v", err)
+	}
+
+	if _, err := db.Exec(`UPDATE client SET default_category_id = ? WHERE id = ?`, categoryID, clientID); err != nil {
+		t.Errorf("client.default_category_id missing or wrong shape: %v", err)
+	}
+
+	res, err = db.Exec(`INSERT INTO contract (client_id, start_month, end_month, total_cents)
+		VALUES (?, '2026-01', '2026-12', 120000)`, clientID)
+	if err != nil {
+		t.Fatalf("contract table missing or wrong shape: %v", err)
+	}
+	contractID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.Exec(`INSERT INTO income (amount_cents, category_id, contract_id, created_at)
+		VALUES (10000, ?, ?, '2026-03-15T00:00:00Z')`, categoryID, contractID); err != nil {
+		t.Errorf("income.contract_id missing or wrong shape: %v", err)
+	}
+
+	if _, err := db.Exec(`INSERT INTO reminder (label, enabled, set_for_month) VALUES ('Bonifico affitto', 1, '2026-03')`); err != nil {
+		t.Errorf("reminder table missing or wrong shape: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO reminder (label) VALUES ('Altro promemoria')`); err != nil {
+		t.Errorf("reminder table should allow a bare label with defaults: %v", err)
+	}
+
+	if _, err := db.Exec(`INSERT INTO contract (client_id, start_month, end_month, total_cents)
+		VALUES (?, '2026-12', '2026-01', 120000)`, clientID); err == nil {
+		t.Error("a contract with end_month before start_month was accepted, want the CHECK constraint to refuse it")
+	}
+}
+
 // The README's SD-card longevity concern.
 func TestDatabaseOpensWithWALAndRelaxedSync(t *testing.T) {
 	db, err := openDB(filepath.Join(t.TempDir(), "pragmas.db"))

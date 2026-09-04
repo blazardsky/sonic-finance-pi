@@ -6,11 +6,15 @@
 
 **Status:** ready-for-agent
 
-- [ ] `schemaVersion` bumps from 10 to 11 in one migration step.
-- [ ] The existing `Regali` category is promoted in place — `applies_to = 'both'`, new protected `code = 'gift'` — no new category row inserted.
-- [ ] `client.default_category_id` (nullable, references `category`) is added.
-- [ ] A new `contract` table is added: `client_id` (required), `start_month`, `end_month` (both `YYYY-MM`), `total_cents`.
-- [ ] `income.contract_id` (nullable, references `contract`) is added.
-- [ ] A new `reminder` table is added: `label`, `enabled`, `set_for_month` (nullable `YYYY-MM`).
-- [ ] A freshly migrated database has exactly one category with `code = 'gift'` — never a second, separately-named `Regali` row.
-- [ ] Backend tests cover the migration via the existing `testApp` pattern.
+- [x] `schemaVersion` bumps from 10 to 11 in one migration step.
+- [x] The existing `Regali` category is promoted in place — `applies_to = 'both'`, new protected `code = 'gift'` — no new category row inserted.
+- [x] `client.default_category_id` (nullable, references `category`) is added.
+- [x] A new `contract` table is added: `client_id` (required), `start_month`, `end_month` (both `YYYY-MM`), `total_cents`.
+- [x] `income.contract_id` (nullable, references `contract`) is added.
+- [x] A new `reminder` table is added: `label`, `enabled`, `set_for_month` (nullable `YYYY-MM`).
+- [x] A freshly migrated database has exactly one category with `code = 'gift'` — never a second, separately-named `Regali` row.
+- [x] Backend tests cover the migration via the existing `testApp` pattern.
+
+## Comments
+
+Implemented as `case 10:` → `migrateGiftContractsReminders` in `cmd/contract.go`, modeled directly on `migrateInvestments`; promotion covered by `TestRegaliIsPromotedInPlaceNotDuplicated` (testApp seam) and the new tables/columns by `TestGiftContractsRemindersMigrationAddsTablesAndColumns` (raw-SQL seam, matching `migrate_test.go`'s established exception for schema-only steps).

@@ -17,18 +17,20 @@ const (
 	appliesBoth    = "both"
 )
 
-// The stable codes of the three Base categories. A non-null code is what marks
+// The stable codes of the four Base categories. A non-null code is what marks
 // a Category as one the code resolves by identity — the yearly tax summary
-// reads Freelance and Taxes, Budget/Target/Estimate exclude Investments — and
-// therefore one that rename and delete refuse. Nothing else is protected: a
-// seeded Category nothing resolves is the household's to edit. See ADR-0008.
+// reads Freelance and Taxes, Budget/Target/Estimate exclude Investments, the
+// spoiler blur resolves Gift — and therefore one that rename and delete
+// refuse. Nothing else is protected: a seeded Category nothing resolves is
+// the household's to edit. See ADR-0008.
 const (
 	codeFreelance   = "freelance"
 	codeTaxes       = "taxes"
 	codeInvestments = "investments"
+	codeGift        = "gift"
 )
 
-// The names the three Base categories are seeded with. They are ordinary
+// The names the four Base categories are seeded with. They are ordinary
 // names after that — the household can hide any one, and the report still
 // finds it by code — but the tests need something to address them by.
 const (
@@ -36,6 +38,7 @@ const (
 	seedTaxesName       = "Tasse"
 	seedStipendioName   = "Stipendio"
 	seedInvestmentiName = "Investimenti" // promoted to codeInvestments by migrateInvestments
+	seedRegaliName      = "Regali"       // promoted to codeGift by migrateGiftContractsReminders
 )
 
 // seedCategories is what a fresh database starts with, so that first use is
@@ -54,7 +57,7 @@ var seedCategories = []category{
 
 	{Name: seedFreelanceName, AppliesTo: appliesIncome, code: codeFreelance},
 	{Name: seedStipendioName, AppliesTo: appliesIncome},
-	{Name: "Regali", AppliesTo: appliesIncome},
+	{Name: seedRegaliName, AppliesTo: appliesIncome},
 	{Name: "Rimborsi", AppliesTo: appliesIncome},
 	{Name: seedInvestmentiName, AppliesTo: appliesIncome},
 

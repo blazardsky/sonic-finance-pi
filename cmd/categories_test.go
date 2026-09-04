@@ -71,7 +71,7 @@ func TestSeededConvenienceCategoriesAreNotProtected(t *testing.T) {
 
 	var protected []string
 	for _, c := range a.categories(t) {
-		if c.Base && c.Name != seedFreelanceName && c.Name != seedTaxesName && c.Name != seedInvestmentiName {
+		if c.Base && c.Name != seedFreelanceName && c.Name != seedTaxesName && c.Name != seedInvestmentiName && c.Name != seedRegaliName {
 			protected = append(protected, c.Name)
 		}
 	}
@@ -110,6 +110,39 @@ func TestInvestimentiIsPromotedInPlaceNotDuplicated(t *testing.T) {
 	}
 	if coded != 1 {
 		t.Errorf("%d protected Categories named %q, want exactly 1", coded, seedInvestmentiName)
+	}
+}
+
+// The dormant "Regali" category is promoted in place, not replaced: a fresh
+// database has exactly one row with code = gift, it is the same row that was
+// seeded named Regali, and applies_to now admits both an Expense and an
+// Income (schema-foundation ticket's spec).
+func TestRegaliIsPromotedInPlaceNotDuplicated(t *testing.T) {
+	a := newTestApp(t)
+
+	gift := a.category(t, seedRegaliName)
+	if !gift.Base {
+		t.Errorf("%s.base = false, want true — it is now a protected Base category", seedRegaliName)
+	}
+	if gift.AppliesTo != appliesBoth {
+		t.Errorf("%s.applies_to = %q, want %q", seedRegaliName, gift.AppliesTo, appliesBoth)
+	}
+
+	var named, coded int
+	for _, c := range a.categories(t) {
+		if c.Name == seedRegaliName {
+			named++
+		}
+		if c.Base && c.Name == seedRegaliName {
+			coded++
+		}
+	}
+	if named != 1 {
+		t.Errorf("%d Categories named %q, want exactly 1 — the promotion must not insert a second row",
+			named, seedRegaliName)
+	}
+	if coded != 1 {
+		t.Errorf("%d protected Categories named %q, want exactly 1", coded, seedRegaliName)
 	}
 }
 
