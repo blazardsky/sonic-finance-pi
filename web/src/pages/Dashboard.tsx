@@ -10,6 +10,7 @@ import { Area, AreaChart } from "recharts"
 
 import { running } from "@/pages/RecurringExpenses"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Calendar } from "@/components/ui/calendar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -25,7 +26,6 @@ import { t } from "@/lib/strings"
 import type {
   Category,
   MonthRow,
-  MonthTotals,
   Pending,
   RecentEntry,
   Recurring,
@@ -82,7 +82,6 @@ export function Dashboard() {
   const [categories, setCategories] = useState<Category[]>([])
   const [year, setYear] = useState<YearTotals | null>(null)
   const [tax, setTax] = useState<TaxSummary | null>(null)
-  const [month, setMonth] = useState<MonthTotals | null>(null)
   const [pending, setPending] = useState<Pending | null>(null)
   const [error, setError] = useState("")
 
@@ -94,16 +93,14 @@ export function Dashboard() {
         apiJSON<Category[]>("/api/categories"),
         apiJSON<YearTotals>(`/api/reports/year/${thisYear()}`),
         apiJSON<TaxSummary>(`/api/reports/tax/${thisYear()}`),
-        apiJSON<MonthTotals>(`/api/reports/month/${thisMonth()}`),
         apiJSON<Pending>("/api/pending-payments"),
       ])
-        .then(([r, rec, cat, y, s, m, p]) => {
+        .then(([r, rec, cat, y, s, p]) => {
           setRecent(r)
           setRecurring(rec)
           setCategories(cat)
           setYear(y)
           setTax(s)
-          setMonth(m)
           setPending(p)
         })
         .catch(() => setError(t.serverUnreachable)),
@@ -169,7 +166,7 @@ export function Dashboard() {
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
         <div className="flex flex-col gap-4">
           <UpcomingCard upcoming={upcoming} categories={categories} />
-          {month && pending && <ClientsCard month={month} pending={pending} />}
+          {pending && <ClientsCard pending={pending} />}
         </div>
 
         {/* The two recent lists stacked in the two columns Prossime scadenze
@@ -366,19 +363,14 @@ function UpcomingCard({
   )
 }
 
-// Whether anything has come in this month, and whether any regular Client
-// looks forgotten — the two questions pendingPayments already answers
-// (cmd/pending.go), condensed to a basic alert rather than the full lists
-// Month.tsx shows.
-function ClientsCard({
-  month,
-  pending,
-}: {
-  month: MonthTotals
-  pending: Pending
-}) {
-  const paid = month.income_cents > 0
-  const invoicesOK = pending.not_yet_invoiced.length === 0
+// Unpaid invoiced Incomes (any month), and habitual Clients with nothing
+// billed this month — the two lists pendingPayments already computes
+// (cmd/pending.go), as names rather than the full rows Month.tsx shows.
+function ClientsCard({ pending }: { pending: Pending }) {
+  const waiting = pending.outstanding.filter(
+    (o) => o.client !== "" && o.invoice_sent_date !== ""
+  )
+  const unbilled = pending.not_yet_invoiced
 
   return (
     <Card className="@container">
@@ -386,32 +378,55 @@ function ClientsCard({
         <CardTitle>{t.clientsThisMonth}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 @[28rem]:flex-row @[28rem]:items-start">
-        <Alert
-          variant={paid ? "default" : "destructive"}
-          className="@[28rem]:min-w-0 @[28rem]:flex-1"
-        >
-          {paid ? <RiCheckboxCircleLine /> : <RiErrorWarningLine />}
-          <AlertTitle>{t.clientsPaidTitle}</AlertTitle>
-          <AlertDescription>
-            {paid
-              ? t.clientsPaid(formatCents(month.income_cents))
-              : t.clientsNotPaid}
-          </AlertDescription>
-        </Alert>
-        <Alert
-          variant={invoicesOK ? "default" : "destructive"}
-          className="@[28rem]:min-w-0 @[28rem]:flex-1"
-        >
-          {invoicesOK ? <RiCheckboxCircleLine /> : <RiErrorWarningLine />}
-          <AlertTitle>{t.invoicesSentTitle}</AlertTitle>
-          <AlertDescription>
-            {invoicesOK
-              ? t.invoicesAllSent
-              : t.invoicesMissing(pending.not_yet_invoiced.length)}
-          </AlertDescription>
-        </Alert>
+        <ClientAlert
+          title={t.pendingPayments}
+          okText={t.noPendingClients}
+          clients={waiting.map((o) => ({
+            key: o.id,
+            name: o.client,
+            date: formatDate(o.invoice_sent_date),
+          }))}
+        />
+        <ClientAlert
+          title={t.invoicesSentTitle}
+          okText={t.invoicesAllSent}
+          clients={unbilled.map((c) => ({ key: c.client_id, name: c.client }))}
+        />
       </CardContent>
     </Card>
+  )
+}
+
+function ClientAlert({
+  title,
+  okText,
+  clients,
+}: {
+  title: string
+  okText: string
+  clients: { key: string | number; name: string; date?: string }[]
+}) {
+  const ok = clients.length === 0
+  return (
+    <Alert
+      variant={ok ? "default" : "destructive"}
+      className="@[28rem]:min-w-0 @[28rem]:flex-1"
+    >
+      {ok ? <RiCheckboxCircleLine /> : <RiErrorWarningLine />}
+      <AlertTitle>{title}</AlertTitle>
+      <AlertDescription className={ok ? undefined : "flex flex-wrap gap-1"}>
+        {ok
+          ? okText
+          : clients.map((c) => (
+              <span key={c.key} className="inline-flex items-center gap-1">
+                <Badge variant="outline">{c.name}</Badge>
+                {c.date != null && (
+                  <span className="text-xs tabular-nums">{c.date}</span>
+                )}
+              </span>
+            ))}
+      </AlertDescription>
+    </Alert>
   )
 }
 

@@ -118,19 +118,13 @@ export const t = {
   dueIn: (days: number) =>
     days === 0 ? "oggi" : days === 1 ? "domani" : `tra ${days} giorni`,
 
-  // The two alerts: has anything come in this month, and does any regular
-  // Client look forgotten. Both read the same data pendingPayments already
-  // computes — see cmd/pending.go — just condensed to a yes/no.
+  // The two alerts: unpaid Incomes from named Clients, and regular Clients
+  // who look unbilled. Names as badges — the yes/no copy is only the empty
+  // state. See cmd/pending.go.
   clientsThisMonth: "Clienti questo mese",
-  clientsPaidTitle: "Incassi",
-  clientsPaid: (amount: string) => `Incassati € ${amount} questo mese.`,
-  clientsNotPaid: "Nessun incasso ancora questo mese.",
   invoicesSentTitle: "Fatture",
   invoicesAllSent: "Tutti i clienti abituali sono stati fatturati questo mese.",
-  invoicesMissing: (count: number) =>
-    count === 1
-      ? "1 cliente abituale non ancora fatturato questo mese."
-      : `${count} clienti abituali non ancora fatturati questo mese.`,
+  noPendingClients: "Nessun pagamento in attesa.",
 
   // Month — where the month stands
   month: "Mese",

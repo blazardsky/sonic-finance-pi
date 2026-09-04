@@ -218,6 +218,9 @@ export type OutstandingIncome = {
   category: string
   waiting_since: string
   days_waiting: number
+  // "" when no invoice was sent — waiting_since then falls back to the day
+  // the Income was typed. The Dashboard's "in attesa" list skips those.
+  invoice_sent_date: string
 }
 
 // One Client billed in the previous three calendar months with no freelance

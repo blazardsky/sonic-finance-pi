@@ -43,6 +43,10 @@ type outstandingIncome struct {
 	Category     string `json:"category"`
 	WaitingSince string `json:"waiting_since"`
 	DaysWaiting  int    `json:"days_waiting"`
+	// Empty when no invoice was sent: waiting_since then falls back to the
+	// day the Income was typed. The Dashboard's "in attesa" list wants the
+	// real invoice date and skips the empty ones.
+	InvoiceSentDate string `json:"invoice_sent_date"`
 }
 
 // One Client the household has been billing and has not billed this month.
@@ -108,7 +112,7 @@ func handlePendingPayments(db *sql.DB, now func() time.Time) http.HandlerFunc {
 // same order — several invoices sent on one day are equally old.
 func readOutstanding(db *sql.DB, now func() time.Time) ([]outstandingIncome, error) {
 	rows, err := db.Query(`SELECT i.id, i.amount_cents, COALESCE(cl.name, ''), c.name,
-			` + billedOn("i") + ` AS waiting_since
+			`+billedOn("i")+` AS waiting_since, COALESCE(i.invoice_sent_date, '')
 		FROM income i
 		JOIN category c ON c.id = i.category_id
 		LEFT JOIN client cl ON cl.id = i.client_id
@@ -126,7 +130,7 @@ func readOutstanding(db *sql.DB, now func() time.Time) ([]outstandingIncome, err
 	out := []outstandingIncome{}
 	for rows.Next() {
 		var e outstandingIncome
-		if err := rows.Scan(&e.ID, &e.AmountCents, &e.Client, &e.Category, &e.WaitingSince); err != nil {
+		if err := rows.Scan(&e.ID, &e.AmountCents, &e.Client, &e.Category, &e.WaitingSince, &e.InvoiceSentDate); err != nil {
 			return nil, err
 		}
 		e.DaysWaiting = daysSince(today, e.WaitingSince)

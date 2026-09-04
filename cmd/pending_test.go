@@ -11,12 +11,13 @@ import (
 // and has not been. Neither is a record: both are views over Incomes.
 type pendingJSON struct {
 	Outstanding []struct {
-		ID           int64  `json:"id"`
-		AmountCents  int64  `json:"amount_cents"`
-		Client       string `json:"client"`
-		Category     string `json:"category"`
-		WaitingSince string `json:"waiting_since"`
-		DaysWaiting  int    `json:"days_waiting"`
+		ID              int64  `json:"id"`
+		AmountCents     int64  `json:"amount_cents"`
+		Client          string `json:"client"`
+		Category        string `json:"category"`
+		WaitingSince    string `json:"waiting_since"`
+		DaysWaiting     int    `json:"days_waiting"`
+		InvoiceSentDate string `json:"invoice_sent_date"`
 	} `json:"outstanding"`
 	NotYetInvoiced []struct {
 		ClientID int64  `json:"client_id"`
@@ -81,6 +82,9 @@ func TestUnpaidIncomesAreListedOldestFirstWithTheDaysTheyHaveWaited(t *testing.T
 			t.Errorf("entry %d: waiting since %s for %d days, want %s for %d",
 				i, e.WaitingSince, e.DaysWaiting, wantSince[i], wantDays[i])
 		}
+		if e.InvoiceSentDate != wantSince[i] {
+			t.Errorf("entry %d: invoice_sent_date = %q, want %s", i, e.InvoiceSentDate, wantSince[i])
+		}
 	}
 	if got[0].AmountCents != 120000 || got[0].Client != "Studio Rossi" || got[0].Category != seedFreelanceName {
 		t.Errorf("oldest = %+v, want €1200,00 from Studio Rossi under %s", got[0], seedFreelanceName)
@@ -124,6 +128,9 @@ func TestAnIncomeWithNoInvoiceDateWaitsFromTheDayItWasTyped(t *testing.T) {
 	if got[0].WaitingSince != "2026-03-15" || got[0].DaysWaiting != 0 {
 		t.Errorf("waiting since %s for %d days, want 2026-03-15 for 0",
 			got[0].WaitingSince, got[0].DaysWaiting)
+	}
+	if got[0].InvoiceSentDate != "" {
+		t.Errorf("invoice_sent_date = %q, want empty — no invoice was sent", got[0].InvoiceSentDate)
 	}
 }
 
