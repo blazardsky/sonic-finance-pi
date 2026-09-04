@@ -23,6 +23,11 @@ type recurringJSON struct {
 	DayOfMonth    int    `json:"day_of_month"`
 	StartMonth    string `json:"start_month"`
 	EndMonth      string `json:"end_month"`
+
+	// Ticket 06: the Holding a recurring investment buys, nil on every other
+	// Recurring expense — the template property materialise copies onto each
+	// generated Expense.
+	HoldingID *int64 `json:"holding_id"`
 }
 
 // recurringPath addresses one the way the API does.
@@ -692,4 +697,89 @@ func datesOf(expenses []expenseJSON) []string {
 		out = append(out, e.OccurredOn)
 	}
 	return out
+}
+
+// --- Recurring investments (ticket 06) --------------------------------------
+
+// The whole ticket in one test: a PAC is a Recurring expense under the
+// Investments category with a holding_id, and materialise copies it onto the
+// generated Expense the same way it already copies category_id and store.
+func TestMaterialiseCopiesTheHoldingIDIntoTheGeneratedExpense(t *testing.T) {
+	a := newTestApp(t)
+	investments := a.investments(t)
+	vwce := a.createHolding(t, "VWCE", holdingETF)
+
+	a.addRecurring(t, map[string]any{
+		"amount_cents": 20000, "category_id": investments.ID,
+		"payer": "Nicco", "day_of_month": 5, "start_month": "2026-03",
+		"holding_id": vwce.ID,
+	})
+
+	if got := a.expenses(t); len(got) != 0 {
+		t.Fatalf("listed %+v before any month was read, want none", got)
+	}
+	if got := a.month(t, "2026-03"); got.ExpenseCents != 20000 {
+		t.Errorf("expense_cents = %d, want 20000 — the month read did not generate the PAC", got.ExpenseCents)
+	}
+
+	got := a.expenses(t)
+	if len(got) != 1 {
+		t.Fatalf("listed %d Expenses, want the one generated", len(got))
+	}
+	if got[0].HoldingID == nil || *got[0].HoldingID != vwce.ID {
+		t.Errorf("generated Expense holding_id = %v, want %d", got[0].HoldingID, vwce.ID)
+	}
+}
+
+// A generated recurring investment purchase is indistinguishable from one
+// typed by hand (story 28): the same PATCH, DELETE and re-generation-after-
+// skip already tested for an ordinary rent above, with holding_id along for
+// the ride and never special-cased.
+func TestAGeneratedRecurringInvestmentExpenseIsEditedSkippedAndDeletedLikeAnyOther(t *testing.T) {
+	a := newTestApp(t)
+	investments := a.investments(t)
+	vwce := a.createHolding(t, "VWCE", holdingETF)
+
+	a.addRecurring(t, map[string]any{
+		"amount_cents": 20000, "category_id": investments.ID,
+		"payer": "Nicco", "day_of_month": 5, "start_month": "2026-01",
+		"holding_id": vwce.ID,
+	})
+	a.month(t, "2026-02")
+	generated := a.expenses(t)[0]
+	if generated.HoldingID == nil || *generated.HoldingID != vwce.ID {
+		t.Fatalf("generated Expense holding_id = %v, want %d", generated.HoldingID, vwce.ID)
+	}
+
+	// Edited like any other generated Expense: the correction sticks and
+	// holding_id survives an edit that says nothing about it.
+	var edited expenseJSON
+	res := a.patch(t, expensePath(generated.ID), map[string]any{
+		"occurred_on": "2026-02-07", "amount_cents": 21000,
+	}, &edited)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH of a generated recurring-investment Expense = %d, want 200", res.StatusCode)
+	}
+	if edited.HoldingID == nil || *edited.HoldingID != vwce.ID {
+		t.Errorf("holding_id after an unrelated edit = %v, want it still %d", edited.HoldingID, vwce.ID)
+	}
+
+	// Deleted like any other generated Expense: it writes the skip, so the
+	// month it was not paid in stays not paid.
+	if res := a.delete(t, expensePath(generated.ID)); res.StatusCode != http.StatusNoContent {
+		t.Fatalf("DELETE of a generated recurring-investment Expense = %d, want 204", res.StatusCode)
+	}
+	if got := a.month(t, "2026-02"); got.ExpenseCents != 0 {
+		t.Errorf("February's expense_cents = %d after the delete, want 0 — the skip did not stick", got.ExpenseCents)
+	}
+
+	// And the next month still generates, carrying the same holding_id, so the
+	// skip did not leak into it.
+	if got := a.month(t, "2026-03"); got.ExpenseCents != 20000 {
+		t.Errorf("March's expense_cents = %d, want 20000", got.ExpenseCents)
+	}
+	all := a.expenses(t)
+	if len(all) != 1 || all[0].HoldingID == nil || *all[0].HoldingID != vwce.ID {
+		t.Errorf("listed = %+v, want one Expense in March carrying holding_id %d", all, vwce.ID)
+	}
 }

@@ -23,13 +23,13 @@ import {
 } from "@/lib/money"
 import { nameOf, pickableCategories, withSaved } from "@/lib/pickers"
 import { t } from "@/lib/strings"
-import type { Category, Lists, Recurring } from "@/types"
+import type { Category, Holding, Lists, Recurring } from "@/types"
 
 // What the form holds: the amount and the day as they were typed, everything
 // else as the API's own field names, so submitting is one spread.
 type Draft = Omit<
   Recurring,
-  "id" | "amount_cents" | "category_id" | "day_of_month"
+  "id" | "amount_cents" | "category_id" | "day_of_month" | "holding_id"
 > & {
   amount: string
   // "" is the unchosen picker, which the required select refuses to submit.
@@ -37,6 +37,9 @@ type Draft = Omit<
   // A string so the field can be emptied while it is being retyped; "" means
   // "say nothing", which the server answers with the day it was created.
   day_of_month: string
+  // "" is the unchosen Holding, the same bargain category_id makes — shown
+  // only for a recurring investment (ticket 06).
+  holding_id: number | ""
 }
 
 const blankDraft = (): Draft => ({
@@ -51,6 +54,7 @@ const blankDraft = (): Draft => ({
   // in the field so it is visible and can be set back before saving.
   start_month: thisMonth(),
   end_month: "",
+  holding_id: "",
 })
 
 const draftOf = (r: Recurring): Draft => ({
@@ -63,6 +67,7 @@ const draftOf = (r: Recurring): Draft => ({
   day_of_month: String(r.day_of_month),
   start_month: r.start_month,
   end_month: r.end_month,
+  holding_id: r.holding_id ?? "",
 })
 
 // Still running is the window against the current month, not a stored flag —
@@ -96,6 +101,7 @@ const windowOf = (r: Recurring) =>
 export function RecurringExpenses() {
   const [recurring, setRecurring] = useState<Recurring[] | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
+  const [holdings, setHoldings] = useState<Holding[]>([])
   const [lists, setLists] = useState<Lists>({ payers: [], payment_methods: [] })
   const [error, setError] = useState("")
 
@@ -119,11 +125,13 @@ export function RecurringExpenses() {
       Promise.all([
         apiJSON<Recurring[]>("/api/recurring"),
         apiJSON<Category[]>("/api/categories"),
+        apiJSON<Holding[]>("/api/holdings"),
         apiJSON<Lists>("/api/settings"),
       ])
-        .then(([r, c, l]) => {
+        .then(([r, c, h, l]) => {
           setRecurring(r)
           setCategories(c)
+          setHoldings(h)
           setLists(l)
         })
         .catch(() => setError(t.serverUnreachable)),
@@ -197,6 +205,7 @@ export function RecurringExpenses() {
           amount: undefined,
           amount_cents: cents,
           day_of_month: day,
+          holding_id: draft.holding_id === "" ? null : draft.holding_id,
         }),
       }
     )
@@ -242,6 +251,15 @@ export function RecurringExpenses() {
     categories,
     "expense",
     categories.find((c) => c.id === draft.category_id)
+  )
+
+  // Whether the Holding picker belongs on screen: only for a recurring
+  // investment (PAC), the same way Expenses.tsx gates the Tax year field on
+  // isTaxExpense. Investments is the only Base category applying to both
+  // sides — Savings.tsx resolves it the same way, since `code` itself is not
+  // published.
+  const isInvestmentRecurring = categories.some(
+    (c) => c.id === draft.category_id && c.base && c.applies_to === "both"
   )
 
   return (
@@ -296,6 +314,39 @@ export function RecurringExpenses() {
           />
           <span className="text-xs text-muted-foreground">{t.dayClamped}</span>
         </label>
+
+        {/* Only for a recurring investment: which Holding it buys is a
+            template property, not a detail, so it sits outside the details
+            disclosure — the same placement Expenses.tsx gives Tax year. */}
+        {isInvestmentRecurring && (
+          <label className="flex flex-col gap-1.5 text-sm">
+            {t.holding}
+            <NativeSelect
+              value={draft.holding_id}
+              onChange={(e) =>
+                set(
+                  "holding_id",
+                  e.target.value === "" ? "" : Number(e.target.value)
+                )
+              }
+              required
+              className="h-10"
+              disabled={holdings.length === 0}
+            >
+              <option value="">{t.chooseHolding}</option>
+              {holdings.map((h) => (
+                <option key={h.id} value={h.id}>
+                  {h.name}
+                </option>
+              ))}
+            </NativeSelect>
+            {holdings.length === 0 && (
+              <span className="text-xs text-muted-foreground">
+                {t.noHoldingsToBuySell}
+              </span>
+            )}
+          </label>
+        )}
 
         {/* Native month inputs: the phone gives its own picker and the value
             is already the YYYY-MM the API wants. The end is left empty for

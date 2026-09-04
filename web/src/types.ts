@@ -305,6 +305,10 @@ export type Recurring = {
   day_of_month: number
   start_month: string
   end_month: string
+  // The Holding a recurring investment (PAC) buys, or null on every other
+  // Recurring expense — a genuine template property, unlike tax_year, so
+  // materialise copies it onto each generated Expense (ticket 06).
+  holding_id: number | null
 }
 
 // A labeled on/off toggle for a manual action the app doesn't automate — a

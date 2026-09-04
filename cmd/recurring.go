@@ -52,6 +52,14 @@ type recurringExpense struct {
 	// has exactly one spelling.
 	StartMonth string `json:"start_month"`
 	EndMonth   string `json:"end_month"`
+
+	// Ticket 06: the Holding a recurring investment (PAC) buys, nil on every
+	// other Recurring expense — the same relationship an Expense's HoldingID
+	// has to the Investments category, but here it is a genuine template
+	// property: materialise copies it onto every generated Expense, unlike
+	// TaxYear which is deliberately never copied. Not cross-validated against
+	// CategoryID server-side, same precedent as Expense/Income.
+	HoldingID *int64 `json:"holding_id"`
 }
 
 // migrateRecurring is schema step 7. It also adds the expense column ticket
@@ -166,10 +174,10 @@ func handleCreateRecurring(db *sql.DB, now func() time.Time) http.HandlerFunc {
 
 		res, err := db.Exec(`INSERT INTO recurring_expense
 			(amount_cents, category_id, store, payer, payment_method, note,
-			 day_of_month, start_month, end_month, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 day_of_month, start_month, end_month, holding_id, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			rec.AmountCents, rec.CategoryID, rec.Store, rec.Payer, rec.PaymentMethod,
-			rec.Note, rec.DayOfMonth, rec.StartMonth, nullDate(rec.EndMonth),
+			rec.Note, rec.DayOfMonth, rec.StartMonth, nullDate(rec.EndMonth), rec.HoldingID,
 			now().Format(time.RFC3339))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
@@ -219,9 +227,9 @@ func handlePatchRecurring(db *sql.DB) http.HandlerFunc {
 
 		if _, err := db.Exec(`UPDATE recurring_expense SET amount_cents = ?, category_id = ?,
 			store = ?, payer = ?, payment_method = ?, note = ?,
-			day_of_month = ?, start_month = ?, end_month = ? WHERE id = ?`,
+			day_of_month = ?, start_month = ?, end_month = ?, holding_id = ? WHERE id = ?`,
 			rec.AmountCents, rec.CategoryID, rec.Store, rec.Payer, rec.PaymentMethod,
-			rec.Note, rec.DayOfMonth, rec.StartMonth, nullDate(rec.EndMonth), rec.ID); err != nil {
+			rec.Note, rec.DayOfMonth, rec.StartMonth, nullDate(rec.EndMonth), rec.HoldingID, rec.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -273,13 +281,13 @@ func findRecurring(w http.ResponseWriter, db *sql.DB, rawID string) (recurringEx
 // is flattened to ” on the way out, because that is the shape the API
 // publishes and the shape a PATCH merges onto.
 const recurringSelect = `SELECT id, amount_cents, category_id, store, payer,
-	payment_method, note, day_of_month, start_month, COALESCE(end_month, '')
+	payment_method, note, day_of_month, start_month, COALESCE(end_month, ''), holding_id
 	FROM recurring_expense`
 
 func scanRecurring(row interface{ Scan(...any) error }) (recurringExpense, error) {
 	var rec recurringExpense
 	err := row.Scan(&rec.ID, &rec.AmountCents, &rec.CategoryID, &rec.Store, &rec.Payer,
-		&rec.PaymentMethod, &rec.Note, &rec.DayOfMonth, &rec.StartMonth, &rec.EndMonth)
+		&rec.PaymentMethod, &rec.Note, &rec.DayOfMonth, &rec.StartMonth, &rec.EndMonth, &rec.HoldingID)
 	return rec, err
 }
 
@@ -422,11 +430,16 @@ func materialise(db *sql.DB, now func() time.Time, month string) error {
 	// indistinguishable from a typed one — including recurring_id, which is
 	// not published over the API and exists only so this statement can tell
 	// what it already did, and so a delete knows which month to skip.
+	//
+	// holding_id is copied alongside them (ticket 06): which Holding a
+	// recurring investment buys is a genuine template property, unlike
+	// tax_year, which is a fact about the payment and is deliberately left
+	// NULL here.
 	_, err = db.Exec(`INSERT INTO expense
 		(occurred_on, amount_cents, category_id, store, payer, payment_method,
-		 note, recurring_id, created_at)
+		 note, recurring_id, holding_id, created_at)
 		SELECT printf('%s-%02d', ?, min(r.day_of_month, ?)), r.amount_cents, r.category_id,
-			r.store, r.payer, r.payment_method, r.note, r.id, ?
+			r.store, r.payer, r.payment_method, r.note, r.id, r.holding_id, ?
 		FROM recurring_expense r
 		WHERE r.start_month <= ? AND ? <= COALESCE(r.end_month, ?)
 		AND NOT EXISTS (SELECT 1 FROM expense e
