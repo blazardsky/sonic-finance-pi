@@ -41,7 +41,7 @@ type savingsReport struct {
 
 func handleSavingsReport(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		savingsCents, startingBalanceCents, err := computeSavingsCents(db)
+		savingsCents, startingBalanceCents, err := computeSavingsCents(db, "")
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -61,32 +61,50 @@ func handleSavingsReport(db *sql.DB) http.HandlerFunc {
 
 // computeSavingsCents is Savings itself (CONTEXT.md): cumulative received
 // Income minus Expense, excluding Investments, since the household started
-// using the app, plus the one-time starting balance. All-time and unscoped
-// by month — unlike readExpenseCentsExcludingInvestments/
+// using the app, plus the one-time starting balance. Unscoped by month —
+// unlike readExpenseCentsExcludingInvestments/
 // readIncomeCentsExcludingInvestments (cmd/reports.go, cmd/estimate.go),
 // which exist to answer "one month's normal spend" and would need folding
 // over every month back to the beginning of history — a plain direct query
-// is the more honest way to ask "all of it, ever" than looping those two.
+// is the more honest way to ask "all of it, up to some point" than looping
+// those two.
+//
+// cutoff is "" for the Savings page's own all-time read, or a YYYY-MM-DD date
+// to bound both sums by (occurred_on/payment_date <= cutoff) — the yearly
+// report's "Savings as it stood on December 31st of the prior year" (ticket
+// 07). One function with an optional bound rather than a near-duplicate: the
+// two reads are the same formula at different points in time, not two
+// different formulas, and the starting balance is added either way — it is a
+// fact about before the app existed, true at every cutoff after it.
 //
 // ponytail: no materialise call here, the same bargain handleRecentEntries
 // (cmd/reports.go) already makes for an all-time, non-month-scoped read — a
 // Recurring expense not yet generated for the month in progress is a gap
 // every other all-time view already has, not a new one this ticket
-// introduces. Upgrade (materialise every month up to now) if Savings is ever
-// the first screen a household opens in a new month.
-func computeSavingsCents(db *sql.DB) (savingsCents, startingBalanceCents int64, err error) {
+// introduces. The yearly report's cutoff caller materialises its own months
+// itself (handleFullYearReport, cmd/yearreport.go) before ever calling this.
+func computeSavingsCents(db *sql.DB, cutoff string) (savingsCents, startingBalanceCents int64, err error) {
 	var incomeCents, expenseCents int64
 	// The ADR-0003 filter: an Income only counts once it has a payment date.
-	if err = db.QueryRow(`SELECT COALESCE(SUM(i.amount_cents), 0) FROM income i
+	incomeQuery := `SELECT COALESCE(SUM(i.amount_cents), 0) FROM income i
 		JOIN category c ON c.id = i.category_id
-		WHERE i.payment_date IS NOT NULL AND IFNULL(c.code, '') != ?`,
-		codeInvestments).Scan(&incomeCents); err != nil {
+		WHERE i.payment_date IS NOT NULL AND IFNULL(c.code, '') != ?`
+	incomeArgs := []any{codeInvestments}
+	expenseQuery := `SELECT COALESCE(SUM(e.amount_cents), 0) FROM expense e
+		JOIN category c ON c.id = e.category_id
+		WHERE IFNULL(c.code, '') != ?`
+	expenseArgs := []any{codeInvestments}
+	if cutoff != "" {
+		incomeQuery += ` AND i.payment_date <= ?`
+		incomeArgs = append(incomeArgs, cutoff)
+		expenseQuery += ` AND e.occurred_on <= ?`
+		expenseArgs = append(expenseArgs, cutoff)
+	}
+
+	if err = db.QueryRow(incomeQuery, incomeArgs...).Scan(&incomeCents); err != nil {
 		return 0, 0, err
 	}
-	if err = db.QueryRow(`SELECT COALESCE(SUM(e.amount_cents), 0) FROM expense e
-		JOIN category c ON c.id = e.category_id
-		WHERE IFNULL(c.code, '') != ?`,
-		codeInvestments).Scan(&expenseCents); err != nil {
+	if err = db.QueryRow(expenseQuery, expenseArgs...).Scan(&expenseCents); err != nil {
 		return 0, 0, err
 	}
 	if startingBalanceCents, err = getSettingCents(db, savingsStartingBalanceCentsKey); err != nil {

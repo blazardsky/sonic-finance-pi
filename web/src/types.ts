@@ -248,6 +248,35 @@ export type YearTotals = {
   months: MonthRow[]
 }
 
+// One (month, category) line of the full yearly report's breakdown
+// (ticket 07) — categoryTotal (above) with the month it belongs to, from
+// GET /api/reports/year/{year}/full's single grouped query (ADR-0011).
+export type MonthCategoryTotal = {
+  month: string
+  category_id: number
+  category: string
+  amount_cents: number
+}
+
+// The full yearly report (ticket 07): everything Year.tsx's own
+// /api/reports/year/{year} does not already answer. The page reads both
+// endpoints together — this one for the Category grid and the figures below,
+// the other for the twelve MonthRows the cumulative chart is built from.
+export type FullYearReport = {
+  year: string
+  by_month: MonthCategoryTotal[]
+  // The year's Expense with Taxes left out — what was actually spent living.
+  expense_excluding_tax_cents: number
+  // Savings (SavingsReport.savings_cents' own formula) as it stood on
+  // December 31st of the prior year, not the Savings page's all-time figure.
+  savings_at_start_cents: number
+  // Scoped to this year's own completed months — distinct from Budget's
+  // trailing 12-month median (CONTEXT.md's Budget entry).
+  median_expense_cents: number
+  median_income_cents: number
+  median_net_cents: number
+}
+
 // The year in tax terms: the actual figures, as against the invoicing
 // software's forecasts. received_cents is freelance Income only and counts
 // received money alone (ADR-0003); tax_paid_cents is the tax Category

@@ -97,7 +97,13 @@ const itemsCents = (items: ItemDraft[]) =>
 export function Expenses() {
   const [expenses, setExpenses] = useState<Expense[] | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
-  const [lists, setLists] = useState<Lists>({ payers: [], payment_methods: [] })
+  const [lists, setLists] = useState<Lists>({
+    payers: [],
+    payment_methods: [],
+    target_cents: 0,
+    goal_cents: 0,
+    savings_starting_balance_cents: 0,
+  })
   const [error, setError] = useState("")
 
   const [draft, setDraft] = useState<Draft>(blankDraft)

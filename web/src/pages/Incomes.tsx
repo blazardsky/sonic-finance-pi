@@ -86,7 +86,13 @@ export function Incomes() {
   const [incomes, setIncomes] = useState<Income[] | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
   const [clients, setClients] = useState<Client[]>([])
-  const [lists, setLists] = useState<Lists>({ payers: [], payment_methods: [] })
+  const [lists, setLists] = useState<Lists>({
+    payers: [],
+    payment_methods: [],
+    target_cents: 0,
+    goal_cents: 0,
+    savings_starting_balance_cents: 0,
+  })
   const [error, setError] = useState("")
 
   const [draft, setDraft] = useState<Draft>(blankDraft)

@@ -202,6 +202,26 @@ export const t = {
   nothingReceived: (year: string) =>
     `Nessuna entrata freelance incassata nel ${year}.`,
 
+  // Full yearly report (ticket 07) — its own page rather than a Year.tsx
+  // extension (ADR-0011): expenses by Category for every month, a running
+  // total, a tax-excluded total, Savings at the start of the year, the
+  // year's cumulative path, and medians scoped to that year alone.
+  yearReport: "Report annuale",
+  fullYearBreakdown: "Spese per categoria, mese per mese",
+  runningTotal: "Progressivo",
+  total: "Totale",
+  expenseExcludingTax: "Spese, esclusa Tasse",
+  savingsAtStartOfYear: (year: string) => `Risparmi a inizio ${year}`,
+  financesPath: "Andamento dell'anno",
+  medianExpense: "Spesa mediana",
+  medianIncome: "Entrata mediana",
+  medianNet: "Netto mediano",
+  // Named to tell it apart from Budget's own median (CONTEXT.md): this one
+  // is scoped to the reported year's completed months, not a rolling window.
+  medianHint: (year: string) =>
+    `Sui mesi già conclusi del ${year}.`,
+  noSpendThisYear: "Nessuna spesa in questo anno.",
+
   // Pending payments — what is owed, and what looks unbilled
   pendingPayments: "In attesa di pagamento",
   // Days rather than a date, because chasing is based on a number: an invoice

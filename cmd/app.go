@@ -60,6 +60,7 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 	mux.HandleFunc("GET /api/reports/month/{month}", handleMonthReport(db, now))
 	mux.HandleFunc("GET /api/reports/month/{month}/daily", handleMonthDailyReport(db, now))
 	mux.HandleFunc("GET /api/reports/year/{year}", handleYearReport(db, now))
+	mux.HandleFunc("GET /api/reports/year/{year}/full", handleFullYearReport(db, now))
 	mux.HandleFunc("GET /api/reports/tax/{year}", handleTaxSummary(db, now))
 	mux.HandleFunc("GET /api/reports/estimate/{year}", handleEstimateReport(db, now))
 	mux.HandleFunc("GET /api/reports/daily", handleDailyReport(db, now))

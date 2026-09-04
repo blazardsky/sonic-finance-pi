@@ -129,10 +129,15 @@ func trailingCompletedMonths(now func() time.Time, n int) []string {
 	return months
 }
 
-// medianCents is Budget's only user of a median: sorted, then the middle
-// value, or the two middle values averaged (rounded down) when there is no
-// single middle. len(totals) is at most budgetTrailingMonths — small enough
-// that sorting on every call is the whole engineering this needs.
+// medianCents is the plain "median of a handful of ints" primitive: sorted,
+// then the middle value, or the two middle values averaged (rounded down)
+// when there is no single middle. Budget was its first user; the yearly
+// report's own year-scoped median (cmd/yearreport.go) is its second, over a
+// different window (that report's own calendar year rather than a trailing
+// 12 months) — the windowing differs, the median itself does not, so this
+// stayed one function rather than becoming two. len(totals) is at most
+// twelve either way — small enough that sorting on every call is the whole
+// engineering this needs.
 func medianCents(totals []int64) int64 {
 	sorted := slices.Clone(totals)
 	slices.Sort(sorted)

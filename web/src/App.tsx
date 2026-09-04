@@ -12,6 +12,7 @@ import { RecurringExpenses } from "@/pages/RecurringExpenses"
 import { Savings } from "@/pages/Savings"
 import { Settings } from "@/pages/Settings"
 import { Year } from "@/pages/Year"
+import { YearlyReport } from "@/pages/YearlyReport"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 import { SidebarProvider } from "@/components/ui/sidebar"
@@ -31,6 +32,7 @@ export type Screen =
   | "dashboard"
   | "month"
   | "year"
+  | "yearReport"
   | "expenses"
   | "incomes"
   | "recurring"
@@ -107,6 +109,7 @@ export function App() {
             {screen === "dashboard" && <Dashboard />}
             {screen === "month" && <Month />}
             {screen === "year" && <Year />}
+            {screen === "yearReport" && <YearlyReport />}
             {screen === "expenses" && <Expenses />}
             {screen === "incomes" && <Incomes />}
             {screen === "recurring" && <RecurringExpenses />}
