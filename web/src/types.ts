@@ -10,6 +10,10 @@ export type Category = {
   // A Base category is one the tax summary resolves by identity: it can be
   // hidden, never renamed or deleted, and the server enforces that with a 409.
   base: boolean
+  // Base narrowed to specifically the Gift category — the one the spoiler
+  // blur resolves by identity, so an Expense list can tell it apart from any
+  // other Base category without matching on its (renameable) name.
+  gift: boolean
 }
 
 // Who money comes from, as one row rather than three spellings. Not a
@@ -200,6 +204,9 @@ export type RecentEntry = {
   category: string
   payer: string
   client: string
+  // True for an Expense resolving to the Gift category, always false on an
+  // Income — the spoiler blur (spec's Gift section) is Expense-only.
+  is_gift: boolean
 }
 
 // The rent, defined once. It carries an Expense's template fields — every one

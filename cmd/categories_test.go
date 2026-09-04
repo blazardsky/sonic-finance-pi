@@ -15,6 +15,7 @@ type categoryJSON struct {
 	AppliesTo string `json:"applies_to"`
 	Hidden    bool   `json:"hidden"`
 	Base      bool   `json:"base"`
+	Gift      bool   `json:"gift"`
 }
 
 // categoryPath addresses one Category the way the API does.
@@ -146,6 +147,24 @@ func TestRegaliIsPromotedInPlaceNotDuplicated(t *testing.T) {
 	}
 }
 
+// The spoiler blur resolves the Gift Category by identity — from the
+// frontend, since it decides on its own whether an amount blurs — so it is
+// the one field, unlike `base`, published for the household's list to act on
+// rather than merely grey buttons for. It is true for Regali and nothing
+// else, including the other Base categories.
+func TestGiftIsExposedForTheGiftCategoryOnly(t *testing.T) {
+	a := newTestApp(t)
+
+	if gift := a.category(t, seedRegaliName); !gift.Gift {
+		t.Errorf("%s.gift = false, want true", seedRegaliName)
+	}
+	for _, name := range []string{seedFreelanceName, seedTaxesName, seedInvestmentiName, "Alimentari"} {
+		if c := a.category(t, name); c.Gift {
+			t.Errorf("%s.gift = true, want false", name)
+		}
+	}
+}
+
 // Both pickers read one list, so every Category has to say which one it
 // belongs in: an expense picker must never offer "Freelance".
 func TestEverySeededCategoryDeclaresWhereItApplies(t *testing.T) {
@@ -233,15 +252,15 @@ func TestHidingACategoryLeavesItResolvable(t *testing.T) {
 	}
 }
 
-// The tax summary resolves Freelance and Taxes by identity, and Budget/
-// Target/Estimate (ticket 03+) resolve Investments the same way, so tidying
-// the list must not be able to break any of them. Hiding is still allowed:
-// quitting freelancing should not leave a dead option in the picker forever.
-// See ADR-0008.
+// The tax summary resolves Freelance and Taxes by identity, Budget/Target/
+// Estimate resolve Investments the same way, and the spoiler blur resolves
+// Gift the same way again — so tidying the list must not be able to break
+// any of them. Hiding is still allowed: quitting freelancing should not leave
+// a dead option in the picker forever. See ADR-0008.
 func TestBaseCategoriesRefuseRenameAndDeleteButAllowHiding(t *testing.T) {
 	a := newTestApp(t)
 
-	for _, name := range []string{seedFreelanceName, seedTaxesName, seedInvestmentiName} {
+	for _, name := range []string{seedFreelanceName, seedTaxesName, seedInvestmentiName, seedRegaliName} {
 		t.Run(name, func(t *testing.T) {
 			before := a.category(t, name)
 			id := categoryPath(before.ID)

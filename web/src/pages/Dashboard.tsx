@@ -19,6 +19,7 @@ import {
   ChartTooltip,
 } from "@/components/ui/chart"
 import { CategoryTrendChart } from "@/components/CategoryTrendChart"
+import { SpoilerAmount } from "@/components/SpoilerAmount"
 import { Progress } from "@/components/ui/progress"
 import { apiJSON } from "@/lib/api"
 import { formatCents, formatDate, thisMonth, thisYear, today } from "@/lib/money"
@@ -527,7 +528,10 @@ function RecentList({
                           : ""
                     }`}
                   >
-                    € {formatCents(entry.amount_cents)}
+                    <SpoilerAmount
+                      cents={entry.amount_cents}
+                      gift={entry.is_gift}
+                    />
                   </span>
                 </li>
               )

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 
 import { PendingPayments } from "@/pages/PendingPayments"
 import { CategoryTrendChart } from "@/components/CategoryTrendChart"
+import { SpoilerAmount } from "@/components/SpoilerAmount"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -217,8 +218,11 @@ export function Month() {
                     entry.date ? "" : "text-muted-foreground"
                   }`}
                 >
-                  {entry.date && (entry.direction === "expense" ? "−" : "+")} €{" "}
-                  {formatCents(entry.amount_cents)}
+                  {entry.date && (entry.direction === "expense" ? "−" : "+")}{" "}
+                  <SpoilerAmount
+                    cents={entry.amount_cents}
+                    gift={entry.is_gift}
+                  />
                 </span>
               </li>
             ))}

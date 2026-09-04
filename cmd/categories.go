@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -74,6 +75,13 @@ type category struct {
 	// behind it is not published: it is an implementation detail of the
 	// reports, and the household has no use for it.
 	Base bool `json:"base"`
+
+	// Gift is Base narrowed to specifically the one Category the spoiler blur
+	// resolves by identity. Unlike code, this one is published: the frontend
+	// has to tell an Expense in Gift apart from any other Base category to
+	// blur its amount, and a household-editable name is not a safe thing to
+	// match it by (spoiler ticket).
+	Gift bool `json:"gift"`
 
 	code string
 }
@@ -263,13 +271,16 @@ func findCategory(w http.ResponseWriter, db *sql.DB, rawID string) (category, bo
 }
 
 // The one projection every read of a Category uses, and the scan that matches
-// it. `code` is reduced to the boolean the API publishes: the code itself is
-// an implementation detail of the reports that resolve by it.
-const categorySelect = `SELECT id, name, applies_to, hidden, code IS NOT NULL FROM category`
+// it. `code` is reduced to the two booleans the API publishes — Base (protected
+// at all) and Gift (protected as specifically the spoiler's Category) — the
+// code itself stays an implementation detail of the reports that resolve by it.
+var categorySelect = fmt.Sprintf(
+	`SELECT id, name, applies_to, hidden, code IS NOT NULL, IFNULL(code, '') = '%s' FROM category`,
+	codeGift)
 
 func scanCategory(row interface{ Scan(...any) error }) (category, error) {
 	var c category
-	err := row.Scan(&c.ID, &c.Name, &c.AppliesTo, &c.Hidden, &c.Base)
+	err := row.Scan(&c.ID, &c.Name, &c.AppliesTo, &c.Hidden, &c.Base, &c.Gift)
 	return c, err
 }
 

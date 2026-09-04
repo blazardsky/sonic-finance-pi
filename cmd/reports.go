@@ -337,6 +337,13 @@ type recentEntry struct {
 	Category    string `json:"category"`
 	Payer       string `json:"payer"`
 	Client      string `json:"client"`
+
+	// IsGift is true for an Expense resolving to the Gift Category, and always
+	// false on an Income — the spoiler blur is an Expense-only behaviour (spec's
+	// Gift section). Resolved here by code, not by matching Category against a
+	// hardcoded name: the household can rename Category freely, and this list
+	// already reads Category as a name for display, not for identity.
+	IsGift bool `json:"is_gift"`
 }
 
 // The two directions money moves, which are the two entities this list is a
@@ -365,15 +372,16 @@ func handleRecentEntries(db *sql.DB) http.HandlerFunc {
 		// stored to the second, entries typed in the same second are equally
 		// "just typed", and ordering this list is all it is for.
 		rows, err := db.Query(`SELECT ? AS direction, e.id AS id, e.occurred_on AS date,
-				e.amount_cents, c.name, e.payer, '' AS client, e.created_at AS typed_at
+				e.amount_cents, c.name, e.payer, '' AS client,
+				IFNULL(c.code, '') = ? AS is_gift, e.created_at AS typed_at
 			FROM expense e JOIN category c ON c.id = e.category_id
 			UNION ALL
 			SELECT ?, i.id, COALESCE(i.payment_date, ''),
-				i.amount_cents, c.name, '', COALESCE(cl.name, ''), i.created_at
+				i.amount_cents, c.name, '', COALESCE(cl.name, ''), 0, i.created_at
 			FROM income i JOIN category c ON c.id = i.category_id
 			LEFT JOIN client cl ON cl.id = i.client_id
 			ORDER BY typed_at DESC, id DESC, direction
-			LIMIT ?`, towardsExpense, towardsIncome, recentLimit)
+			LIMIT ?`, towardsExpense, codeGift, towardsIncome, recentLimit)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -387,7 +395,7 @@ func handleRecentEntries(db *sql.DB) http.HandlerFunc {
 			var e recentEntry
 			var typedAt string
 			if err := rows.Scan(&e.Direction, &e.ID, &e.Date, &e.AmountCents,
-				&e.Category, &e.Payer, &e.Client, &typedAt); err != nil {
+				&e.Category, &e.Payer, &e.Client, &e.IsGift, &typedAt); err != nil {
 				writeError(w, http.StatusInternalServerError, err)
 				return
 			}

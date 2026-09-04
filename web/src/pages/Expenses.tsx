@@ -13,8 +13,9 @@ import {
 } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/lib/api"
+import { SpoilerAmount } from "@/components/SpoilerAmount"
 import { formatCents, formatDate, toCents, today, toTyped } from "@/lib/money"
-import { nameOf, pickableCategories, withSaved } from "@/lib/pickers"
+import { isGiftCategory, nameOf, pickableCategories, withSaved } from "@/lib/pickers"
 import { t } from "@/lib/strings"
 import type { Category, Expense, Lists } from "@/types"
 
@@ -610,7 +611,10 @@ export function Expenses() {
                 {formatDate(e.occurred_on)}
               </TableCell>
               <TableCell className="text-right font-medium tabular-nums">
-                € {formatCents(e.amount_cents)}
+                <SpoilerAmount
+                  cents={e.amount_cents}
+                  gift={isGiftCategory(categories, e.category_id)}
+                />
               </TableCell>
             </TableRow>
           ))}

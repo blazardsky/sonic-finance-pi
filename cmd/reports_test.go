@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -343,6 +344,7 @@ type recentJSON struct {
 	Category    string `json:"category"`
 	Payer       string `json:"payer"`
 	Client      string `json:"client"`
+	IsGift      bool   `json:"is_gift"`
 }
 
 func (a *testApp) recent(t *testing.T) []recentJSON {
@@ -410,6 +412,45 @@ func TestARecentEntryNamesWhoTheMoneyMovedWith(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("recent = %+v, want %+v", got, want)
+	}
+}
+
+// The spoiler blur (spec's Gift section) reads is_gift off this list rather
+// than matching Category by name — a household-editable name is not safe to
+// resolve identity by. It is true for an Expense under Gift, and false for
+// everything else, including an Income under Gift: Regali now applies to both
+// directions, but the spoiler is an Expense-only behaviour.
+func TestARecentEntryFlagsAGiftExpenseAndOnlyAGiftExpense(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+	gift := a.category(t, seedRegaliName)
+
+	plain := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-02", "amount_cents": 1000, "category_id": alimentari.ID,
+	})
+	a.setNow(t, testClock.Add(time.Hour))
+	giftExpense := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-03", "amount_cents": 5000, "category_id": gift.ID,
+	})
+	a.setNow(t, testClock.Add(2*time.Hour))
+	giftIncome := a.addIncome(t, map[string]any{
+		"amount_cents": 2000, "category_id": gift.ID, "payment_date": "2026-03-04",
+	})
+
+	// Keyed by (direction, id) rather than id alone: Expense and Income ids
+	// come from separate autoincrementing tables and can collide.
+	byKey := map[string]recentJSON{}
+	for _, e := range a.recent(t) {
+		byKey[e.Direction+strconv.FormatInt(e.ID, 10)] = e
+	}
+	if got := byKey["expense"+strconv.FormatInt(plain.ID, 10)]; got.IsGift {
+		t.Errorf("plain Expense is_gift = true, want false: %+v", got)
+	}
+	if got := byKey["expense"+strconv.FormatInt(giftExpense.ID, 10)]; !got.IsGift {
+		t.Errorf("Gift Expense is_gift = false, want true: %+v", got)
+	}
+	if got := byKey["income"+strconv.FormatInt(giftIncome.ID, 10)]; got.IsGift {
+		t.Errorf("Gift Income is_gift = true, want false — the spoiler is Expense-only: %+v", got)
 	}
 }
 
