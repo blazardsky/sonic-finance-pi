@@ -17,27 +17,30 @@ const (
 	appliesBoth    = "both"
 )
 
-// The stable codes of the two Base categories. A non-null code is what marks a
-// Category as one the code resolves by identity — the yearly tax summary reads
-// these two — and therefore one that rename and delete refuse. Nothing else is
-// protected: a seeded Category nothing resolves is the household's to edit.
-// See ADR-0008.
+// The stable codes of the three Base categories. A non-null code is what marks
+// a Category as one the code resolves by identity — the yearly tax summary
+// reads Freelance and Taxes, Budget/Target/Estimate exclude Investments — and
+// therefore one that rename and delete refuse. Nothing else is protected: a
+// seeded Category nothing resolves is the household's to edit. See ADR-0008.
 const (
-	codeFreelance = "freelance"
-	codeTaxes     = "taxes"
+	codeFreelance   = "freelance"
+	codeTaxes       = "taxes"
+	codeInvestments = "investments"
 )
 
-// The names the two Base categories are seeded with. They are ordinary names
-// after that — the household can hide either one, and the report still finds
-// it by code — but the tests need something to address them by.
+// The names the three Base categories are seeded with. They are ordinary
+// names after that — the household can hide any one, and the report still
+// finds it by code — but the tests need something to address them by.
 const (
-	seedFreelanceName = "Freelance"
-	seedTaxesName     = "Tasse"
-	seedStipendioName = "Stipendio"
+	seedFreelanceName   = "Freelance"
+	seedTaxesName       = "Tasse"
+	seedStipendioName   = "Stipendio"
+	seedInvestmentiName = "Investimenti" // promoted to codeInvestments by migrateInvestments
 )
 
 // seedCategories is what a fresh database starts with, so that first use is
-// not an evening of typing a list. Only the two with a code are protected.
+// not an evening of typing a list. Only the ones with a code are protected —
+// Investimenti gets its code later, in migrateInvestments, not here.
 var seedCategories = []category{
 	{Name: seedTaxesName, AppliesTo: appliesExpense, code: codeTaxes},
 	{Name: "Alimentari", AppliesTo: appliesExpense},
@@ -53,7 +56,7 @@ var seedCategories = []category{
 	{Name: seedStipendioName, AppliesTo: appliesIncome},
 	{Name: "Regali", AppliesTo: appliesIncome},
 	{Name: "Rimborsi", AppliesTo: appliesIncome},
-	{Name: "Investimenti", AppliesTo: appliesIncome},
+	{Name: seedInvestmentiName, AppliesTo: appliesIncome},
 
 	{Name: "Altro", AppliesTo: appliesBoth},
 }

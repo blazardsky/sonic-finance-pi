@@ -2,6 +2,7 @@ import {
   RiBarChart2Line,
   RiCalendarLine,
   RiDashboardLine,
+  RiLineChartLine,
   RiPriceTag3Line,
   RiRepeatLine,
   RiSettings3Line,
@@ -38,6 +39,7 @@ const icons: Record<Screen, typeof RiDashboardLine> = {
   recurring: RiRepeatLine,
   categories: RiPriceTag3Line,
   clients: RiTeamLine,
+  holdings: RiLineChartLine,
   settings: RiSettings3Line,
 }
 
@@ -46,7 +48,10 @@ const icons: Record<Screen, typeof RiDashboardLine> = {
 const groups: { label: string; screens: Screen[] }[] = [
   { label: t.navOverview, screens: ["dashboard", "month", "year"] },
   { label: t.navEntries, screens: ["expenses", "incomes", "recurring"] },
-  { label: t.navManagement, screens: ["categories", "clients", "settings"] },
+  {
+    label: t.navManagement,
+    screens: ["categories", "clients", "holdings", "settings"],
+  },
 ]
 
 function Nav({

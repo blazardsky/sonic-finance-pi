@@ -233,6 +233,20 @@ export const t = {
   clientInUse:
     "Questo cliente è usato da entrate registrate. Nascondilo invece di eliminarlo.",
 
+  // Holdings — the fixed list of stocks/ETFs/crypto/bonds the household
+  // invests in (ticket 03 is what records buying and selling one)
+  holdings: "Investimenti",
+  holdingName: "Nome",
+  holdingType: "Tipo",
+  addHolding: "Aggiungi investimento",
+  noHoldingsYet: "Nessun investimento registrato.",
+  holdingNotSaved: "Investimento non salvato. Riprova.",
+  holdingTypeETF: "ETF",
+  holdingTypeCrypto: "Crypto",
+  holdingTypeStock: "Azione",
+  holdingTypeBond: "Obbligazione",
+  holdingTypeOther: "Altro",
+
   // Settings — the two configured lists, and the password
   settings: "Impostazioni",
   // The Payer list is one list read in both directions, so it is named after

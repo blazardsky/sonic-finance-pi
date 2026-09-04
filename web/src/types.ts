@@ -21,6 +21,18 @@ export type Client = {
   hidden: boolean
 }
 
+export type HoldingType = "etf" | "crypto" | "stock" | "bond" | "other"
+
+// A specific stock, ETF, crypto asset, bond or other investment vehicle the
+// household buys and sells — never priced or revalued by the app. Named and
+// typed from this fixed list rather than free text, because the portfolio
+// percentage breakdown (ticket 03) groups by it exactly (CONTEXT.md).
+export type Holding = {
+  id: number
+  name: string
+  type: HoldingType
+}
+
 export type Expense = {
   id: number
   occurred_on: string

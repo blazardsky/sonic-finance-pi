@@ -4,6 +4,7 @@ import { Categories } from "@/pages/Categories"
 import { Clients } from "@/pages/Clients"
 import { Dashboard } from "@/pages/Dashboard"
 import { Expenses } from "@/pages/Expenses"
+import { Holdings } from "@/pages/Holdings"
 import { Incomes } from "@/pages/Incomes"
 import { Login } from "@/pages/Login"
 import { Month } from "@/pages/Month"
@@ -34,6 +35,7 @@ export type Screen =
   | "recurring"
   | "categories"
   | "clients"
+  | "holdings"
   | "settings"
 
 export function App() {
@@ -108,6 +110,7 @@ export function App() {
             {screen === "recurring" && <RecurringExpenses />}
             {screen === "categories" && <Categories />}
             {screen === "clients" && <Clients />}
+            {screen === "holdings" && <Holdings />}
             {screen === "settings" && <Settings />}
           </main>
         </div>

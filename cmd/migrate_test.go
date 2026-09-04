@@ -69,6 +69,51 @@ func TestMigrationStepRefusesAVersionWithNoCase(t *testing.T) {
 	}
 }
 
+// Schema step 9: the Holding table exists, and Expense, Income and
+// Recurring expense each carry a nullable holding_id that references it. This
+// is the raw-SQL check migrate_test.go exists for — ticket 03 is what gives
+// these columns an HTTP surface, so there is nothing to assert through
+// testApp yet.
+func TestInvestmentsMigrationAddsHoldingTableAndColumns(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "holdings.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	res, err := db.Exec(`INSERT INTO holding (name, type) VALUES ('VWCE', 'etf')`)
+	if err != nil {
+		t.Fatalf("holding table missing or wrong shape: %v", err)
+	}
+	holdingID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var categoryID int64
+	if err := db.QueryRow(`SELECT id FROM category WHERE code = ?`, codeInvestments).Scan(&categoryID); err != nil {
+		t.Fatalf("no category with code = investments: %v", err)
+	}
+
+	if _, err := db.Exec(`INSERT INTO expense (occurred_on, amount_cents, category_id, holding_id, created_at)
+		VALUES ('2026-03-15', 10000, ?, ?, '2026-03-15T00:00:00Z')`, categoryID, holdingID); err != nil {
+		t.Errorf("expense.holding_id missing or wrong shape: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO income (amount_cents, category_id, holding_id, created_at)
+		VALUES (10000, ?, ?, '2026-03-15T00:00:00Z')`, categoryID, holdingID); err != nil {
+		t.Errorf("income.holding_id missing or wrong shape: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO recurring_expense
+		(amount_cents, category_id, holding_id, day_of_month, start_month, created_at)
+		VALUES (10000, ?, ?, 15, '2026-03', '2026-03-15T00:00:00Z')`, categoryID, holdingID); err != nil {
+		t.Errorf("recurring_expense.holding_id missing or wrong shape: %v", err)
+	}
+
+	if _, err := db.Exec(`INSERT INTO holding (name, type) VALUES ('bad', 'shares')`); err == nil {
+		t.Error("an out-of-list type was accepted, want the CHECK constraint to refuse it")
+	}
+}
+
 // The README's SD-card longevity concern.
 func TestDatabaseOpensWithWALAndRelaxedSync(t *testing.T) {
 	db, err := openDB(filepath.Join(t.TempDir(), "pragmas.db"))

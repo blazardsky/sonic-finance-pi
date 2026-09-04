@@ -71,12 +71,45 @@ func TestSeededConvenienceCategoriesAreNotProtected(t *testing.T) {
 
 	var protected []string
 	for _, c := range a.categories(t) {
-		if c.Base && c.Name != seedFreelanceName && c.Name != seedTaxesName {
+		if c.Base && c.Name != seedFreelanceName && c.Name != seedTaxesName && c.Name != seedInvestmentiName {
 			protected = append(protected, c.Name)
 		}
 	}
 	if protected != nil {
 		t.Errorf("these seeded Categories are protected but nothing resolves them: %v", protected)
+	}
+}
+
+// The dormant "Investimenti" category is promoted in place, not replaced: a
+// fresh database has exactly one row with code = investments, it is the same
+// row that was seeded named Investimenti, and applies_to now admits both an
+// Expense and an Income (ticket 01's spec).
+func TestInvestimentiIsPromotedInPlaceNotDuplicated(t *testing.T) {
+	a := newTestApp(t)
+
+	investments := a.category(t, seedInvestmentiName)
+	if !investments.Base {
+		t.Errorf("%s.base = false, want true — it is now a protected Base category", seedInvestmentiName)
+	}
+	if investments.AppliesTo != appliesBoth {
+		t.Errorf("%s.applies_to = %q, want %q", seedInvestmentiName, investments.AppliesTo, appliesBoth)
+	}
+
+	var named, coded int
+	for _, c := range a.categories(t) {
+		if c.Name == seedInvestmentiName {
+			named++
+		}
+		if c.Base && c.Name == seedInvestmentiName {
+			coded++
+		}
+	}
+	if named != 1 {
+		t.Errorf("%d Categories named %q, want exactly 1 — the promotion must not insert a second row",
+			named, seedInvestmentiName)
+	}
+	if coded != 1 {
+		t.Errorf("%d protected Categories named %q, want exactly 1", coded, seedInvestmentiName)
 	}
 }
 
@@ -167,20 +200,30 @@ func TestHidingACategoryLeavesItResolvable(t *testing.T) {
 	}
 }
 
-// The tax summary resolves these two by identity, so tidying the list must not
-// be able to break it. Hiding is still allowed: quitting freelancing should not
-// leave a dead option in the picker forever. See ADR-0008.
+// The tax summary resolves Freelance and Taxes by identity, and Budget/
+// Target/Estimate (ticket 03+) resolve Investments the same way, so tidying
+// the list must not be able to break any of them. Hiding is still allowed:
+// quitting freelancing should not leave a dead option in the picker forever.
+// See ADR-0008.
 func TestBaseCategoriesRefuseRenameAndDeleteButAllowHiding(t *testing.T) {
 	a := newTestApp(t)
 
-	for _, name := range []string{seedFreelanceName, seedTaxesName} {
+	for _, name := range []string{seedFreelanceName, seedTaxesName, seedInvestmentiName} {
 		t.Run(name, func(t *testing.T) {
-			id := categoryPath(a.category(t, name).ID)
+			before := a.category(t, name)
+			id := categoryPath(before.ID)
 
 			if res := a.patch(t, id, map[string]any{"name": name + " x"}, nil); res.StatusCode != http.StatusConflict {
 				t.Errorf("renaming = %d, want 409", res.StatusCode)
 			}
-			if res := a.patch(t, id, map[string]any{"applies_to": appliesBoth}, nil); res.StatusCode != http.StatusConflict {
+			// The attempted value must actually differ from what is already
+			// stored — Investments is already "both", unlike Freelance and
+			// Taxes — or "did it land" is not a question this can answer.
+			attempt := appliesBoth
+			if before.AppliesTo == appliesBoth {
+				attempt = appliesExpense
+			}
+			if res := a.patch(t, id, map[string]any{"applies_to": attempt}, nil); res.StatusCode != http.StatusConflict {
 				t.Errorf("changing applies_to = %d, want 409", res.StatusCode)
 			}
 			if res := a.delete(t, id); res.StatusCode != http.StatusConflict {
@@ -191,7 +234,7 @@ func TestBaseCategoriesRefuseRenameAndDeleteButAllowHiding(t *testing.T) {
 			}
 
 			after := a.category(t, name)
-			if after.Name != name || after.AppliesTo == appliesBoth {
+			if after.Name != name || after.AppliesTo != before.AppliesTo {
 				t.Errorf("the refused edits landed anyway: %+v", after)
 			}
 			if !after.Hidden {
