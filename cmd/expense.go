@@ -226,6 +226,14 @@ func (e *expense) validate() error {
 	if e.AmountCents <= 0 {
 		return errors.New("an expense needs an amount above zero")
 	}
+	// Ticket 08: "whose money was it" is never left unanswered going forward.
+	// Checked after trimming, so " " is caught as the empty string it is —
+	// an existing row saved before this rule still reads with an empty Payer,
+	// because nothing here rewrites what is already stored; it only refuses a
+	// write that would (re)create the gap.
+	if e.Payer == "" {
+		return errors.New("an expense needs a payer")
+	}
 	// A date is compared as text everywhere after this, so it has to be
 	// exactly the layout. The zero-padded layout makes time.Parse strict about
 	// both: it rejects "2026-3-5" for its shape and "2026-02-30" for its day.

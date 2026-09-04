@@ -243,6 +243,14 @@ func (in *income) validate() error {
 	if in.AmountCents <= 0 {
 		return errors.New("an income needs an amount above zero")
 	}
+	// Ticket 08: "whose money was it" is never left unanswered going forward.
+	// Checked after trimming, so " " is caught as the empty string it is —
+	// an existing row saved before this rule still reads with an empty Payer,
+	// because nothing here rewrites what is already stored; it only refuses a
+	// write that would (re)create the gap.
+	if in.Payer == "" {
+		return errors.New("an income needs a payer")
+	}
 	if err := optionalDate("payment_date", in.PaymentDate); err != nil {
 		return err
 	}

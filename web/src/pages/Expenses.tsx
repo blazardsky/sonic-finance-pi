@@ -353,9 +353,10 @@ export function Expenses() {
                 <NativeSelect
                   value={draft.payer}
                   onChange={(e) => set("payer", e.target.value)}
+                  required
                   className="h-10"
                 >
-                  <option value="">{t.notSet}</option>
+                  <option value="">{t.chooseCategory}</option>
                   {withSaved(lists.payers, draft.payer || undefined).map(
                     (p) => (
                       <option key={p} value={p}>

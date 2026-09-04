@@ -150,7 +150,7 @@ func TestIncomeCSVIsAFlatDump(t *testing.T) {
 	cat := strconv.FormatInt(freelance.ID, 10)
 	want := [][]string{
 		{"id", "amount_cents", "category_id", "client_id", "payer", "payment_date", "invoice_sent_date", "note"},
-		{strconv.FormatInt(unpaid.ID, 10), "50000", cat, strconv.FormatInt(client.ID, 10), "", "", "2026-03-01", ""},
+		{strconv.FormatInt(unpaid.ID, 10), "50000", cat, strconv.FormatInt(client.ID, 10), "Nicco", "", "2026-03-01", ""},
 		{strconv.FormatInt(paid.ID, 10), "120000", cat, "", "Nicco", "2026-03-10", "", "marzo"},
 	}
 	if !reflect.DeepEqual(got, want) {

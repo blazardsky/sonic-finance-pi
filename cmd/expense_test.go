@@ -52,8 +52,15 @@ func (a *testApp) expenses(t *testing.T) []expenseJSON {
 // addExpense logs one and returns it as the API answered, failing the test if
 // the save was refused. Later tickets' tests need a stocked month, and this is
 // the one place that knows how to stock it.
+//
+// Payer defaults here when a case does not care about it, now that ticket 08
+// makes it required: the alternative is threading a payer through every one
+// of this file's callers, most of which are testing something else entirely.
 func (a *testApp) addExpense(t *testing.T, body map[string]any) expenseJSON {
 	t.Helper()
+	if _, ok := body["payer"]; !ok {
+		body["payer"] = "Nicco"
+	}
 	var created expenseJSON
 	res := a.post(t, "/api/expenses", body, &created)
 	if res.StatusCode != http.StatusCreated {
@@ -162,6 +169,9 @@ func TestExpenseWritesAreValidated(t *testing.T) {
 		"no Category":         {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500}, http.StatusBadRequest},
 		"an unknown Category": {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": 9999}, http.StatusBadRequest},
 		"an income Category":  {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": freelance}, http.StatusBadRequest},
+		// Ticket 08: "whose money was it" is never left unanswered going forward.
+		"an empty payer":     {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": groceries, "payer": ""}, http.StatusBadRequest},
+		"a whitespace payer": {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": groceries, "payer": "   "}, http.StatusBadRequest},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -234,16 +244,17 @@ func TestAnExpenseKeepsItsDetails(t *testing.T) {
 	}
 }
 
-// Every detail is optional: the three-tap Expense of ticket 05 still saves,
-// and reads back as empty text rather than null — the frontend puts these
-// straight into inputs.
+// Three of the four details are optional: the three-tap Expense of ticket 05
+// still saves, and reads back as empty text rather than null — the frontend
+// puts these straight into inputs. Payer is the deliberate exception since
+// ticket 08 — see TestExpenseWritesAreValidated and TestEditsAreValidated.
 func TestTheDetailsAreOptional(t *testing.T) {
 	a := newTestApp(t)
 	id := a.category(t, "Alimentari").ID
 
-	created := a.addExpense(t, map[string]any{"occurred_on": "2026-03-15", "amount_cents": 700, "category_id": id})
-	if created.Store != "" || created.Payer != "" || created.PaymentMethod != "" || created.Note != "" {
-		t.Errorf("an Expense logged without details = %+v, want the four empty", created)
+	created := a.addExpense(t, map[string]any{"occurred_on": "2026-03-15", "amount_cents": 700, "category_id": id, "payer": "Nicco"})
+	if created.Store != "" || created.PaymentMethod != "" || created.Note != "" {
+		t.Errorf("an Expense logged without details = %+v, want the three empty", created)
 	}
 }
 
@@ -337,6 +348,9 @@ func TestEditsAreValidated(t *testing.T) {
 		"an unknown Category": {expensePath(logged.ID), map[string]any{"category_id": 9999}, http.StatusBadRequest},
 		"an unknown Expense":  {expensePath(9999), map[string]any{"amount_cents": 100}, http.StatusNotFound},
 		"an unparseable id":   {"/api/expenses/nope", map[string]any{"amount_cents": 100}, http.StatusNotFound},
+		// Ticket 08: an edit setting the Payer empty is refused the same as a create.
+		"an empty payer":     {expensePath(logged.ID), map[string]any{"payer": ""}, http.StatusBadRequest},
+		"a whitespace payer": {expensePath(logged.ID), map[string]any{"payer": "   "}, http.StatusBadRequest},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {

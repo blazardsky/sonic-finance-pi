@@ -54,11 +54,17 @@ func (a *testApp) addRecurring(t *testing.T, body map[string]any) recurringJSON 
 
 // rent is the shortest valid definition: the household's fixed monthly cost,
 // under a Category an Expense can go in.
+//
+// Payer is set here too: generation copies it straight onto the Expense it
+// produces, with no validation of its own (ticket 08 reaches Expense create
+// and edit, not template generation), so a template with none would produce
+// an Expense that could never afterwards be edited.
 func (a *testApp) rent(t *testing.T, over map[string]any) map[string]any {
 	t.Helper()
 	body := map[string]any{
 		"amount_cents": 85000,
 		"category_id":  a.category(t, "Casa").ID,
+		"payer":        "Nicco",
 	}
 	for k, v := range over {
 		body[k] = v

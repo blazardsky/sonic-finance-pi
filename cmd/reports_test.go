@@ -374,7 +374,7 @@ func TestTheMostRecentEntriesAreListedNewestTypedFirst(t *testing.T) {
 		{Direction: "income", ID: fattura.ID, Date: "2026-03-10",
 			AmountCents: 150000, Category: seedFreelanceName},
 		{Direction: "expense", ID: spesa.ID, Date: "2026-03-02",
-			AmountCents: 4237, Category: "Alimentari"},
+			AmountCents: 4237, Category: "Alimentari", Payer: "Nicco"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("recent = %+v, want %+v", got, want)

@@ -39,8 +39,15 @@ func (a *testApp) incomes(t *testing.T) []incomeJSON {
 // addIncome records one and returns it as the API answered, failing the test
 // if the save was refused. Later tickets' totals need a stocked month, and
 // this is the one place that knows how to stock it.
+//
+// Payer defaults here when a case does not care about it, now that ticket 08
+// makes it required: the alternative is threading a payer through every one
+// of this file's callers, most of which are testing something else entirely.
 func (a *testApp) addIncome(t *testing.T, body map[string]any) incomeJSON {
 	t.Helper()
+	if _, ok := body["payer"]; !ok {
+		body["payer"] = "Nicco"
+	}
 	var created incomeJSON
 	res := a.post(t, "/api/incomes", body, &created)
 	if res.StatusCode != http.StatusCreated {
@@ -229,6 +236,9 @@ func TestIncomeWritesAreValidated(t *testing.T) {
 		{"a malformed payment date", map[string]any{"amount_cents": 100, "category_id": freelance.ID, "payment_date": "10/03/2026"}},
 		{"an impossible payment date", map[string]any{"amount_cents": 100, "category_id": freelance.ID, "payment_date": "2026-02-30"}},
 		{"a malformed invoice-sent date", map[string]any{"amount_cents": 100, "category_id": freelance.ID, "invoice_sent_date": "2026-3-1"}},
+		// Ticket 08: "whose money was it" is never left unanswered going forward.
+		{"an empty payer", map[string]any{"amount_cents": 100, "category_id": freelance.ID, "payer": ""}},
+		{"a whitespace payer", map[string]any{"amount_cents": 100, "category_id": freelance.ID, "payer": "   "}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			res := a.post(t, "/api/incomes", tc.body, nil)
@@ -261,6 +271,9 @@ func TestIncomeEditsAreValidated(t *testing.T) {
 		{"an expense-only category", map[string]any{"category_id": a.category(t, "Alimentari").ID}},
 		{"a client that does not exist", map[string]any{"client_id": 9999}},
 		{"a malformed payment date", map[string]any{"payment_date": "domani"}},
+		// Ticket 08: an edit setting the Payer empty is refused the same as a create.
+		{"an empty payer", map[string]any{"payer": ""}},
+		{"a whitespace payer", map[string]any{"payer": "   "}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			res := a.patch(t, incomePath(created.ID), tc.body, nil)
