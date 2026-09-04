@@ -55,8 +55,10 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 	mux.HandleFunc("DELETE /api/recurring/{id}", handleDeleteRecurring(db))
 
 	mux.HandleFunc("GET /api/reports/month/{month}", handleMonthReport(db, now))
+	mux.HandleFunc("GET /api/reports/month/{month}/daily", handleMonthDailyReport(db, now))
 	mux.HandleFunc("GET /api/reports/year/{year}", handleYearReport(db, now))
 	mux.HandleFunc("GET /api/reports/tax/{year}", handleTaxSummary(db, now))
+	mux.HandleFunc("GET /api/reports/daily", handleDailyReport(db, now))
 	mux.HandleFunc("GET /api/reports/recent", handleRecentEntries(db))
 	mux.HandleFunc("GET /api/pending-payments", handlePendingPayments(db, now))
 

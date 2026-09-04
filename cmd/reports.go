@@ -184,6 +184,125 @@ func readBreakdown(db *sql.DB, month string) ([]categoryTotal, error) {
 	return out, rows.Err()
 }
 
+// dailyCategoryTotal is readBreakdown's categoryTotal with a day column: one
+// Category's share of one day's spend, the shape both trend charts read.
+type dailyCategoryTotal struct {
+	Day         string `json:"day"`
+	CategoryID  int64  `json:"category_id"`
+	Category    string `json:"category"`
+	AmountCents int64  `json:"amount_cents"`
+}
+
+// readDailyBreakdown is readBreakdown over a date range instead of a month,
+// with the day it groups by kept rather than summed away. Same ADR-0002
+// attribution, same shape of query — one query, GROUP BY on day and Category
+// instead of Category alone — used by both trend charts: the rolling window
+// and the one-month view differ only in which two dates bound the range, so
+// they share this rather than each carrying a near-identical query.
+//
+// Investments are not excluded (ADR-0009, and the ticket says so explicitly)
+// — unlike Budget/Estimate, a trend chart's job is showing what actually
+// happened, and a stock buy is a day like any other Category's.
+//
+// from and to are trusted to be YYYY-MM-DD by the time they arrive — both
+// callers build them from a validated month or from the clock, never from
+// request input directly.
+func readDailyBreakdown(db *sql.DB, from, to string) ([]dailyCategoryTotal, error) {
+	rows, err := db.Query(`SELECT share.day, c.id, c.name, SUM(share.amount_cents)
+		FROM (
+			SELECT e.occurred_on AS day, e.category_id, e.amount_cents - COALESCE(
+				(SELECT SUM(i.amount_cents) FROM item i WHERE i.expense_id = e.id), 0
+			) AS amount_cents
+			FROM expense e WHERE e.occurred_on BETWEEN ? AND ?
+			UNION ALL
+			SELECT e.occurred_on, i.category_id, i.amount_cents FROM item i
+			JOIN expense e ON e.id = i.expense_id
+			WHERE e.occurred_on BETWEEN ? AND ?
+		) share
+		JOIN category c ON c.id = share.category_id
+		GROUP BY share.day, c.id, c.name
+		HAVING SUM(share.amount_cents) > 0
+		ORDER BY share.day, SUM(share.amount_cents) DESC, c.name COLLATE NOCASE`, from, to, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// [] rather than null: the screen maps over it, same as every other list
+	// report here.
+	out := []dailyCategoryTotal{}
+	for rows.Next() {
+		var d dailyCategoryTotal
+		if err := rows.Scan(&d.Day, &d.CategoryID, &d.Category, &d.AmountCents); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// dailyWindowDays is the Dashboard's rolling window — a fixed constant per
+// the ticket, not a household setting, and inclusive of today: 30 days
+// ending today means today and the 29 before it.
+const dailyWindowDays = 30
+
+// handleDailyReport answers the trailing window ending "today", wherever the
+// injected clock says that is — the same clock, and the same Pi-has-no-RTC
+// reason, as every other report here. It does not materialise: the window
+// slides daily regardless of which months anyone has opened, and whichever
+// month report the household reads for the current month already generates
+// that month's Recurring expenses.
+func handleDailyReport(db *sql.DB, now func() time.Time) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		to := now()
+		from := to.AddDate(0, 0, -(dailyWindowDays - 1)).Format(dateLayout)
+		daily, err := readDailyBreakdown(db, from, to.Format(dateLayout))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, daily)
+	}
+}
+
+// handleMonthDailyReport answers one calendar month's daily breakdown — what
+// the Month page's weekly chart buckets into Monday-start weeks itself
+// (there is deliberately no separate weekly endpoint). It materialises the
+// month first, the same as handleMonthReport: this is read independently of
+// /api/reports/month/{month}, so it is its own path to ADR-0005's "a month
+// nobody opened is not silently empty forever" rather than a free ride on the
+// other endpoint happening to be called first.
+func handleMonthDailyReport(db *sql.DB, now func() time.Time) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		month := r.PathValue("month")
+		if err := validMonth("month", month); err != nil {
+			writeInvalid(w, err)
+			return
+		}
+		if err := materialise(db, now, month); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+
+		start, err := time.Parse(monthLayout, month)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		from := start.Format(dateLayout)
+		// The month's last day, the same way recurring.go clamps a rent to
+		// it: one month on, one day back.
+		to := start.AddDate(0, 1, 0).AddDate(0, 0, -1).Format(dateLayout)
+
+		daily, err := readDailyBreakdown(db, from, to)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, daily)
+	}
+}
+
 // recentLimit is how many entries the home screen lists, combined across both
 // directions before the client splits them into its separate expense and
 // income cards — wide enough that one direction being quiet for a while (an

@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react"
 
 import { PendingPayments } from "@/pages/PendingPayments"
+import { CategoryTrendChart } from "@/components/CategoryTrendChart"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { apiJSON } from "@/lib/api"
 import { formatCents, formatDate, shiftMonth, thisMonth } from "@/lib/money"
 import { t } from "@/lib/strings"
-import type { MonthTotals, RecentEntry } from "@/types"
+import { categoriesIn, weeklyBuckets } from "@/lib/trend"
+import type { DailyCategoryTotal, MonthTotals, RecentEntry } from "@/types"
 
 // The screen the app opens on: where does this month stand. Three numbers,
 // where the money went, and the last few things typed — the totals answer the
@@ -25,6 +28,7 @@ export function Month() {
   const [month, setMonth] = useState(thisMonth)
   const [totals, setTotals] = useState<MonthTotals | null>(null)
   const [recent, setRecent] = useState<RecentEntry[]>([])
+  const [daily, setDaily] = useState<DailyCategoryTotal[]>([])
   const [error, setError] = useState("")
 
   // The last few entries are not this month's — they are the last few typed,
@@ -56,6 +60,19 @@ export function Month() {
         setTotals(null)
         setError(t.serverUnreachable)
       })
+    return () => {
+      current = false
+    }
+  }, [month])
+
+  // The weekly chart's own fetch, independent of the totals above: a slow
+  // month arriving after the household has stepped on must not repaint the
+  // chart under the next month's heading either.
+  useEffect(() => {
+    let current = true
+    apiJSON<DailyCategoryTotal[]>(`/api/reports/month/${month}/daily`)
+      .then((d) => current && setDaily(d))
+      .catch(() => current && setDaily([]))
     return () => {
       current = false
     }
@@ -146,6 +163,26 @@ export function Month() {
             </dl>
           )}
         </section>
+      )}
+
+      {/* Weekly, not daily: a month's worth of daily bars would be too thin
+          to read on a phone. Bucketed here rather than by a second endpoint —
+          a week is a client-side grouping of the same daily rows the
+          by_category breakdown above is drawn from (cmd/reports.go). An edge
+          week that only partly falls in this month keeps its real date
+          range, per the ticket, rather than being merged into a neighbour. */}
+      {daily.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t.weeklyTrend}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CategoryTrendChart
+              buckets={weeklyBuckets(daily)}
+              categories={categoriesIn(daily)}
+            />
+          </CardContent>
+        </Card>
       )}
 
       {/* The confirmation strip: what was just typed, newest first. An

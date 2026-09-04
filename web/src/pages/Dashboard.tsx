@@ -18,13 +18,16 @@ import {
   ChartContainer,
   ChartTooltip,
 } from "@/components/ui/chart"
+import { CategoryTrendChart } from "@/components/CategoryTrendChart"
 import { Progress } from "@/components/ui/progress"
 import { apiJSON } from "@/lib/api"
-import { formatCents, formatDate, thisMonth, thisYear } from "@/lib/money"
+import { formatCents, formatDate, thisMonth, thisYear, today } from "@/lib/money"
 import { nameOf } from "@/lib/pickers"
 import { t } from "@/lib/strings"
+import { addDays, categoriesIn, dailyBuckets } from "@/lib/trend"
 import type {
   Category,
+  DailyCategoryTotal,
   MonthRow,
   Pending,
   RecentEntry,
@@ -32,6 +35,12 @@ import type {
   TaxSummary,
   YearTotals,
 } from "@/types"
+
+// The Dashboard's rolling window: the last dailyWindowDays days ending today,
+// matching cmd/reports.go's dailyWindowDays exactly — a household comparing
+// the chart against "the last 30 days" in its head must see the same 30 days
+// the server just answered with.
+const dailyWindowDays = 30
 
 // The next date a Recurring lands on, from today. Mirrors the clamp
 // cmd/recurring.go's materialise() applies when it actually generates the
@@ -83,6 +92,7 @@ export function Dashboard() {
   const [year, setYear] = useState<YearTotals | null>(null)
   const [tax, setTax] = useState<TaxSummary | null>(null)
   const [pending, setPending] = useState<Pending | null>(null)
+  const [daily, setDaily] = useState<DailyCategoryTotal[]>([])
   const [error, setError] = useState("")
 
   const load = useCallback(
@@ -94,14 +104,16 @@ export function Dashboard() {
         apiJSON<YearTotals>(`/api/reports/year/${thisYear()}`),
         apiJSON<TaxSummary>(`/api/reports/tax/${thisYear()}`),
         apiJSON<Pending>("/api/pending-payments"),
+        apiJSON<DailyCategoryTotal[]>("/api/reports/daily"),
       ])
-        .then(([r, rec, cat, y, s, p]) => {
+        .then(([r, rec, cat, y, s, p, d]) => {
           setRecent(r)
           setRecurring(rec)
           setCategories(cat)
           setYear(y)
           setTax(s)
           setPending(p)
+          setDaily(d)
         })
         .catch(() => setError(t.serverUnreachable)),
     []
@@ -158,6 +170,8 @@ export function Dashboard() {
           </TotalsCard>
         </div>
       )}
+
+      <DailyTrendCard daily={daily} />
 
       {/* items-start: without it the grid stretches the calendar column to
           match whichever side ends up taller, leaving Prossime scadenze
@@ -305,6 +319,33 @@ function NetSparkline({ months }: { months: MonthRow[] }) {
         />
       </AreaChart>
     </ChartContainer>
+  )
+}
+
+// The Dashboard's daily chart by Category — every day of the rolling window,
+// zero-spend days included, so a quiet stretch reads as a real gap rather
+// than a shorter chart.
+function DailyTrendCard({ daily }: { daily: DailyCategoryTotal[] }) {
+  const days = Array.from({ length: dailyWindowDays }, (_, i) =>
+    addDays(today(), -(dailyWindowDays - 1 - i))
+  )
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t.dailyTrend}</CardTitle>
+      </CardHeader>
+      <CardContent elevated={daily.length === 0}>
+        {daily.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t.noDailyTrend}</p>
+        ) : (
+          <CategoryTrendChart
+            buckets={dailyBuckets(daily, days)}
+            categories={categoriesIn(daily)}
+          />
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

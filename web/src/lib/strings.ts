@@ -107,6 +107,12 @@ export const t = {
   ofEstimate: (amount: string) => `di € ${amount} stimati`,
   ofWhichTax: (amount: string) => `di cui tasse: € ${amount}`,
   ofWhichExtra: (amount: string) => `di cui extra: € ${amount}`,
+  // The daily/weekly trend charts, by Category — the Dashboard reads the
+  // rolling window, the Month page buckets the same daily rows into weeks
+  // itself (no separate weekly endpoint).
+  dailyTrend: "Andamento giornaliero",
+  noDailyTrend: "Nessuna spesa negli ultimi 30 giorni.",
+  weeklyTrend: "Andamento settimanale",
   latestExpenses: "Ultime spese",
   noRecentExpenses: "Nessuna spesa recente.",
   recentIncomes: "Ultime entrate",

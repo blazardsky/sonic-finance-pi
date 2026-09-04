@@ -838,6 +838,206 @@ func TestATaxSummaryForAYearThatIsNotAYearIsRefused(t *testing.T) {
 // template fields and knows nothing about a Tax year, so the row it writes has
 // none: what makes it count is the summary applying the same default to a
 // NULL column that the form applies to a typed Expense.
+// One Category's share of one day's spend, as the daily reports hand it out.
+type dailyLineJSON struct {
+	Day         string `json:"day"`
+	CategoryID  int64  `json:"category_id"`
+	Category    string `json:"category"`
+	AmountCents int64  `json:"amount_cents"`
+}
+
+func (a *testApp) daily(t *testing.T) []dailyLineJSON {
+	t.Helper()
+	var got []dailyLineJSON
+	if res := a.get(t, "/api/reports/daily", &got); res.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/reports/daily = %d, want 200", res.StatusCode)
+	}
+	return got
+}
+
+func (a *testApp) monthDaily(t *testing.T, month string) []dailyLineJSON {
+	t.Helper()
+	var got []dailyLineJSON
+	if res := a.get(t, "/api/reports/month/"+month+"/daily", &got); res.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/reports/month/%s/daily = %d, want 200", month, res.StatusCode)
+	}
+	return got
+}
+
+// The rolling chart's whole ticket: two days, two Categories, each its own
+// line — and money in has no place in it, the same as the month breakdown.
+func TestTheDailyReportBreaksTheRollingWindowDownByDayAndCategory(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+	casa := a.category(t, "Casa")
+
+	// testClock is 2026-03-15, so both of these fall inside the trailing
+	// 30-day window the rolling report answers with.
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-14", "amount_cents": 2000, "category_id": alimentari.ID,
+	})
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 5000, "category_id": casa.ID,
+	})
+	a.addIncome(t, map[string]any{
+		"amount_cents": 150000, "category_id": a.freelance(t).ID, "payment_date": "2026-03-15",
+	})
+
+	got := a.daily(t)
+	want := []dailyLineJSON{
+		{Day: "2026-03-14", CategoryID: alimentari.ID, Category: "Alimentari", AmountCents: 2000},
+		{Day: "2026-03-15", CategoryID: casa.ID, Category: "Casa", AmountCents: 5000},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("daily = %+v, want %+v", got, want)
+	}
+}
+
+// The window is trailing and fixed: an Expense outside the last 30 days,
+// counted from the clock, does not appear.
+func TestTheDailyReportDropsAnythingOutsideTheRollingWindow(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+
+	// testClock is 2026-03-15, so 30 days back is 2026-02-14 — one day
+	// earlier falls outside the window and must not appear.
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-02-13", "amount_cents": 1000, "category_id": alimentari.ID,
+	})
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-02-14", "amount_cents": 2000, "category_id": alimentari.ID,
+	})
+
+	got := a.daily(t)
+	want := []dailyLineJSON{
+		{Day: "2026-02-14", CategoryID: alimentari.ID, Category: "Alimentari", AmountCents: 2000},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("daily = %+v, want %+v — the window did not stop 30 days back", got, want)
+	}
+}
+
+// The case ADR-0002 exists for, asked of the daily report: a grocery run with
+// a book in it puts the book under Svago on the day it was bought, and the
+// remainder — never "uncategorised" — under Alimentari the same day.
+func TestTheDailyReportSplitsAPartiallyItemisedExpenseAcrossCategories(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+	svago := a.category(t, "Svago")
+
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-11", "amount_cents": 6200, "category_id": alimentari.ID,
+		"items": []map[string]any{
+			{"name": "Libro", "amount_cents": 1400, "category_id": svago.ID},
+		},
+	})
+
+	got := a.daily(t)
+	want := []dailyLineJSON{
+		{Day: "2026-03-11", CategoryID: alimentari.ID, Category: "Alimentari", AmountCents: 4800},
+		{Day: "2026-03-11", CategoryID: svago.ID, Category: "Svago", AmountCents: 1400},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("daily = %+v, want %+v", got, want)
+	}
+}
+
+// Investments are not excluded here — ADR-0009: a stock buy reads exactly
+// like any other Category's day, unlike the Budget/Estimate reports which do
+// exclude it.
+func TestTheDailyReportDoesNotExcludeInvestments(t *testing.T) {
+	a := newTestApp(t)
+	investments := a.category(t, "Investimenti")
+
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-10", "amount_cents": 30000, "category_id": investments.ID,
+	})
+
+	got := a.daily(t)
+	want := []dailyLineJSON{
+		{Day: "2026-03-10", CategoryID: investments.ID, Category: "Investimenti", AmountCents: 30000},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("daily = %+v, want %+v — an Investments Expense was excluded", got, want)
+	}
+}
+
+// The month-scoped daily report's whole ticket: every day of the named month,
+// by Category, and nothing from a neighbouring month.
+func TestTheMonthDailyReportBreaksOneMonthDownByDayAndCategory(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+	casa := a.category(t, "Casa")
+
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-02", "amount_cents": 4000, "category_id": alimentari.ID,
+	})
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-31", "amount_cents": 90000, "category_id": casa.ID,
+	})
+	// A neighbouring month must not leak in, on either edge.
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-02-28", "amount_cents": 1000, "category_id": alimentari.ID,
+	})
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-04-01", "amount_cents": 1000, "category_id": alimentari.ID,
+	})
+
+	got := a.monthDaily(t, "2026-03")
+	want := []dailyLineJSON{
+		{Day: "2026-03-02", CategoryID: alimentari.ID, Category: "Alimentari", AmountCents: 4000},
+		{Day: "2026-03-31", CategoryID: casa.ID, Category: "Casa", AmountCents: 90000},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("month daily = %+v, want %+v", got, want)
+	}
+}
+
+// A month-scoped daily report generates the month's Recurring expenses first,
+// the same as every other month read (ADR-0005) — read independently of
+// /api/reports/month/{month}, this is its own path to materialise from.
+func TestTheMonthDailyReportGeneratesTheMonthsRecurringExpenses(t *testing.T) {
+	a := newTestApp(t)
+	a.addRecurring(t, a.rent(t, map[string]any{
+		"amount_cents": 80000, "start_month": "2026-03", "day_of_month": 5,
+	}))
+
+	got := a.monthDaily(t, "2026-03")
+	if len(got) != 1 || got[0].AmountCents != 80000 || got[0].Day != "2026-03-05" {
+		t.Errorf("month daily = %+v, want the generated rent on 2026-03-05", got)
+	}
+}
+
+// A month that is not a month is refused, the same as the month report.
+func TestAMonthDailyReportForAMonthThatIsNotAMonthIsRefused(t *testing.T) {
+	a := newTestApp(t)
+
+	for _, month := range []string{"2026-13", "2026-3", "2026", "marzo"} {
+		if res := a.get(t, "/api/reports/month/"+month+"/daily", nil); res.StatusCode != http.StatusBadRequest {
+			t.Errorf("GET /api/reports/month/%s/daily = %d, want 400", month, res.StatusCode)
+		}
+	}
+}
+
+// An empty range has an empty list either way, and it has to marshal as []
+// rather than null: the screen maps over it.
+func TestADailyReportWithNothingInItIsAnEmptyList(t *testing.T) {
+	a := newTestApp(t)
+
+	if got := a.daily(t); len(got) != 0 {
+		t.Errorf("daily = %+v, want empty", got)
+	}
+	var raw *[]dailyLineJSON
+	a.get(t, "/api/reports/daily", &raw)
+	if raw == nil {
+		t.Error("daily came back as null, want []")
+	}
+
+	if got := a.monthDaily(t, "2019-07"); len(got) != 0 {
+		t.Errorf("month daily = %+v, want empty", got)
+	}
+}
+
 func TestARecurringTaxPaymentIsCountedByTheSummary(t *testing.T) {
 	a := newTestApp(t)
 	a.addRecurring(t, a.rent(t, map[string]any{

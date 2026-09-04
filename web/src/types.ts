@@ -129,6 +129,18 @@ export type CategoryTotal = {
   amount_cents: number
 }
 
+// A CategoryTotal with the day it belongs to — the shape both trend charts
+// read: GET /api/reports/daily (a rolling 30-day window) and GET
+// /api/reports/month/{month}/daily (one calendar month). Same Item-inclusive
+// attribution as the month breakdown (ADR-0002), and Investments are not
+// excluded (ADR-0009) — a stock buy is a day like any other Category's.
+export type DailyCategoryTotal = {
+  day: string
+  category_id: number
+  category: string
+  amount_cents: number
+}
+
 // The shape of a whole year: the same three numbers a month answers with, over
 // twelve months, plus the twelve months themselves, plus extra_income_cents —
 // received Income that is not work. months is always twelve long, January
