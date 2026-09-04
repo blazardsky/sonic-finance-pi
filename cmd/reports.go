@@ -184,11 +184,13 @@ func readBreakdown(db *sql.DB, month string) ([]categoryTotal, error) {
 	return out, rows.Err()
 }
 
-// recentLimit is how many entries the home screen lists. It sits under three
-// totals on a phone, so the number is what fits above the fold rather than a
-// page size — there is no second page, and the two full lists are one tap
-// away.
-const recentLimit = 10
+// recentLimit is how many entries the home screen lists, combined across both
+// directions before the client splits them into its separate expense and
+// income cards — wide enough that one direction being quiet for a while (an
+// Expense-only day, a burst of Recurring generation) does not crowd the other
+// out of the shared pool entirely. Still not a page size — there is no second
+// page, and the two full lists are one tap away.
+const recentLimit = 20
 
 // A recentEntry is one thing the household typed, in either direction.
 // Direction is which of the two it is, which is what the screen signs it by.
@@ -203,12 +205,19 @@ const recentLimit = 10
 // unpaid invoice reading as €800 received would be that ADR's named bug on
 // screen. invoice_sent_date is deliberately not a fallback — "how long has
 // this been sitting" is a different question, asked by ticket 14.
+//
+// Payer is whose money an Expense left (empty on an Income). Client is who
+// an Income came from (empty on an Expense, and on an Income that names
+// nobody). Names rather than ids, for the same reason Category is: this list
+// is read on a screen that holds neither picker.
 type recentEntry struct {
 	Direction   string `json:"direction"`
 	ID          int64  `json:"id"`
 	Date        string `json:"date"`
 	AmountCents int64  `json:"amount_cents"`
 	Category    string `json:"category"`
+	Payer       string `json:"payer"`
+	Client      string `json:"client"`
 }
 
 // The two directions money moves, which are the two entities this list is a
@@ -237,12 +246,13 @@ func handleRecentEntries(db *sql.DB) http.HandlerFunc {
 		// stored to the second, entries typed in the same second are equally
 		// "just typed", and ordering this list is all it is for.
 		rows, err := db.Query(`SELECT ? AS direction, e.id AS id, e.occurred_on AS date,
-				e.amount_cents, c.name, e.created_at AS typed_at
+				e.amount_cents, c.name, e.payer, '' AS client, e.created_at AS typed_at
 			FROM expense e JOIN category c ON c.id = e.category_id
 			UNION ALL
 			SELECT ?, i.id, COALESCE(i.payment_date, ''),
-				i.amount_cents, c.name, i.created_at
+				i.amount_cents, c.name, '', COALESCE(cl.name, ''), i.created_at
 			FROM income i JOIN category c ON c.id = i.category_id
+			LEFT JOIN client cl ON cl.id = i.client_id
 			ORDER BY typed_at DESC, id DESC, direction
 			LIMIT ?`, towardsExpense, towardsIncome, recentLimit)
 		if err != nil {
@@ -258,7 +268,7 @@ func handleRecentEntries(db *sql.DB) http.HandlerFunc {
 			var e recentEntry
 			var typedAt string
 			if err := rows.Scan(&e.Direction, &e.ID, &e.Date, &e.AmountCents,
-				&e.Category, &typedAt); err != nil {
+				&e.Category, &e.Payer, &e.Client, &typedAt); err != nil {
 				writeError(w, http.StatusInternalServerError, err)
 				return
 			}
@@ -291,6 +301,12 @@ type yearTotals struct {
 	IncomeCents  int64  `json:"income_cents"`
 	ExpenseCents int64  `json:"expense_cents"`
 	NetCents     int64  `json:"net_cents"`
+
+	// Received Income that is not work — neither Freelance nor Stipendio.
+	// The Dashboard names it under the year's income total; work is the
+	// rest of IncomeCents. Still cash-basis and still excluding unpaid
+	// (ADR-0003), same as IncomeCents itself.
+	ExtraIncomeCents int64 `json:"extra_income_cents"`
 
 	// Always twelve, January first, whether or not anything happened in any
 	// of them: a year view is a shape, and a missing month would be a gap in
@@ -328,6 +344,21 @@ func handleYearReport(db *sql.DB, now func() time.Time) http.HandlerFunc {
 			totals.Months = append(totals.Months, m)
 		}
 		totals.NetCents = totals.IncomeCents - totals.ExpenseCents
+
+		// ponytail: Stipendio is matched by seed name, not a code — it is
+		// not a Base category, and promoting it for one Dashboard footnote
+		// is a migration nobody asked for. If the household renames it,
+		// salary starts counting as extra; give it a code then.
+		if err := db.QueryRow(`SELECT COALESCE(SUM(i.amount_cents), 0) FROM income i
+			JOIN category c ON c.id = i.category_id
+			WHERE i.payment_date IS NOT NULL AND substr(i.payment_date, 1, 4) = ?
+			AND IFNULL(c.code, '') <> ?
+			AND c.name <> ?`,
+			year, codeFreelance, seedStipendioName).Scan(&totals.ExtraIncomeCents); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+
 		writeJSON(w, http.StatusOK, totals)
 	}
 }

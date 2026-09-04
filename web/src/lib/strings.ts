@@ -103,21 +103,34 @@ export const t = {
   dashboard: "Panoramica",
   yearIncome: "Entrate dell'anno",
   yearExpenses: "Spese dell'anno",
+  // The fixed target each of the three cards' progress bar is read against.
+  ofEstimate: (amount: string) => `di € ${amount} stimati`,
+  ofWhichTax: (amount: string) => `di cui tasse: € ${amount}`,
+  ofWhichExtra: (amount: string) => `di cui extra: € ${amount}`,
   latestExpenses: "Ultime spese",
   noRecentExpenses: "Nessuna spesa recente.",
+  recentIncomes: "Ultime entrate",
+  noRecentIncomes: "Nessuna entrata recente.",
   upcomingRecurring: "Prossime scadenze",
   noUpcomingRecurring: "Nessuna scadenza in arrivo.",
   // "tra" reads naturally before a day count in Italian; "oggi"/"domani" are
   // said the way a person would say them rather than as "tra 0/1 giorni".
   dueIn: (days: number) =>
     days === 0 ? "oggi" : days === 1 ? "domani" : `tra ${days} giorni`,
-  taxEstimate: "Stima tasse",
-  estimatedTax: "Tasse stimate",
-  projectedIncome: "Entrate previste",
-  projectedExpenses: "Spese previste",
-  // Said once, next to every projected figure: it is arithmetic on the months
-  // so far, not a forecast that knows December is coming.
-  projectionHint: "Proiezione sull'anno in corso, non una previsione reale.",
+
+  // The two alerts: has anything come in this month, and does any regular
+  // Client look forgotten. Both read the same data pendingPayments already
+  // computes — see cmd/pending.go — just condensed to a yes/no.
+  clientsThisMonth: "Clienti questo mese",
+  clientsPaidTitle: "Incassi",
+  clientsPaid: (amount: string) => `Incassati € ${amount} questo mese.`,
+  clientsNotPaid: "Nessun incasso ancora questo mese.",
+  invoicesSentTitle: "Fatture",
+  invoicesAllSent: "Tutti i clienti abituali sono stati fatturati questo mese.",
+  invoicesMissing: (count: number) =>
+    count === 1
+      ? "1 cliente abituale non ancora fatturato questo mese."
+      : `${count} clienti abituali non ancora fatturati questo mese.`,
 
   // Month — where the month stands
   month: "Mese",

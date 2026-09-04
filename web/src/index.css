@@ -31,21 +31,24 @@
     --chart-4: oklch(0.488 0.243 264.376);
     --chart-5: oklch(0.424 0.199 265.638);
     --radius: 0.15rem; 
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0.008 326);
-    --sidebar-primary: oklch(0.212 0.019 322.12);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.96 0.003 325.6);
-    --sidebar-accent-foreground: oklch(0.212 0.019 322.12);
-    --sidebar-border: oklch(0.922 0.005 325.62);
-    --sidebar-ring: oklch(0.711 0.019 323.02);
+    --sidebar: oklch(1 0 0);
+    --sidebar-foreground: oklch(0.45 0.16 259.815);
+    --sidebar-primary: oklch(0.45 0.16 259.815);
+    --sidebar-primary-foreground: oklch(0.98 0 0);
+    --sidebar-accent: oklch(0.94 0.03 259.815);
+    --sidebar-accent-foreground: oklch(0.32 0.12 259.815);
+    --sidebar-border: oklch(0.90 0.02 259.815);
+    --sidebar-ring: oklch(0.623 0.214 259.815);
     /* App shell chrome: same blue family as --chart-2/3/4, not the mauve
-       base — used only for the page frame, header bar and brand box. */
+       base — page frame, header bar, brand box, sidebar text, metric labels. */
     --shell: oklch(0.93 0.035 259.815);
     --header: oklch(0.24 0.05 259.815);
     --header-foreground: oklch(0.98 0 0);
     --brand: oklch(0.623 0.214 259.815);
     --brand-foreground: oklch(0.98 0 0);
+    --ink: oklch(0.30 0.10 259.815);
+    --elevated: oklch(0.9808 0.0091 258.335);
+    --credit: oklch(0.45 0.13 155);
 }
 
 .dark {
@@ -72,19 +75,22 @@
     --chart-3: oklch(0.546 0.245 262.881);
     --chart-4: oklch(0.488 0.243 264.376);
     --chart-5: oklch(0.424 0.199 265.638);
-    --sidebar: oklch(0.212 0.019 322.12);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.263 0.024 320.12);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar: oklch(0.18 0.025 259.815);
+    --sidebar-foreground: oklch(0.78 0.08 259.815);
+    --sidebar-primary: oklch(0.623 0.214 259.815);
+    --sidebar-primary-foreground: oklch(0.98 0 0);
+    --sidebar-accent: oklch(0.26 0.04 259.815);
+    --sidebar-accent-foreground: oklch(0.90 0.05 259.815);
     --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.542 0.034 322.5);
+    --sidebar-ring: oklch(0.623 0.214 259.815);
     --shell: oklch(0.18 0.02 259.815);
     --header: oklch(0.16 0.04 259.815);
     --header-foreground: oklch(0.98 0 0);
     --brand: oklch(0.623 0.214 259.815);
     --brand-foreground: oklch(0.98 0 0);
+    --ink: oklch(0.82 0.08 259.815);
+    --elevated: oklch(0.27 0.025 258.335);
+    --credit: oklch(0.78 0.12 155);
 }
 
 @theme inline {
@@ -103,6 +109,9 @@
     --color-header-foreground: var(--header-foreground);
     --color-brand: var(--brand);
     --color-brand-foreground: var(--brand-foreground);
+    --color-ink: var(--ink);
+    --color-elevated: var(--elevated);
+    --color-credit: var(--credit);
     --color-chart-5: var(--chart-5);
     --color-chart-4: var(--chart-4);
     --color-chart-3: var(--chart-3);

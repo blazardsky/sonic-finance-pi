@@ -341,6 +341,8 @@ type recentJSON struct {
 	Date        string `json:"date"`
 	AmountCents int64  `json:"amount_cents"`
 	Category    string `json:"category"`
+	Payer       string `json:"payer"`
+	Client      string `json:"client"`
 }
 
 func (a *testApp) recent(t *testing.T) []recentJSON {
@@ -373,6 +375,38 @@ func TestTheMostRecentEntriesAreListedNewestTypedFirst(t *testing.T) {
 			AmountCents: 150000, Category: seedFreelanceName},
 		{Direction: "expense", ID: spesa.ID, Date: "2026-03-02",
 			AmountCents: 4237, Category: "Alimentari"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("recent = %+v, want %+v", got, want)
+	}
+}
+
+// The Dashboard's two lists show who the money moved with: Payer on an
+// Expense, Client on an Income. An Income that names nobody, and every
+// Expense, carry an empty Client — the same "names nobody" spelling
+// outstanding already uses.
+func TestARecentEntryNamesWhoTheMoneyMovedWith(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+	freelance := a.freelance(t)
+	studio := a.createClient(t, "Studio Rossi")
+
+	spesa := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-02", "amount_cents": 1200,
+		"category_id": alimentari.ID, "payer": "Nicco",
+	})
+	a.setNow(t, testClock.Add(time.Hour))
+	fattura := a.addIncome(t, map[string]any{
+		"amount_cents": 150000, "category_id": freelance.ID,
+		"payment_date": "2026-03-10", "client_id": studio.ID,
+	})
+
+	got := a.recent(t)
+	want := []recentJSON{
+		{Direction: "income", ID: fattura.ID, Date: "2026-03-10",
+			AmountCents: 150000, Category: seedFreelanceName, Client: "Studio Rossi"},
+		{Direction: "expense", ID: spesa.ID, Date: "2026-03-02",
+			AmountCents: 1200, Category: "Alimentari", Payer: "Nicco"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("recent = %+v, want %+v", got, want)
@@ -467,11 +501,12 @@ func TestAHouseholdThatHasTypedNothingHasAnEmptyRecentList(t *testing.T) {
 // The year report as the API hands it out: the year's three numbers, and the
 // twelve months under them so a screen can draw the shape of the year.
 type yearJSON struct {
-	Year         string      `json:"year"`
-	IncomeCents  int64       `json:"income_cents"`
-	ExpenseCents int64       `json:"expense_cents"`
-	NetCents     int64       `json:"net_cents"`
-	Months       []monthJSON `json:"months"`
+	Year             string      `json:"year"`
+	IncomeCents      int64       `json:"income_cents"`
+	ExpenseCents     int64       `json:"expense_cents"`
+	NetCents         int64       `json:"net_cents"`
+	ExtraIncomeCents int64       `json:"extra_income_cents"`
+	Months           []monthJSON `json:"months"`
 }
 
 func (a *testApp) year(t *testing.T, year string) yearJSON {
@@ -519,6 +554,42 @@ func TestAYearReportsItsTwelveMonthsAndTheirTotals(t *testing.T) {
 	}
 	if got.Months[6].ExpenseCents != 0 || got.Months[6].IncomeCents != 0 {
 		t.Errorf("july = %+v, want zeros", got.Months[6])
+	}
+}
+
+// Extra is the non-work slice of the year's received Income: gifts and
+// reimbursements count, freelance and stipendio do not, and unpaid money is
+// not extra any more than it is income (ADR-0003).
+func TestAYearCountsOnlyNonWorkIncomeAsExtra(t *testing.T) {
+	a := newTestApp(t)
+
+	a.addIncome(t, map[string]any{
+		"amount_cents": 300000, "category_id": a.freelance(t).ID, "payment_date": "2026-04-01",
+	})
+	a.addIncome(t, map[string]any{
+		"amount_cents": 200000, "category_id": a.category(t, seedStipendioName).ID,
+		"payment_date": "2026-04-02",
+	})
+	a.addIncome(t, map[string]any{
+		"amount_cents": 5000, "category_id": a.category(t, "Regali").ID, "payment_date": "2026-04-03",
+	})
+	a.addIncome(t, map[string]any{
+		"amount_cents": 3000, "category_id": a.category(t, "Rimborsi").ID, "payment_date": "2026-04-04",
+	})
+	a.addIncome(t, map[string]any{
+		"amount_cents": 9999, "category_id": a.category(t, "Regali").ID,
+	})
+	a.addIncome(t, map[string]any{
+		"amount_cents": 4000, "category_id": a.category(t, "Regali").ID, "payment_date": "2025-12-31",
+	})
+
+	got := a.year(t, "2026")
+	if got.IncomeCents != 508000 {
+		t.Errorf("income = %d, want 508000", got.IncomeCents)
+	}
+	if got.ExtraIncomeCents != 8000 {
+		t.Errorf("extra = %d, want 8000 — work was counted as extra, or a gift was missed",
+			got.ExtraIncomeCents)
 	}
 }
 
@@ -667,7 +738,7 @@ func TestOnlyFreelanceIncomeIsCountedAsReceived(t *testing.T) {
 	a.addIncome(t, map[string]any{
 		"amount_cents": 3000000, "category_id": a.freelance(t).ID, "payment_date": "2026-04-01",
 	})
-	for _, name := range []string{"Stipendio", "Regali", "Rimborsi", "Investimenti"} {
+	for _, name := range []string{seedStipendioName, "Regali", "Rimborsi", "Investimenti"} {
 		a.addIncome(t, map[string]any{
 			"amount_cents": 100000, "category_id": a.category(t, name).ID,
 			"payment_date": "2026-04-02",

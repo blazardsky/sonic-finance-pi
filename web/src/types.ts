@@ -118,14 +118,17 @@ export type CategoryTotal = {
 }
 
 // The shape of a whole year: the same three numbers a month answers with, over
-// twelve months, plus the twelve months themselves. months is always twelve
-// long, January first, whether or not anything happened in any of them — a
-// year view is a shape, and a missing month would be a gap in it.
+// twelve months, plus the twelve months themselves, plus extra_income_cents —
+// received Income that is not work. months is always twelve long, January
+// first, whether or not anything happened in any of them — a year view is a
+// shape, and a missing month would be a gap in it.
 export type YearTotals = {
   year: string
   income_cents: number
   expense_cents: number
   net_cents: number
+  // Received Income that is not work (neither Freelance nor Stipendio).
+  extra_income_cents: number
   months: MonthRow[]
 }
 
@@ -156,12 +159,17 @@ export type TaxSummary = {
 // money that has not arrived has no day it arrived on. An empty date is
 // therefore the unpaid state, and the screen must show it as one: this list
 // sits under a money-in total that excludes it (ADR-0003).
+//
+// payer is whose money an Expense left ("" on an Income). client is who an
+// Income came from ("" on an Expense, and on an Income that names nobody).
 export type RecentEntry = {
   direction: "expense" | "income"
   id: number
   date: string
   amount_cents: number
   category: string
+  payer: string
+  client: string
 }
 
 // The rent, defined once. It carries an Expense's template fields — every one

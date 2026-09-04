@@ -33,6 +33,7 @@ const (
 const (
 	seedFreelanceName = "Freelance"
 	seedTaxesName     = "Tasse"
+	seedStipendioName = "Stipendio"
 )
 
 // seedCategories is what a fresh database starts with, so that first use is
@@ -49,7 +50,7 @@ var seedCategories = []category{
 	{Name: "Abbigliamento", AppliesTo: appliesExpense},
 
 	{Name: seedFreelanceName, AppliesTo: appliesIncome, code: codeFreelance},
-	{Name: "Stipendio", AppliesTo: appliesIncome},
+	{Name: seedStipendioName, AppliesTo: appliesIncome},
 	{Name: "Regali", AppliesTo: appliesIncome},
 	{Name: "Rimborsi", AppliesTo: appliesIncome},
 	{Name: "Investimenti", AppliesTo: appliesIncome},
