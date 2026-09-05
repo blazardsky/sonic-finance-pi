@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useState } from "react"
+import { RiDeleteBinLine, RiEditLine, RiMoreLine } from "@remixicon/react"
 
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { NativeSelect } from "@/components/ui/native-select"
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -13,11 +23,18 @@ import {
 } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/lib/api"
+import { DatePicker } from "@/components/date-picker"
+import { FormSidebar } from "@/components/form-sidebar"
 import { SpoilerAmount } from "@/components/SpoilerAmount"
 import { formatCents, formatDate, toCents, today, toTyped } from "@/lib/money"
 import { isGiftCategory, nameOf, pickableCategories, withSaved } from "@/lib/pickers"
 import { t } from "@/lib/strings"
 import type { Category, Expense, Lists } from "@/types"
+
+// What the payment-method Select needs that a plain string can't say: "no
+// method chosen" — Radix Select refuses an empty-string item value, so the
+// unset state gets its own sentinel, mapped back to "" on the way out.
+const NO_PAYMENT_METHOD = "__none__"
 
 // What the form holds: the amount as it was typed, and everything else as the
 // API's own field names, so submitting is one spread rather than a mapping.
@@ -90,10 +107,12 @@ const itemsCents = (items: ItemDraft[]) =>
   items.reduce((sum, it) => sum + (toCents(it.amount) ?? 0), 0)
 
 // The main screen: log what was just spent in about three taps, and see it
-// land. The form is first and biggest because it is what the app is for; the
-// list under it is confirmation, and the way back into an entry that came out
-// wrong — tapping one loads it into the same form, which is why there is only
-// ever one form on the screen.
+// land. The form lives in the right-side panel — first and biggest on a
+// narrow screen, where it opens full-width, because it is what the app is
+// for; the list fills the rest of the width on a wider one. Choosing a row's
+// "Modifica" action is how an entry gets corrected, which loads it into the
+// same form and reopens the panel if it was closed, since there is only ever
+// one form on the screen.
 export function Expenses() {
   const [expenses, setExpenses] = useState<Expense[] | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
@@ -108,17 +127,20 @@ export function Expenses() {
 
   const [draft, setDraft] = useState<Draft>(blankDraft)
   const [editing, setEditing] = useState<number | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
 
-  // Tapping (or, from the keyboard, activating) a row is how an entry gets
-  // corrected — shared by the row's click and its Enter/Space handling below,
-  // which is the table's replacement for the list's own <button>.
+  // Loads a row into the form and makes sure the panel holding it is
+  // actually visible — the form updates whether it is on screen or not, and a
+  // silently updated but hidden form is indistinguishable from a broken one.
   const selectExpense = (e: Expense) => {
     setEditing(e.id)
     setDraft(draftOf(e))
-    scrollTo({ top: 0, behavior: "smooth" })
+    setDetailsOpen(true)
+    setSidebarOpen(true)
   }
 
   const load = useCallback(
@@ -151,6 +173,16 @@ export function Expenses() {
     const cents = toCents(draft.amount)
     if (cents === null || cents <= 0) {
       setError(t.invalidAmount)
+      return
+    }
+
+    // The server refuses an Expense with no Payer, but Payer lives inside the
+    // details disclosure — closed, its Select unmounts, so the browser's own
+    // required check on it never runs. Checked here instead, opening the
+    // disclosure so the field the error is about is what the household sees.
+    if (draft.payer.trim() === "") {
+      setError(t.invalidPayer)
+      setDetailsOpen(true)
       return
     }
 
@@ -201,29 +233,29 @@ export function Expenses() {
     }
     // A correction is finished; a new Expense is often one of several from the
     // same trip, so the date, Category, Payer and method stay where they are.
+    const wasEditing = editing !== null
     setEditing(null)
     setDraft((d) =>
-      editing === null
-        ? { ...d, amount: "", store: "", note: "", items: [] }
-        : blankDraft()
+      wasEditing ? blankDraft() : { ...d, amount: "", store: "", note: "", items: [] }
     )
+    if (wasEditing) setDetailsOpen(false)
     await load()
   }
 
-  async function remove() {
-    if (editing === null) return
-    const e = expenses?.find((x) => x.id === editing)
-    if (e && !confirm(t.confirmDeleteExpense(formatCents(e.amount_cents))))
-      return
+  async function removeExpense(e: Expense) {
+    if (!confirm(t.confirmDeleteExpense(formatCents(e.amount_cents)))) return
     setError("")
     try {
-      await api(`/api/expenses/${editing}`, { method: "DELETE" })
+      await api(`/api/expenses/${e.id}`, { method: "DELETE" })
     } catch {
       setError(t.expenseNotDeleted)
       return
     }
-    setEditing(null)
-    setDraft(blankDraft())
+    if (editing === e.id) {
+      setEditing(null)
+      setDraft(blankDraft())
+      setDetailsOpen(false)
+    }
     await load()
   }
 
@@ -273,362 +305,389 @@ export function Expenses() {
   ].sort()
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col gap-6 p-6">
-      <form onSubmit={submit} className="flex flex-col gap-3">
-        <label className="flex flex-col gap-1.5 text-sm">
-          {t.amount}
-          <div className="flex items-center gap-2">
-            <span className="text-xl text-muted-foreground">€</span>
-            <Input
-              // text with a decimal keypad, not type=number: a comma is what
-              // the Italian keypad offers and toCents accepts it.
-              type="text"
-              inputMode="decimal"
-              value={draft.amount}
-              onChange={(e) => set("amount", e.target.value)}
-              placeholder="0,00"
-              autoFocus
-              required
-              className="h-12 text-2xl"
-            />
-          </div>
-        </label>
-
-        <div className="flex gap-2">
-          <label className="flex flex-1 flex-col gap-1.5 text-sm">
-            {t.date}
-            {/* A native date input, so the phone gives its own picker and the
-                value is already the YYYY-MM-DD the API wants. */}
-            <Input
-              type="date"
-              value={draft.occurred_on}
-              onChange={(e) => set("occurred_on", e.target.value)}
-              required
-              className="h-10"
-            />
-          </label>
-          <label className="flex flex-1 flex-col gap-1.5 text-sm">
-            {t.category}
-            <NativeSelect
-              value={draft.category_id}
-              onChange={(e) => set("category_id", Number(e.target.value))}
-              required
-              className="h-10"
-            >
-              <option value="">{t.chooseCategory}</option>
-              {pickable(draft.category_id).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
+    <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6">
+      <div className="flex flex-1 flex-wrap gap-6">
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t.category}</TableHead>
+                <TableHead>{t.details}</TableHead>
+                <TableHead>{t.date}</TableHead>
+                <TableHead className="text-right">{t.amount}</TableHead>
+                <TableHead className="w-10">{t.actions}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {expenses?.map((e) => (
+                <TableRow
+                  key={e.id}
+                  className={editing === e.id ? "opacity-50" : ""}
+                >
+                  <TableCell>{nameOf(categories, e.category_id)}</TableCell>
+                  <TableCell className="whitespace-normal">
+                    <div className="flex flex-col gap-0.5">
+                      {/* Whichever details were filled in, on one quiet line: it
+                          is what the household reads the list for. */}
+                      {details(e) && (
+                        <span className="truncate text-xs text-muted-foreground">
+                          {details(e)}
+                        </span>
+                      )}
+                      {/* Each Item on its own line, indented under the Expense it
+                          was broken out of: the point of an Item is that this
+                          part of the €62 shop counts as something else, so the
+                          row has to say so and name the Category it went to. */}
+                      {e.items.map((it, i) => (
+                        <span
+                          key={i}
+                          className="flex items-baseline justify-between gap-2 pl-3 text-xs text-muted-foreground"
+                        >
+                          <span className="truncate">
+                            ↳ {it.name} · {nameOf(categories, it.category_id)}
+                          </span>
+                          <span className="tabular-nums">
+                            € {formatCents(it.amount_cents)}
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {formatDate(e.occurred_on)}
+                  </TableCell>
+                  <TableCell className="text-right font-medium tabular-nums">
+                    <SpoilerAmount
+                      cents={e.amount_cents}
+                      gift={isGiftCategory(categories, e.category_id)}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={t.actions}
+                        >
+                          <RiMoreLine />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => selectExpense(e)}>
+                          <RiEditLine /> {t.editExpense}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => void removeExpense(e)}
+                        >
+                          <RiDeleteBinLine /> {t.delete}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
               ))}
-            </NativeSelect>
-          </label>
+            </TableBody>
+          </Table>
+          {expenses?.length === 0 && (
+            <p className="text-sm text-muted-foreground">{t.noExpensesYet}</p>
+          )}
         </div>
 
-        {/* Only for a tax payment, and outside the details disclosure: for
-            this one Expense the year it relates to is not a detail, it is the
-            field the yearly summary is computed from. It defaults to the year
-            of the payment and stays editable, because tax on 2026's income is
-            paid during 2027. */}
-        {isTaxExpense && (
-          <label className="flex flex-col gap-1.5 text-sm">
-            {t.taxYear}
-            {/* The bounds are the browser's to enforce: a number input with
-                min and max refuses a half-typed 202 itself, in the phone's own
-                language, and the server refuses the same range in English.
-                Clearing the field snaps back to the payment's year rather than
-                showing empty, so there is nothing to mark required. */}
-            <Input
-              type="number"
-              inputMode="numeric"
-              min={1000}
-              max={9999}
-              value={taxYear}
-              onChange={(e) => set("tax_year", Number(e.target.value))}
-              className="h-10"
-            />
-            <span className="text-xs text-muted-foreground">
-              {t.taxYearHint}
-            </span>
-          </label>
-        )}
-
-        {/* The details are what make an entry recognisable months later, and
-            none of them is worth a tap at the till — so they are a native
-            disclosure, closed unless the entry needs them. An edit opens it,
-            because that is what a correction is usually about. */}
-        <details open={editing !== null} className="flex flex-col gap-3">
-          <summary className="cursor-pointer py-1 text-sm text-muted-foreground">
-            {t.moreDetails}
-          </summary>
-          <div className="flex flex-col gap-3 pt-2">
-            <label className="flex flex-col gap-1.5 text-sm">
-              {t.store}
-              {/* A native datalist: free text that suggests what has been
-                  typed before, without becoming a list to maintain. */}
-              <Input
-                list="stores"
-                value={draft.store}
-                onChange={(e) => set("store", e.target.value)}
-                className="h-10"
-              />
-              <datalist id="stores">
-                {stores.map((s) => (
-                  <option key={s} value={s} />
-                ))}
-              </datalist>
-            </label>
+        <FormSidebar
+          title={editing === null ? t.addExpense : t.editExpense}
+          open={sidebarOpen}
+          onOpenChange={setSidebarOpen}
+        >
+          <form onSubmit={submit} className="flex flex-col gap-3">
+            <Field>
+              <FieldLabel htmlFor="amount">{t.amount}</FieldLabel>
+              <InputGroup className="h-12">
+                <InputGroupAddon className="text-xl">€</InputGroupAddon>
+                <InputGroupInput
+                  id="amount"
+                  // text with a decimal keypad, not type=number: a comma is
+                  // what the Italian keypad offers and toCents accepts it.
+                  type="text"
+                  inputMode="decimal"
+                  value={draft.amount}
+                  onChange={(e) => set("amount", e.target.value)}
+                  placeholder="0,00"
+                  autoFocus
+                  required
+                  className="text-2xl"
+                />
+              </InputGroup>
+            </Field>
 
             <div className="flex gap-2">
-              <label className="flex flex-1 flex-col gap-1.5 text-sm">
-                {t.payer}
-                <NativeSelect
-                  value={draft.payer}
-                  onChange={(e) => set("payer", e.target.value)}
+              <Field className="flex-1">
+                <FieldLabel htmlFor="occurred_on">{t.date}</FieldLabel>
+                <DatePicker
+                  id="occurred_on"
+                  value={draft.occurred_on}
+                  onValueChange={(v) => set("occurred_on", v)}
+                  className="w-full"
+                />
+              </Field>
+              <Field className="flex-1">
+                <FieldLabel htmlFor="category">{t.category}</FieldLabel>
+                <Select
+                  value={draft.category_id === "" ? undefined : String(draft.category_id)}
+                  onValueChange={(v) => set("category_id", Number(v))}
                   required
-                  className="h-10"
                 >
-                  <option value="">{t.chooseCategory}</option>
-                  {withSaved(lists.payers, draft.payer || undefined).map(
-                    (p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    )
-                  )}
-                </NativeSelect>
-              </label>
-              <label className="flex flex-1 flex-col gap-1.5 text-sm">
-                {t.paymentMethod}
-                <NativeSelect
-                  value={draft.payment_method}
-                  onChange={(e) => set("payment_method", e.target.value)}
-                  className="h-10"
-                >
-                  <option value="">{t.notSet}</option>
-                  {withSaved(
-                    lists.payment_methods,
-                    draft.payment_method || undefined
-                  ).map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </label>
+                  <SelectTrigger id="category" className="h-10 w-full">
+                    <SelectValue placeholder={t.chooseCategory} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pickable(draft.category_id).map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
             </div>
 
-            <label className="flex flex-col gap-1.5 text-sm">
-              {t.note}
-              <Textarea
-                value={draft.note}
-                onChange={(e) => set("note", e.target.value)}
-                rows={2}
-              />
-            </label>
+            {/* Only for a tax payment, and outside the details disclosure: for
+                this one Expense the year it relates to is not a detail, it is the
+                field the yearly summary is computed from. It defaults to the year
+                of the payment and stays editable, because tax on 2026's income is
+                paid during 2027. */}
+            {isTaxExpense && (
+              <Field>
+                <FieldLabel htmlFor="tax_year">{t.taxYear}</FieldLabel>
+                {/* The bounds are the browser's to enforce: a number input with
+                    min and max refuses a half-typed 202 itself, in the phone's own
+                    language, and the server refuses the same range in English.
+                    Clearing the field snaps back to the payment's year rather than
+                    showing empty, so there is nothing to mark required. */}
+                <Input
+                  id="tax_year"
+                  type="number"
+                  inputMode="numeric"
+                  min={1000}
+                  max={9999}
+                  value={taxYear}
+                  onChange={(e) => set("tax_year", Number(e.target.value))}
+                  className="h-10"
+                />
+                <FieldDescription>{t.taxYearHint}</FieldDescription>
+              </Field>
+            )}
 
-            {/* The breakdown: the book bought during the grocery shop. Rows
-                are added one at a time and the receipt is never itemised in
-                full, so what is on screen is only the exceptions — with the
-                remainder underneath, saying what the Expense's own Category
-                still keeps. */}
-            <div className="flex flex-col gap-2">
-              <span className="text-sm">{t.items}</span>
-              {draft.items.map((it, i) => (
-                <div key={i} className="flex items-end gap-2">
-                  <Input
-                    value={it.name}
-                    onChange={(e) => setItem(i, { name: e.target.value })}
-                    placeholder={t.itemName}
-                    aria-label={t.itemName}
-                    className="h-10 flex-1"
-                  />
-                  <Input
-                    type="text"
-                    inputMode="decimal"
-                    value={it.amount}
-                    onChange={(e) => setItem(i, { amount: e.target.value })}
-                    placeholder="0,00"
-                    aria-label={t.amount}
-                    className="h-10 w-20"
-                  />
-                  <NativeSelect
-                    value={it.category_id}
-                    // Back to the blank option is "" and not Number("") — 0,
-                    // which no Category has, would slip past the unchosen
-                    // check and travel as a Category the server refuses.
-                    // The Expense's own select is `required`, so it never
-                    // reaches this; an Item row has no such guard.
-                    onChange={(e) =>
-                      setItem(i, {
-                        category_id:
-                          e.target.value === "" ? "" : Number(e.target.value),
-                      })
-                    }
-                    aria-label={t.category}
-                    className="h-10 flex-1"
-                  >
-                    <option value="">{t.chooseCategory}</option>
-                    {pickable(it.category_id).map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
+            {/* The details are what make an entry recognisable months later, and
+                none of them is worth a tap at the till — so they are a
+                disclosure, closed unless the entry needs them. An edit opens it,
+                because that is what a correction is usually about. */}
+            <Accordion
+              type="single"
+              collapsible
+              value={detailsOpen ? "details" : ""}
+              onValueChange={(v) => setDetailsOpen(v === "details")}
+            >
+              <AccordionItem value="details">
+                <AccordionTrigger className="text-muted-foreground hover:no-underline">
+                  {t.moreDetails}
+                </AccordionTrigger>
+                <AccordionContent className="flex flex-col gap-3">
+                  <Field>
+                    <FieldLabel htmlFor="store">{t.store}</FieldLabel>
+                    {/* A native datalist: free text that suggests what has been
+                        typed before, without becoming a list to maintain. */}
+                    <Input
+                      id="store"
+                      list="stores"
+                      value={draft.store}
+                      onChange={(e) => set("store", e.target.value)}
+                      className="h-10"
+                    />
+                    <datalist id="stores">
+                      {stores.map((s) => (
+                        <option key={s} value={s} />
+                      ))}
+                    </datalist>
+                  </Field>
+
+                  <div className="flex gap-2">
+                    <Field className="flex-1">
+                      <FieldLabel htmlFor="payer">{t.payer}</FieldLabel>
+                      <Select
+                        value={draft.payer || undefined}
+                        onValueChange={(v) => set("payer", v)}
+                        required
+                      >
+                        <SelectTrigger id="payer" className="h-10 w-full">
+                          <SelectValue placeholder={t.chooseCategory} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {withSaved(lists.payers, draft.payer || undefined).map(
+                            (p) => (
+                              <SelectItem key={p} value={p}>
+                                {p}
+                              </SelectItem>
+                            )
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field className="flex-1">
+                      <FieldLabel htmlFor="payment_method">
+                        {t.paymentMethod}
+                      </FieldLabel>
+                      <Select
+                        value={draft.payment_method || NO_PAYMENT_METHOD}
+                        onValueChange={(v) =>
+                          set("payment_method", v === NO_PAYMENT_METHOD ? "" : v)
+                        }
+                      >
+                        <SelectTrigger id="payment_method" className="h-10 w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NO_PAYMENT_METHOD}>
+                            {t.notSet}
+                          </SelectItem>
+                          {withSaved(
+                            lists.payment_methods,
+                            draft.payment_method || undefined
+                          ).map((m) => (
+                            <SelectItem key={m} value={m}>
+                              {m}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  </div>
+
+                  <Field>
+                    <FieldLabel htmlFor="note">{t.note}</FieldLabel>
+                    <Textarea
+                      id="note"
+                      value={draft.note}
+                      onChange={(e) => set("note", e.target.value)}
+                      rows={2}
+                    />
+                  </Field>
+
+                  {/* The breakdown: the book bought during the grocery shop. Rows
+                      are added one at a time and the receipt is never itemised in
+                      full, so what is on screen is only the exceptions — with the
+                      remainder underneath, saying what the Expense's own Category
+                      still keeps. */}
+                  <div className="flex flex-col gap-2">
+                    <span className="text-sm">{t.items}</span>
+                    {draft.items.map((it, i) => (
+                      <div key={i} className="flex items-end gap-2">
+                        <Input
+                          value={it.name}
+                          onChange={(e) => setItem(i, { name: e.target.value })}
+                          placeholder={t.itemName}
+                          aria-label={t.itemName}
+                          className="h-10 flex-1"
+                        />
+                        <Input
+                          type="text"
+                          inputMode="decimal"
+                          value={it.amount}
+                          onChange={(e) => setItem(i, { amount: e.target.value })}
+                          placeholder="0,00"
+                          aria-label={t.amount}
+                          className="h-10 w-20"
+                        />
+                        <Select
+                          value={it.category_id === "" ? undefined : String(it.category_id)}
+                          onValueChange={(v) => setItem(i, { category_id: Number(v) })}
+                        >
+                          <SelectTrigger aria-label={t.category} className="h-10 flex-1">
+                            <SelectValue placeholder={t.chooseCategory} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {pickable(it.category_id).map((c) => (
+                              <SelectItem key={c.id} value={String(c.id)}>
+                                {c.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={t.removeItem}
+                          className="size-10 shrink-0 text-lg"
+                          onClick={() =>
+                            set(
+                              "items",
+                              draft.items.filter((_, j) => j !== i)
+                            )
+                          }
+                        >
+                          ×
+                        </Button>
+                      </div>
                     ))}
-                  </NativeSelect>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={t.removeItem}
-                    className="size-10 shrink-0 text-lg"
-                    onClick={() =>
-                      set(
-                        "items",
-                        draft.items.filter((_, j) => j !== i)
-                      )
-                    }
-                  >
-                    ×
-                  </Button>
-                </div>
-              ))}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-10"
+                      onClick={() => set("items", [...draft.items, blankItem()])}
+                    >
+                      {t.addItem}
+                    </Button>
+                    {/* The remainder, live as the amounts are typed. Once it goes
+                        negative there is no remainder to name — that is the refusal
+                        ADR-0002 describes, said here rather than on submit, while
+                        the number that caused it is still under the thumb. */}
+                    {draft.items.length > 0 && draft.category_id !== "" && (
+                      <span
+                        className={`text-xs ${
+                          remainder < 0 ? "text-destructive" : "text-muted-foreground"
+                        }`}
+                      >
+                        {remainder < 0
+                          ? t.itemsOverTotal
+                          : t.remainderIn(
+                              nameOf(categories, draft.category_id),
+                              formatCents(remainder)
+                            )}
+                      </span>
+                    )}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+
+            {error && (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
+
+            <Button type="submit" size="lg" className="h-12 text-base">
+              {editing === null ? t.addExpense : t.save}
+            </Button>
+            {editing !== null && (
               <Button
                 type="button"
-                variant="outline"
-                className="h-10"
-                onClick={() => set("items", [...draft.items, blankItem()])}
+                variant="ghost"
+                onClick={() => {
+                  setEditing(null)
+                  setDraft(blankDraft())
+                  setDetailsOpen(false)
+                }}
               >
-                {t.addItem}
+                {t.cancel}
               </Button>
-              {/* The remainder, live as the amounts are typed. Once it goes
-                  negative there is no remainder to name — that is the refusal
-                  ADR-0002 describes, said here rather than on submit, while
-                  the number that caused it is still under the thumb. */}
-              {draft.items.length > 0 && draft.category_id !== "" && (
-                <span
-                  className={`text-xs ${
-                    remainder < 0 ? "text-destructive" : "text-muted-foreground"
-                  }`}
-                >
-                  {remainder < 0
-                    ? t.itemsOverTotal
-                    : t.remainderIn(
-                        nameOf(categories, draft.category_id),
-                        formatCents(remainder)
-                      )}
-                </span>
-              )}
-            </div>
-          </div>
-        </details>
-
-        <Button type="submit" size="lg" className="h-12 text-base">
-          {editing === null ? t.addExpense : t.save}
-        </Button>
-        {editing !== null && (
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              className="flex-1"
-              onClick={() => {
-                setEditing(null)
-                setDraft(blankDraft())
-              }}
-            >
-              {t.cancel}
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              className="flex-1"
-              onClick={() => void remove()}
-            >
-              {t.delete}
-            </Button>
-          </div>
-        )}
-      </form>
-
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{t.category}</TableHead>
-            <TableHead>{t.details}</TableHead>
-            <TableHead>{t.date}</TableHead>
-            <TableHead className="text-right">{t.amount}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {expenses?.map((e) => (
-            <TableRow
-              key={e.id}
-              role="button"
-              tabIndex={0}
-              aria-label={t.editExpense}
-              onClick={() => selectExpense(e)}
-              onKeyDown={(ev) => {
-                // Only the row itself, not a bubbled key from something
-                // inside it — this row has nothing else focusable, but the
-                // guard is what keeps this honest as rows change shape.
-                if (ev.target !== ev.currentTarget) return
-                if (ev.key !== "Enter" && ev.key !== " ") return
-                ev.preventDefault()
-                selectExpense(e)
-              }}
-              className={`cursor-pointer ${editing === e.id ? "opacity-50" : ""}`}
-            >
-              <TableCell>{nameOf(categories, e.category_id)}</TableCell>
-              <TableCell className="whitespace-normal">
-                <div className="flex flex-col gap-0.5">
-                  {/* Whichever details were filled in, on one quiet line: it
-                      is what the household reads the list for. */}
-                  {details(e) && (
-                    <span className="truncate text-xs text-muted-foreground">
-                      {details(e)}
-                    </span>
-                  )}
-                  {/* Each Item on its own line, indented under the Expense it
-                      was broken out of: the point of an Item is that this
-                      part of the €62 shop counts as something else, so the
-                      row has to say so and name the Category it went to. */}
-                  {e.items.map((it, i) => (
-                    <span
-                      key={i}
-                      className="flex items-baseline justify-between gap-2 pl-3 text-xs text-muted-foreground"
-                    >
-                      <span className="truncate">
-                        ↳ {it.name} · {nameOf(categories, it.category_id)}
-                      </span>
-                      <span className="tabular-nums">
-                        € {formatCents(it.amount_cents)}
-                      </span>
-                    </span>
-                  ))}
-                </div>
-              </TableCell>
-              <TableCell className="text-xs text-muted-foreground">
-                {formatDate(e.occurred_on)}
-              </TableCell>
-              <TableCell className="text-right font-medium tabular-nums">
-                <SpoilerAmount
-                  cents={e.amount_cents}
-                  gift={isGiftCategory(categories, e.category_id)}
-                />
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      {expenses?.length === 0 && (
-        <p className="text-sm text-muted-foreground">{t.noExpensesYet}</p>
-      )}
+            )}
+          </form>
+        </FormSidebar>
+      </div>
     </div>
   )
 }

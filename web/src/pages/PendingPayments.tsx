@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 
+import { Card, CardContent } from "@/components/ui/card"
 import { apiJSON } from "@/lib/api"
 import { formatCents } from "@/lib/money"
 import { t } from "@/lib/strings"
@@ -14,7 +15,7 @@ import type { Pending } from "@/types"
 // It renders nothing at all when nothing is pending. A household owed nothing
 // does not need a heading telling it so, and this sits above the numbers it
 // would otherwise be pushing down.
-export function PendingPayments() {
+export function PendingPayments({ className }: { className?: string }) {
   const [pending, setPending] = useState<Pending | null>(null)
 
   // Not month-scoped: what is owed is owed whichever month the screen is
@@ -31,64 +32,66 @@ export function PendingPayments() {
   if (outstanding.length === 0 && notYetInvoiced.length === 0) return null
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Money genuinely owed, oldest first. The days are the point: chasing
-          is based on a number rather than a feeling. */}
-      {outstanding.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            {t.pendingPayments}
-          </h2>
-          <ul className="flex flex-col divide-y divide-border">
-            {outstanding.map((income) => (
-              <li
-                key={income.id}
-                className="flex items-baseline justify-between gap-3 py-2"
-              >
-                <span className="min-w-0">
-                  {/* The Client is who to chase; a Client-less Income has only
-                      its reason to say what it is. */}
-                  <span className="truncate">
-                    {income.client || income.category}
-                  </span>{" "}
-                  {/* The days, and not the date they are counted from: the
-                      ticket asks for a number to chase on, and the Income
-                      screen is where the invoice date is read. */}
-                  <span className="text-xs text-muted-foreground">
-                    {t.waitingDays(income.days_waiting)}
+    <Card className={className}>
+      <CardContent className="flex flex-col gap-6">
+        {/* Money genuinely owed, oldest first. The days are the point: chasing
+            is based on a number rather than a feeling. */}
+        {outstanding.length > 0 && (
+          <section className="flex flex-col gap-2">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              {t.pendingPayments}
+            </h2>
+            <ul className="flex flex-col divide-y divide-border">
+              {outstanding.map((income) => (
+                <li
+                  key={income.id}
+                  className="flex items-baseline justify-between gap-3 py-2"
+                >
+                  <span className="min-w-0">
+                    {/* The Client is who to chase; a Client-less Income has only
+                        its reason to say what it is. */}
+                    <span className="truncate">
+                      {income.client || income.category}
+                    </span>{" "}
+                    {/* The days, and not the date they are counted from: the
+                        ticket asks for a number to chase on, and the Income
+                        screen is where the invoice date is read. */}
+                    <span className="text-xs text-muted-foreground">
+                      {t.waitingDays(income.days_waiting)}
+                    </span>
                   </span>
-                </span>
-                {/* No "+" and no full-strength text: this money has not
-                    arrived and is in none of the totals above (ADR-0003). */}
-                <span className="whitespace-nowrap text-muted-foreground tabular-nums">
-                  € {formatCents(income.amount_cents)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+                  {/* No "+" and no full-strength text: this money has not
+                      arrived and is in none of the totals above (ADR-0003). */}
+                  <span className="whitespace-nowrap text-muted-foreground tabular-nums">
+                    € {formatCents(income.amount_cents)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
-      {/* The nudge. Not a claim that an invoice is missing — only that one
-          usually goes out by now and has not, which is why the hint says what
-          the list is made of rather than what to do about it. */}
-      {notYetInvoiced.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            {t.notYetInvoiced}
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            {t.notYetInvoicedHint}
-          </p>
-          <ul className="flex flex-col divide-y divide-border">
-            {notYetInvoiced.map((client) => (
-              <li key={client.client_id} className="truncate py-2">
-                {client.client}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-    </div>
+        {/* The nudge. Not a claim that an invoice is missing — only that one
+            usually goes out by now and has not, which is why the hint says what
+            the list is made of rather than what to do about it. */}
+        {notYetInvoiced.length > 0 && (
+          <section className="flex flex-col gap-2">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              {t.notYetInvoiced}
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              {t.notYetInvoicedHint}
+            </p>
+            <ul className="flex flex-col divide-y divide-border">
+              {notYetInvoiced.map((client) => (
+                <li key={client.client_id} className="truncate py-2">
+                  {client.client}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </CardContent>
+    </Card>
   )
 }

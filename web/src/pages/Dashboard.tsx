@@ -19,6 +19,11 @@ import {
   ChartContainer,
   ChartTooltip,
 } from "@/components/ui/chart"
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { CategoryTrendChart } from "@/components/CategoryTrendChart"
@@ -416,7 +421,12 @@ function UpcomingCard({
 
 // Unpaid invoiced Incomes (any month), and habitual Clients with nothing
 // billed this month — the two lists pendingPayments already computes
-// (cmd/pending.go), as names rather than the full rows Month.tsx shows.
+// (cmd/pending.go), as names rather than the full rows Month.tsx shows. Each
+// name gets a HoverCard with the detail the badge itself has no room for —
+// amount_cents/days_waiting are already in this same response (ticket 13);
+// total_earned_cents is deliberately left out, since it lives on /api/clients,
+// a request this card has never made and shouldn't start making just for a
+// hover detail.
 function ClientsCard({ pending }: { pending: Pending }) {
   const waiting = pending.outstanding.filter(
     (o) => o.client !== "" && o.invoice_sent_date !== ""
@@ -436,26 +446,51 @@ function ClientsCard({ pending }: { pending: Pending }) {
             key: o.id,
             name: o.client,
             date: formatDate(o.invoice_sent_date),
+            amountCents: o.amount_cents,
+            daysWaiting: o.days_waiting,
           }))}
+          hoverContent={(c) => (
+            <div className="flex flex-col gap-1">
+              <p className="font-medium tabular-nums">
+                € {formatCents(c.amountCents)}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t.waitingDays(c.daysWaiting)}
+              </p>
+            </div>
+          )}
         />
         <ClientAlert
           title={t.invoicesSentTitle}
           okText={t.invoicesAllSent}
           clients={unbilled.map((c) => ({ key: c.client_id, name: c.client }))}
+          // Nothing numeric travels with this list (NotYetInvoicedClient is
+          // just an id and a name) — the HoverCard surfaces why the Client is
+          // listed at all instead, the same explanation Month.tsx's own
+          // pending-payments section gives once for the whole list.
+          hoverContent={() => (
+            <p className="text-xs text-muted-foreground">
+              {t.notYetInvoicedHint}
+            </p>
+          )}
         />
       </CardContent>
     </Card>
   )
 }
 
-function ClientAlert({
+function ClientAlert<
+  T extends { key: string | number; name: string; date?: string },
+>({
   title,
   okText,
   clients,
+  hoverContent,
 }: {
   title: string
   okText: string
-  clients: { key: string | number; name: string; date?: string }[]
+  clients: T[]
+  hoverContent: (client: T) => ReactNode
 }) {
   const ok = clients.length === 0
   return (
@@ -470,7 +505,7 @@ function ClientAlert({
           ? okText
           : clients.map((c) => (
               <span key={c.key} className="inline-flex items-center gap-1">
-                <Badge variant="outline">{c.name}</Badge>
+                <ClientBadge name={c.name}>{hoverContent(c)}</ClientBadge>
                 {c.date != null && (
                   <span className="text-xs tabular-nums">{c.date}</span>
                 )}
@@ -478,6 +513,31 @@ function ClientAlert({
             ))}
       </AlertDescription>
     </Alert>
+  )
+}
+
+// Radix's HoverCard only ever opens on a real pointer hover — it explicitly
+// ignores touch, since there is no such thing as a "hover" on a phone — so a
+// household reading this on the one device the app is actually for could tap
+// a name all day and see nothing. Controlled open state plus a plain onClick
+// covers that: a tap toggles it open, a mouse still opens it on hover exactly
+// as before (the same setOpen either way — Radix's own controllable-state
+// plumbing doesn't care which one drove it).
+function ClientBadge({ name, children }: { name: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <HoverCard open={open} onOpenChange={setOpen}>
+      <HoverCardTrigger asChild>
+        <Badge
+          variant="outline"
+          className="cursor-help"
+          onClick={() => setOpen((o) => !o)}
+        >
+          {name}
+        </Badge>
+      </HoverCardTrigger>
+      <HoverCardContent>{children}</HoverCardContent>
+    </HoverCard>
   )
 }
 

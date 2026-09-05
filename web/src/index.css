@@ -49,6 +49,7 @@
     --ink: oklch(0.30 0.10 259.815);
     --elevated: oklch(0.9808 0.0091 258.335);
     --credit: oklch(0.45 0.13 155);
+    --content-max-width: 1800px;
 }
 
 .dark {

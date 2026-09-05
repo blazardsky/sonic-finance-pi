@@ -1,0 +1,28 @@
+# 02: Shared right-side form sidebar component
+
+**What to build:** One reusable component that Spese, Entrate, Ricorrenti, Risparmi, Categorie, Clienti, and Investimenti (tickets 03–09) will all use to hold their "add new" form in a hideable right-side panel, instead of stacking the form above the list in one column.
+
+**Blocked by:** 01
+
+**Status:** ready-for-agent
+
+- [x] New component (suggested path: `web/src/components/form-sidebar.tsx`) built on the existing `Sidebar` primitive (`web/src/components/ui/sidebar.tsx`), not a bespoke panel: `side="right"`, `collapsible="offcanvas"`.
+- [x] Its own `SidebarProvider`, scoped to wherever this component is mounted — separate from the app-wide one `App.tsx` already uses for the main nav sidebar.
+- [x] Persistence key distinct from the main nav's `sidebar_state` cookie, so opening/closing the form panel never affects the main nav sidebar's remembered state (parameterize `sidebar.tsx`'s hardcoded `SIDEBAR_COOKIE_NAME`, or give this component its own lightweight persistence — implementer's call, as long as there's no collision).
+- [x] `variant="sidebar"` (flush, matches page background/border) — explicitly not `floating` or `inset`. It must read as part of the main content area, not a separate bolted-on card.
+- [x] Desktop: a visible trigger button toggles the panel open/closed.
+- [x] Mobile: the panel auto-renders as a full-width `Sheet` (built into `Sidebar` already) — expose an always-visible, easily-reachable trigger button anchored near the bottom of the viewport (a FAB), not just a header icon.
+- [x] The component takes the form as `children`/a slot and doesn't know anything about which page's form it's holding.
+- [x] A page using this component can keep the panel open and clear the form after a successful submit — expose whatever hook/callback is needed for a page to do that (the component itself shouldn't force a close-on-submit behavior).
+- [x] Not wired into any page yet — that's tickets 03–09.
+
+## Comments
+
+**Addendum (from ticket 03's live testing):** this component had never actually been run in a browser (ticket 02's own check was `tsc`/build only, since nothing consumed it yet). Wiring it into Spese surfaced three real problems, fixed in `web/src/components/ui/sidebar.tsx` and `form-sidebar.tsx` — see ticket 03's Comments for the full detail:
+- The desktop trigger was invisible/unclickable whenever the panel was open, because an in-flow trigger sitting after the sidebar's flow-reserved gap ends up underneath the (`fixed`, higher-stacking) panel. Now `fixed` itself, anchored to the real edge, `z-20` above the panel.
+- The panel used the main nav's own blue `bg-sidebar`/`text-sidebar-foreground`, not the page's `--background`/`--foreground` this ticket's checklist called for — contradicting "must read as part of the main content area". `Sidebar` gained a `themed?: boolean` prop (default `true`); `FormSidebar` passes `themed={false}`.
+- "Mobile: a full-width Sheet" was not actually true — the primitive's mobile Sheet is an 18rem partial drawer, same as the main nav's. `Sidebar` gained a `mobileWidth?: string` prop (default the existing 18rem constant); `FormSidebar` passes `mobileWidth="100vw"`.
+
+All three are additive, backward-compatible props on `Sidebar`/`SidebarProvider` — the main nav's own usage (`App.tsx`, `app-sidebar.tsx`) is unaffected.
+
+Implemented: `web/src/components/ui/sidebar.tsx`'s `SidebarProvider` gained a `cookieName` prop (default `"sidebar_state"`, the existing literal, so the main nav's `App.tsx` usage is unaffected) — its `setOpen` now writes that name instead of the hardcoded `SIDEBAR_COOKIE_NAME` constant. New `web/src/components/form-sidebar.tsx` exports `FormSidebar` (the panel: its own `SidebarProvider` with `cookieName="form_sidebar_state"`, wrapping a `Sidebar` with `side="right"`, `collapsible="offcanvas"`, `variant="sidebar"`, an optional `title` prop rendered in a `SidebarHeader`, and `children` rendered in `SidebarContent` — no knowledge of what form it holds) and `FormSidebarTrigger` (a single adaptive toggle read off `useSidebar()`: on desktop a normal inline `Button` a consuming page places wherever fits its layout — e.g. above its list column; on mobile the same toggle instead renders as a `fixed bottom-6 right-6` FAB, since the panel becomes a full-width `Sheet` there, swapping icon/label between `t.showForm`/`t.hideForm` — both new generic strings in `web/src/lib/strings.ts`). `FormSidebar` renders its own `FormSidebarTrigger` automatically, so a page only needs to mount `<FormSidebar>` once. The `SidebarProvider`'s wrapper div is overridden to `className="contents"` so it doesn't inject its own `flex min-h-svh w-full` box into a page's layout; the actual panel still docks to the real viewport edge via the primitive's existing `fixed`/offcanvas mechanics, exactly like the main nav sidebar does on the left, so a page's list column reflows around it without any page-side layout code. Submit-then-stays-open needs no callback from this component: the page's form (rendered as `children`) owns its own draft state, and nothing in `FormSidebar` reacts to or closes on submission; a page wanting a custom in-form close/cancel control can import `useSidebar` from `@/components/ui/sidebar` directly, since it reads the same context this component provides. Not wired into any page. `npm run build` (`tsc -b && vite build`) passes clean; `npm run lint` shows only pre-existing errors unrelated to this ticket (shadcn-generated `button.tsx`/`badge.tsx`/`chart.tsx`, ticket 01's `combobox.tsx`/`toggle.tsx` installs, and an unrelated effect in `Incomes.tsx`) — nothing in `sidebar.tsx` or the new `form-sidebar.tsx`.

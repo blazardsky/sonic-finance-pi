@@ -21,6 +21,15 @@ export const t = {
   details: "Dettagli",
   actions: "Azioni",
 
+  // Date picker (web/src/components/date-picker.tsx) — the one placeholder
+  // shown before a date is chosen; the chosen date renders itself.
+  chooseDate: "Scegli una data",
+
+  // Form sidebar (web/src/components/form-sidebar.tsx) — the trigger's
+  // accessible label, shared by every "add new" form it holds.
+  showForm: "Mostra modulo",
+  hideForm: "Nascondi modulo",
+
   // Login
   password: "Password",
   logIn: "Accedi",
@@ -35,6 +44,7 @@ export const t = {
   chooseCategory: "Scegli…",
   addExpense: "Aggiungi spesa",
   invalidAmount: "Importo non valido.",
+  invalidPayer: "Scegli chi ha pagato.",
   expenseNotSaved: "Spesa non salvata. Riprova.",
   expenseNotDeleted: "Spesa non eliminata. Riprova.",
   noExpensesYet: "Nessuna spesa registrata.",
@@ -89,10 +99,13 @@ export const t = {
   // worded for the direction money moved — "Pagato da" is wrong for an Income.
   // One concept, two wordings, exactly as Category is "Motivo" here.
   incomePayer: "Ricevuto da",
+  invalidIncomePayer: "Scegli da chi è arrivato.",
   paymentDate: "Data incasso",
   invoiceSentDate: "Fattura inviata",
   notPaidYet: "Da incassare",
   waitingSince: (date: string) => `in attesa dal ${date}`,
+  // The Client Combobox's empty-search-results state.
+  noClientsFound: "Nessun cliente trovato.",
   incomeNotSaved: "Entrata non salvata. Riprova.",
   incomeNotDeleted: "Entrata non eliminata. Riprova.",
   noIncomesYet: "Nessuna entrata registrata.",
@@ -306,6 +319,7 @@ export const t = {
   holdingName: "Nome",
   holdingType: "Tipo",
   addHolding: "Aggiungi investimento",
+  editHolding: "Modifica investimento",
   noHoldingsYet: "Nessun investimento registrato.",
   holdingNotSaved: "Investimento non salvato. Riprova.",
   holdingTypeETF: "ETF",

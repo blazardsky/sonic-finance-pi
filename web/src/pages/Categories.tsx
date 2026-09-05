@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useState } from "react"
+import { RiDeleteBinLine, RiEditLine, RiEyeLine, RiEyeOffLine, RiMoreLine } from "@remixicon/react"
 
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { NativeSelect } from "@/components/ui/native-select"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import {
   Table,
   TableBody,
@@ -12,6 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { api } from "@/lib/api"
+import { FormSidebar } from "@/components/form-sidebar"
 import { t } from "@/lib/strings"
 import type { Applies, Category } from "@/types"
 
@@ -30,6 +39,7 @@ export function Categories() {
   const [name, setName] = useState("")
   const [appliesTo, setAppliesTo] = useState<Applies>("expense")
   const [editing, setEditing] = useState<number | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   // Returns its promise so a write can wait for the reload it triggers, and
   // sets state from a callback rather than an awaited line, which is what
@@ -91,121 +101,164 @@ export function Categories() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col gap-6 p-6">
+    <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6">
       <h1 className="font-medium">{t.categories}</h1>
 
-      <form onSubmit={add} className="flex flex-col gap-2">
-        <div className="flex gap-2">
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={t.categoryName}
-            required
-            className="h-9"
-          />
-          <NativeSelect
-            value={appliesTo}
-            onChange={(e) => setAppliesTo(e.target.value as Applies)}
-            aria-label={t.appliesTo}
-            className="h-9 w-auto"
-          >
-            {(["expense", "income", "both"] as const).map((value) => (
-              <option key={value} value={value}>
-                {appliesLabels[value]}
-              </option>
-            ))}
-          </NativeSelect>
+      <div className="flex flex-1 flex-wrap gap-6">
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t.categoryName}</TableHead>
+                <TableHead>{t.appliesTo}</TableHead>
+                <TableHead className="w-10">{t.actions}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {categories?.map((c) => (
+                <TableRow key={c.id}>
+                  <TableCell className="whitespace-normal">
+                    {editing === c.id ? (
+                      <Input
+                        autoFocus
+                        defaultValue={c.name}
+                        className="h-9"
+                        onBlur={(e) => void rename(c, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") e.currentTarget.blur()
+                          if (e.key === "Escape") setEditing(null)
+                        }}
+                      />
+                    ) : (
+                      <span className={c.hidden ? "text-muted-foreground" : ""}>
+                        {c.name}
+                        {c.hidden && ` · ${t.hidden}`}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {appliesLabels[c.applies_to]}
+                  </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={t.actions}
+                        >
+                          <RiMoreLine />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        align="end"
+                        // Without this, Radix returns focus to the "..."
+                        // trigger once the menu closes — after Rinomina has
+                        // already rendered the name cell's autoFocus input,
+                        // stealing focus right back off it.
+                        onCloseAutoFocus={(e) => e.preventDefault()}
+                      >
+                        {/* The server refuses these two on a Base category;
+                            disabling them here is so the household is not
+                            offered the refusal. */}
+                        <DropdownMenuItem
+                          disabled={c.base}
+                          // Deferred a tick past the click: Radix is still
+                          // tearing down the menu's own focus handling at
+                          // this point, and mounting the autoFocus input
+                          // immediately loses the race against it.
+                          onClick={() => setTimeout(() => setEditing(c.id), 0)}
+                        >
+                          <RiEditLine /> {t.rename}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() =>
+                            void write(`/api/categories/${c.id}`, {
+                              method: "PATCH",
+                              body: JSON.stringify({ hidden: !c.hidden }),
+                            })
+                          }
+                        >
+                          {c.hidden ? (
+                            <RiEyeLine />
+                          ) : (
+                            <RiEyeOffLine />
+                          )}{" "}
+                          {c.hidden ? t.unhide : t.hide}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          disabled={c.base}
+                          onClick={() => {
+                            if (confirm(t.confirmDeleteCategory(c.name)))
+                              void write(
+                                `/api/categories/${c.id}`,
+                                { method: "DELETE" },
+                                t.categoryInUse
+                              )
+                          }}
+                        >
+                          <RiDeleteBinLine /> {t.delete}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
-        <Button type="submit" size="lg">
-          {t.addCategory}
-        </Button>
-      </form>
 
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
+        <FormSidebar
+          title={t.addCategory}
+          open={sidebarOpen}
+          onOpenChange={setSidebarOpen}
+        >
+          <form onSubmit={add} className="flex flex-col gap-3">
+            <Field>
+              <FieldLabel htmlFor="name">{t.categoryName}</FieldLabel>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t.categoryName}
+                required
+                className="h-10"
+              />
+            </Field>
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{t.categoryName}</TableHead>
-            <TableHead>{t.appliesTo}</TableHead>
-            <TableHead>{t.actions}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {categories?.map((c) => (
-            <TableRow key={c.id}>
-              <TableCell className="whitespace-normal">
-                {editing === c.id ? (
-                  <Input
-                    autoFocus
-                    defaultValue={c.name}
-                    className="h-9"
-                    onBlur={(e) => void rename(c, e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") e.currentTarget.blur()
-                      if (e.key === "Escape") setEditing(null)
-                    }}
-                  />
-                ) : (
-                  <span className={c.hidden ? "text-muted-foreground" : ""}>
-                    {c.name}
-                    {c.hidden && ` · ${t.hidden}`}
-                  </span>
-                )}
-              </TableCell>
-              <TableCell className="text-xs text-muted-foreground">
-                {appliesLabels[c.applies_to]}
-              </TableCell>
-              <TableCell>
-                <div className="flex gap-1">
-                  {/* The server refuses these two on a Base category;
-                      disabling them here is so the household is not offered
-                      the refusal. */}
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    disabled={c.base}
-                    onClick={() => setEditing(c.id)}
+            <Field>
+              <FieldLabel>{t.appliesTo}</FieldLabel>
+              <RadioGroup
+                value={appliesTo}
+                onValueChange={(v) => setAppliesTo(v as Applies)}
+              >
+                {(["expense", "income", "both"] as const).map((value) => (
+                  <FieldLabel
+                    key={value}
+                    htmlFor={`applies-${value}`}
+                    className="font-normal"
                   >
-                    {t.rename}
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    onClick={() =>
-                      void write(`/api/categories/${c.id}`, {
-                        method: "PATCH",
-                        body: JSON.stringify({ hidden: !c.hidden }),
-                      })
-                    }
-                  >
-                    {c.hidden ? t.unhide : t.hide}
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="destructive"
-                    disabled={c.base}
-                    onClick={() => {
-                      if (confirm(t.confirmDeleteCategory(c.name)))
-                        void write(
-                          `/api/categories/${c.id}`,
-                          { method: "DELETE" },
-                          t.categoryInUse
-                        )
-                    }}
-                  >
-                    {t.delete}
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+                    <RadioGroupItem value={value} id={`applies-${value}`} />
+                    {appliesLabels[value]}
+                  </FieldLabel>
+                ))}
+              </RadioGroup>
+            </Field>
+
+            <Button type="submit" size="lg" className="h-12 text-base">
+              {t.addCategory}
+            </Button>
+          </form>
+        </FormSidebar>
+      </div>
     </div>
   )
 }

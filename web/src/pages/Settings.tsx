@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/lib/api"
@@ -15,7 +18,9 @@ import type { Lists } from "@/types"
 // the shape the API takes — PUT replaces a whole list — and a line is already
 // everything an entry can be: add one, delete one, drag one up to reorder the
 // picker. A row-per-entry editor with its own add and remove buttons would be
-// three times the code to do less.
+// three times the code to do less. The Badges under each box are read-only —
+// a live "here's what's in the box right now" preview, not a second way to
+// edit; the Textarea is still the only thing that does that.
 const toText = (values: string[]) => values.join("\n")
 const toList = (text: string) =>
   text
@@ -88,68 +93,94 @@ export function Settings() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col gap-8 p-6">
+    <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-8 p-6">
       <h1 className="font-medium">{t.settings}</h1>
 
-      <form onSubmit={saveLists} className="flex flex-col gap-4">
-        <label className="flex flex-col gap-1.5 text-sm">
-          {t.payersList}
-          <Textarea
-            value={payers}
-            onChange={(e) => setPayers(e.target.value)}
-            rows={4}
-            spellCheck={false}
-          />
-        </label>
-        <label className="flex flex-col gap-1.5 text-sm">
-          {t.paymentMethodsList}
-          <Textarea
-            value={paymentMethods}
-            onChange={(e) => setPaymentMethods(e.target.value)}
-            rows={3}
-            spellCheck={false}
-          />
-        </label>
-        <p className="text-sm text-muted-foreground">{t.onePerLine}</p>
-        <p className="text-sm text-muted-foreground">{t.listsHistorySafe}</p>
+      <div className="flex flex-wrap items-start gap-6">
+        <Card className="w-full max-w-md">
+          <CardContent>
+            <form onSubmit={saveLists} className="flex flex-col gap-4">
+              <Field>
+                <FieldLabel htmlFor="payers">{t.payersList}</FieldLabel>
+                <Textarea
+                  id="payers"
+                  value={payers}
+                  onChange={(e) => setPayers(e.target.value)}
+                  rows={4}
+                  spellCheck={false}
+                />
+                <div className="flex flex-wrap gap-1">
+                  {toList(payers).map((p) => (
+                    <Badge key={p} variant="secondary">
+                      {p}
+                    </Badge>
+                  ))}
+                </div>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="payment_methods">
+                  {t.paymentMethodsList}
+                </FieldLabel>
+                <Textarea
+                  id="payment_methods"
+                  value={paymentMethods}
+                  onChange={(e) => setPaymentMethods(e.target.value)}
+                  rows={3}
+                  spellCheck={false}
+                />
+                <div className="flex flex-wrap gap-1">
+                  {toList(paymentMethods).map((m) => (
+                    <Badge key={m} variant="secondary">
+                      {m}
+                    </Badge>
+                  ))}
+                </div>
+              </Field>
+              <FieldDescription>{t.onePerLine}</FieldDescription>
+              <FieldDescription>{t.listsHistorySafe}</FieldDescription>
 
-        <label className="flex flex-col gap-1.5 text-sm">
-          {t.target}
-          <Input
-            inputMode="decimal"
-            value={target}
-            onChange={(e) => setTarget(e.target.value)}
-            className="h-9"
-          />
-        </label>
-        <p className="text-sm text-muted-foreground">{t.targetHint}</p>
-        <label className="flex flex-col gap-1.5 text-sm">
-          {t.savingsGoal}
-          <Input
-            inputMode="decimal"
-            value={goal}
-            onChange={(e) => setGoal(e.target.value)}
-            className="h-9"
-          />
-        </label>
+              <Field>
+                <FieldLabel htmlFor="target">{t.target}</FieldLabel>
+                <Input
+                  id="target"
+                  inputMode="decimal"
+                  value={target}
+                  onChange={(e) => setTarget(e.target.value)}
+                  className="h-9"
+                />
+                <FieldDescription>{t.targetHint}</FieldDescription>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="goal">{t.savingsGoal}</FieldLabel>
+                <Input
+                  id="goal"
+                  inputMode="decimal"
+                  value={goal}
+                  onChange={(e) => setGoal(e.target.value)}
+                  className="h-9"
+                />
+              </Field>
 
-        {listsError && (
-          <p role="alert" className="text-sm text-destructive">
-            {listsError}
-          </p>
-        )}
-        {listsMessage && (
-          <p role="status" className="text-sm text-muted-foreground">
-            {listsMessage}
-          </p>
-        )}
-        <Button type="submit" size="lg">
-          {t.save}
-        </Button>
-      </form>
+              {listsError && (
+                <p role="alert" className="text-sm text-destructive">
+                  {listsError}
+                </p>
+              )}
+              {listsMessage && (
+                <p role="status" className="text-sm text-muted-foreground">
+                  {listsMessage}
+                </p>
+              )}
+              <Button type="submit" size="lg">
+                {t.save}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
 
-      <PasswordForm />
-      <BackupLinks />
+        <PasswordForm />
+        <BackupLinks />
+      </div>
     </div>
   )
 }
@@ -186,49 +217,56 @@ function PasswordForm() {
   }
 
   return (
-    <form
-      onSubmit={submit}
-      className="flex flex-col gap-4 border-t border-border pt-8"
-    >
-      <h2 className="text-sm font-medium">{t.changePassword}</h2>
-      <label className="flex flex-col gap-1.5 text-sm">
-        {t.currentPassword}
-        <Input
-          type="password"
-          autoComplete="current-password"
-          required
-          value={current}
-          onChange={(e) => setCurrent(e.target.value)}
-          className="h-9"
-        />
-      </label>
-      <label className="flex flex-col gap-1.5 text-sm">
-        {t.newPassword}
-        <Input
-          type="password"
-          autoComplete="new-password"
-          required
-          minLength={8}
-          value={next}
-          onChange={(e) => setNext(e.target.value)}
-          className="h-9"
-        />
-      </label>
-      <p className="text-sm text-muted-foreground">{t.changePasswordHint}</p>
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      {message && (
-        <p role="status" className="text-sm text-muted-foreground">
-          {message}
-        </p>
-      )}
-      <Button type="submit" size="lg" disabled={busy}>
-        {t.changePassword}
-      </Button>
-    </form>
+    <Card className="w-full max-w-md">
+      <CardHeader>
+        <CardTitle>{t.changePassword}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={submit} className="flex flex-col gap-4">
+          <Field>
+            <FieldLabel htmlFor="current-password">
+              {t.currentPassword}
+            </FieldLabel>
+            <Input
+              id="current-password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={current}
+              onChange={(e) => setCurrent(e.target.value)}
+              className="h-9"
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="new-password">{t.newPassword}</FieldLabel>
+            <Input
+              id="new-password"
+              type="password"
+              autoComplete="new-password"
+              required
+              minLength={8}
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+              className="h-9"
+            />
+            <FieldDescription>{t.changePasswordHint}</FieldDescription>
+          </Field>
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+          {message && (
+            <p role="status" className="text-sm text-muted-foreground">
+              {message}
+            </p>
+          )}
+          <Button type="submit" size="lg" disabled={busy}>
+            {t.changePassword}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -237,18 +275,22 @@ function PasswordForm() {
 // database and then have nowhere to put the bytes.
 function BackupLinks() {
   return (
-    <div className="flex flex-col gap-4 border-t border-border pt-8">
-      <h2 className="text-sm font-medium">{t.backupAndExport}</h2>
-      <p className="text-sm text-muted-foreground">{t.backupHint}</p>
-      <Button asChild size="lg">
-        <a href="/api/backup">{t.downloadBackup}</a>
-      </Button>
-      <Button asChild size="lg" variant="outline">
-        <a href="/api/export/expenses.csv">{t.exportExpenses}</a>
-      </Button>
-      <Button asChild size="lg" variant="outline">
-        <a href="/api/export/incomes.csv">{t.exportIncomes}</a>
-      </Button>
-    </div>
+    <Card className="w-full max-w-md">
+      <CardHeader>
+        <CardTitle>{t.backupAndExport}</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <p className="text-sm text-muted-foreground">{t.backupHint}</p>
+        <Button asChild size="lg">
+          <a href="/api/backup">{t.downloadBackup}</a>
+        </Button>
+        <Button asChild size="lg" variant="outline">
+          <a href="/api/export/expenses.csv">{t.exportExpenses}</a>
+        </Button>
+        <Button asChild size="lg" variant="outline">
+          <a href="/api/export/incomes.csv">{t.exportIncomes}</a>
+        </Button>
+      </CardContent>
+    </Card>
   )
 }

@@ -1,8 +1,25 @@
 import { useCallback, useEffect, useState } from "react"
+import { RiDeleteBinLine, RiEditLine, RiMoreLine } from "@remixicon/react"
 
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { NativeSelect } from "@/components/ui/native-select"
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Field, FieldLabel } from "@/components/ui/field"
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -13,6 +30,8 @@ import {
 } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/lib/api"
+import { DatePicker } from "@/components/date-picker"
+import { FormSidebar } from "@/components/form-sidebar"
 import {
   formatCents,
   formatDate,
@@ -23,6 +42,11 @@ import {
 import { nameOf, pickableCategories, withSaved } from "@/lib/pickers"
 import { t } from "@/lib/strings"
 import type { Category, Client, Contract, Income, Lists } from "@/types"
+
+// The Contract picker's default: "Extra" is a real, common choice (unlinked
+// income), never an unset placeholder — so, like the payment-method sentinel
+// on the Expenses form, it needs a stand-in value Radix Select will accept.
+const EXTRA_CONTRACT = "__extra__"
 
 // What the form holds: the amount as it was typed, and everything else as the
 // API's own field names, so submitting is one spread rather than a mapping.
@@ -79,9 +103,10 @@ const draftOf = (income: Income): Draft => ({
 })
 
 // The Income screen: record an invoice the day it goes out, and add the
-// payment date when the money lands. The form is first, the list under it is
-// both confirmation and the way back into an entry — tapping one loads it into
-// the same form, which is why there is only ever one form on the screen.
+// payment date when the money lands. The form lives in the right-side panel;
+// the list fills the rest of the width. Choosing a row's "Modifica" action is
+// how an entry gets corrected, which loads it into the same form and reopens
+// the panel if it was closed, since there is only ever one form on the screen.
 export function Incomes() {
   const [incomes, setIncomes] = useState<Income[] | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
@@ -97,6 +122,8 @@ export function Incomes() {
 
   const [draft, setDraft] = useState<Draft>(blankDraft)
   const [editing, setEditing] = useState<number | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   // The picked Client's own Contracts, scoped by re-fetching whenever
   // client_id changes — never all Clients' Contracts at once, since only one
@@ -124,13 +151,14 @@ export function Incomes() {
     }
   }, [draft.client_id])
 
-  // Tapping (or, from the keyboard, activating) a row is how an entry gets
-  // corrected — shared by the row's click and its Enter/Space handling below,
-  // which is the table's replacement for the list's own <button>.
+  // Loads a row into the form and makes sure the panel holding it is
+  // actually visible — the form updates whether it is on screen or not, and a
+  // silently updated but hidden form is indistinguishable from a broken one.
   const selectIncome = (income: Income) => {
     setEditing(income.id)
     setDraft(draftOf(income))
-    scrollTo({ top: 0, behavior: "smooth" })
+    setDetailsOpen(true)
+    setSidebarOpen(true)
   }
 
   const load = useCallback(
@@ -168,6 +196,16 @@ export function Incomes() {
       return
     }
 
+    // The server refuses an Income with no Payer, but Payer lives inside the
+    // details disclosure — closed, its Select unmounts, so the browser's own
+    // required check on it never runs. Checked here instead, opening the
+    // disclosure so the field the error is about is what the household sees.
+    if (draft.payer.trim() === "") {
+      setError(t.invalidIncomePayer)
+      setDetailsOpen(true)
+      return
+    }
+
     try {
       await api(editing === null ? "/api/incomes" : `/api/incomes/${editing}`, {
         method: editing === null ? "POST" : "PATCH",
@@ -188,38 +226,38 @@ export function Incomes() {
     }
     // A correction is finished. A new Income is often one of several invoices
     // in a sitting, so the reason, Client and Payer stay where they are.
+    const wasEditing = editing !== null
     setEditing(null)
     setDraft((d) =>
-      editing === null
-        ? {
+      wasEditing
+        ? blankDraft()
+        : {
             ...d,
             amount: "",
             note: "",
             payment_date: "",
             invoice_sent_date: "",
           }
-        : blankDraft()
     )
+    if (wasEditing) setDetailsOpen(false)
     await load()
   }
 
-  async function remove() {
-    if (editing === null) return
-    const income = incomes?.find((x) => x.id === editing)
-    if (
-      income &&
-      !confirm(t.confirmDeleteIncome(formatCents(income.amount_cents)))
-    )
+  async function removeIncome(income: Income) {
+    if (!confirm(t.confirmDeleteIncome(formatCents(income.amount_cents))))
       return
     setError("")
     try {
-      await api(`/api/incomes/${editing}`, { method: "DELETE" })
+      await api(`/api/incomes/${income.id}`, { method: "DELETE" })
     } catch {
       setError(t.incomeNotDeleted)
       return
     }
-    setEditing(null)
-    setDraft(blankDraft())
+    if (editing === income.id) {
+      setEditing(null)
+      setDraft(blankDraft())
+      setDetailsOpen(false)
+    }
     await load()
   }
 
@@ -240,268 +278,327 @@ export function Incomes() {
     clients.filter((c) => !c.hidden),
     clients.find((c) => c.id === draft.client_id)
   )
+  // The Combobox's own item shape — {value, label} is auto-recognised by the
+  // primitive for both display text and equality, so no itemToStringLabel or
+  // isItemEqualToValue is needed as long as the controlled `value` below is
+  // always looked up from this same freshly-built array.
+  const clientOptions = pickableClients.map((c) => ({
+    value: c.id,
+    label: c.name,
+  }))
+  const selectedClient =
+    clientOptions.find((o) => o.value === draft.client_id) ?? null
+
+  const chooseClient = (option: { value: number; label: string } | null) => {
+    const clientId = option?.value ?? ""
+    set("client_id", clientId)
+    // A different Client means a different Contract picker, and the one just
+    // picked would otherwise dangle: unlinked is the only safe carry-over,
+    // never a guess at the new Client's own.
+    set("contract_id", "")
+    // A one-time prefill, not a lock (ticket 04): picking a Client with a
+    // default Income Category loads it into the reason picker, which stays
+    // freely editable from here.
+    const defaultCategoryId = clients.find((c) => c.id === clientId)
+      ?.default_category_id
+    if (defaultCategoryId != null) set("category_id", defaultCategoryId)
+  }
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col gap-6 p-6">
-      <form onSubmit={submit} className="flex flex-col gap-3">
-        <label className="flex flex-col gap-1.5 text-sm">
-          {t.amount}
-          <div className="flex items-center gap-2">
-            <span className="text-xl text-muted-foreground">€</span>
-            <Input
-              // text with a decimal keypad, not type=number: a comma is what
-              // the Italian keypad offers and toCents accepts it.
-              type="text"
-              inputMode="decimal"
-              value={draft.amount}
-              onChange={(e) => set("amount", e.target.value)}
-              placeholder="0,00"
-              autoFocus
-              required
-              className="h-12 text-2xl"
-            />
-          </div>
-        </label>
-
-        <div className="flex gap-2">
-          <label className="flex flex-1 flex-col gap-1.5 text-sm">
-            {t.incomeReason}
-            <NativeSelect
-              value={draft.category_id}
-              onChange={(e) => set("category_id", Number(e.target.value))}
-              required
-              className="h-10"
-            >
-              <option value="">{t.chooseCategory}</option>
-              {pickable.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
+    <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6">
+      <div className="flex flex-1 flex-wrap gap-6">
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t.incomeReason}</TableHead>
+                <TableHead>{t.details}</TableHead>
+                <TableHead>{t.date}</TableHead>
+                <TableHead className="text-right">{t.amount}</TableHead>
+                <TableHead className="w-10">{t.actions}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {incomes?.map((income) => (
+                <TableRow
+                  key={income.id}
+                  className={editing === income.id ? "opacity-50" : ""}
+                >
+                  <TableCell className="truncate">
+                    {[
+                      nameOf(categories, income.category_id),
+                      nameOf(clients, income.client_id),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </TableCell>
+                  <TableCell className="text-xs whitespace-normal text-muted-foreground">
+                    {[income.payer, income.note].filter(Boolean).join(" · ")}
+                  </TableCell>
+                  <TableCell className="whitespace-normal">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xs text-muted-foreground">
+                        {income.payment_date
+                          ? formatDate(income.payment_date)
+                          : ""}
+                      </span>
+                      {/* An unpaid Income says so, because that is the one thing
+                          the amount does not tell you: this money has not
+                          arrived and counts toward nothing. Ticket 14 turns
+                          these into a list of their own; here they only have to
+                          be recognisable. */}
+                      {!income.payment_date && (
+                        <span className="text-xs text-destructive">
+                          {t.notPaidYet}
+                          {income.invoice_sent_date &&
+                            ` · ${t.waitingSince(
+                              formatDate(income.invoice_sent_date)
+                            )}`}
+                        </span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right font-medium tabular-nums">
+                    € {formatCents(income.amount_cents)}
+                  </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={t.actions}
+                        >
+                          <RiMoreLine />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => selectIncome(income)}>
+                          <RiEditLine /> {t.editIncome}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => void removeIncome(income)}
+                        >
+                          <RiDeleteBinLine /> {t.delete}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
               ))}
-            </NativeSelect>
-          </label>
-          <label className="flex flex-1 flex-col gap-1.5 text-sm">
-            {t.client}
-            <NativeSelect
-              value={draft.client_id}
-              // Back to the blank option is "" and not Number("") — 0, which
-              // no Client has, would travel as a Client the server refuses.
-              onChange={(e) => {
-                const clientId =
-                  e.target.value === "" ? "" : Number(e.target.value)
-                set("client_id", clientId)
-                // A different Client means a different Contract picker, and
-                // the one just picked would otherwise dangle: unlinked is the
-                // only safe carry-over, never a guess at the new Client's own.
-                set("contract_id", "")
-                // A one-time prefill, not a lock (ticket 04): picking a
-                // Client with a default Income Category loads it into the
-                // reason picker, which stays freely editable from here.
-                const defaultCategoryId = clients.find(
-                  (c) => c.id === clientId
-                )?.default_category_id
-                if (defaultCategoryId != null)
-                  set("category_id", defaultCategoryId)
-              }}
-              className="h-10"
-            >
-              <option value="">{t.notSet}</option>
-              {pickableClients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
+            </TableBody>
+          </Table>
+          {incomes?.length === 0 && (
+            <p className="text-sm text-muted-foreground">{t.noIncomesYet}</p>
+          )}
         </div>
 
-        {/* Only shown once a Client with at least one Contract is picked:
-            "Extra" (unlinked) is always the default, never guessed, so a
-            Client with no Contracts has nothing to offer here at all. */}
-        {clientContracts.length > 0 && (
-          <label className="flex flex-col gap-1.5 text-sm">
-            {t.contract}
-            <NativeSelect
-              value={draft.contract_id}
-              onChange={(e) =>
-                set(
-                  "contract_id",
-                  e.target.value === "" ? "" : Number(e.target.value)
-                )
-              }
-              className="h-10"
-            >
-              <option value="">{t.extraIncome}</option>
-              {clientContracts.map((ct) => (
-                <option key={ct.id} value={ct.id}>
-                  {formatMonth(ct.start_month)} – {formatMonth(ct.end_month)}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
-        )}
+        <FormSidebar
+          title={editing === null ? t.addIncome : t.editIncome}
+          open={sidebarOpen}
+          onOpenChange={setSidebarOpen}
+        >
+          <form onSubmit={submit} className="flex flex-col gap-3">
+            <Field>
+              <FieldLabel htmlFor="amount">{t.amount}</FieldLabel>
+              <InputGroup className="h-12">
+                <InputGroupAddon className="text-xl">€</InputGroupAddon>
+                <InputGroupInput
+                  id="amount"
+                  // text with a decimal keypad, not type=number: a comma is
+                  // what the Italian keypad offers and toCents accepts it.
+                  type="text"
+                  inputMode="decimal"
+                  value={draft.amount}
+                  onChange={(e) => set("amount", e.target.value)}
+                  placeholder="0,00"
+                  autoFocus
+                  required
+                  className="text-2xl"
+                />
+              </InputGroup>
+            </Field>
 
-        {/* The two dates, side by side, because the whole point of this screen
-            is that they are different questions: when the invoice went out,
-            and whether the money has arrived. An empty payment date is not a
-            missing field — it is the unpaid state. */}
-        <div className="flex gap-2">
-          <label className="flex flex-1 flex-col gap-1.5 text-sm">
-            {t.invoiceSentDate}
-            <Input
-              type="date"
-              value={draft.invoice_sent_date}
-              onChange={(e) => set("invoice_sent_date", e.target.value)}
-              className="h-10"
-            />
-          </label>
-          <label className="flex flex-1 flex-col gap-1.5 text-sm">
-            {t.paymentDate}
-            <Input
-              type="date"
-              value={draft.payment_date}
-              onChange={(e) => set("payment_date", e.target.value)}
-              className="h-10"
-            />
-          </label>
-        </div>
+            <div className="flex gap-2">
+              <Field className="flex-1">
+                <FieldLabel htmlFor="reason">{t.incomeReason}</FieldLabel>
+                <Select
+                  value={draft.category_id === "" ? undefined : String(draft.category_id)}
+                  onValueChange={(v) => set("category_id", Number(v))}
+                  required
+                >
+                  <SelectTrigger id="reason" className="h-10 w-full">
+                    <SelectValue placeholder={t.chooseCategory} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pickable.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field className="flex-1">
+                <FieldLabel htmlFor="client">{t.client}</FieldLabel>
+                <Combobox
+                  items={clientOptions}
+                  value={selectedClient}
+                  onValueChange={chooseClient}
+                >
+                  <ComboboxInput
+                    id="client"
+                    placeholder={t.notSet}
+                    showClear
+                    className="h-10"
+                  />
+                  <ComboboxContent>
+                    <ComboboxEmpty>{t.noClientsFound}</ComboboxEmpty>
+                    <ComboboxList>
+                      {(option: { value: number; label: string }) => (
+                        <ComboboxItem key={option.value} value={option}>
+                          {option.label}
+                        </ComboboxItem>
+                      )}
+                    </ComboboxList>
+                  </ComboboxContent>
+                </Combobox>
+              </Field>
+            </div>
 
-        <details open={editing !== null} className="flex flex-col gap-3">
-          <summary className="cursor-pointer py-1 text-sm text-muted-foreground">
-            {t.moreDetails}
-          </summary>
-          <div className="flex flex-col gap-3 pt-2">
-            <label className="flex flex-col gap-1.5 text-sm">
-              {t.incomePayer}
-              <NativeSelect
-                value={draft.payer}
-                onChange={(e) => set("payer", e.target.value)}
-                required
-                className="h-10"
-              >
-                <option value="">{t.chooseCategory}</option>
-                {withSaved(lists.payers, draft.payer || undefined).map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </NativeSelect>
-            </label>
+            {/* Only shown once a Client with at least one Contract is picked:
+                "Extra" (unlinked) is always the default, never guessed, so a
+                Client with no Contracts has nothing to offer here at all. */}
+            {clientContracts.length > 0 && (
+              <Field>
+                <FieldLabel htmlFor="contract">{t.contract}</FieldLabel>
+                <Select
+                  value={
+                    draft.contract_id === ""
+                      ? EXTRA_CONTRACT
+                      : String(draft.contract_id)
+                  }
+                  onValueChange={(v) =>
+                    set("contract_id", v === EXTRA_CONTRACT ? "" : Number(v))
+                  }
+                >
+                  <SelectTrigger id="contract" className="h-10 w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={EXTRA_CONTRACT}>
+                      {t.extraIncome}
+                    </SelectItem>
+                    {clientContracts.map((ct) => (
+                      <SelectItem key={ct.id} value={String(ct.id)}>
+                        {formatMonth(ct.start_month)} – {formatMonth(ct.end_month)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            )}
 
-            <label className="flex flex-col gap-1.5 text-sm">
-              {t.note}
-              <Textarea
-                value={draft.note}
-                onChange={(e) => set("note", e.target.value)}
-                rows={2}
+            {/* The two dates, one above the other rather than side by side —
+                the sidebar's fixed 16rem width has no room for two DatePicker
+                buttons showing a full date each — because the whole point of
+                this screen is that they are different questions: when the
+                invoice went out, and whether the money has arrived. An empty
+                payment date is not a missing field — it is the unpaid state. */}
+            <Field>
+              <FieldLabel htmlFor="invoice_sent_date">
+                {t.invoiceSentDate}
+              </FieldLabel>
+              <DatePicker
+                id="invoice_sent_date"
+                value={draft.invoice_sent_date}
+                onValueChange={(v) => set("invoice_sent_date", v)}
+                className="w-full"
               />
-            </label>
-          </div>
-        </details>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="payment_date">{t.paymentDate}</FieldLabel>
+              <DatePicker
+                id="payment_date"
+                value={draft.payment_date}
+                onValueChange={(v) => set("payment_date", v)}
+                className="w-full"
+              />
+            </Field>
 
-        <Button type="submit" size="lg" className="h-12 text-base">
-          {editing === null ? t.addIncome : t.save}
-        </Button>
-        {editing !== null && (
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              className="flex-1"
-              onClick={() => {
-                setEditing(null)
-                setDraft(blankDraft())
-              }}
+            <Accordion
+              type="single"
+              collapsible
+              value={detailsOpen ? "details" : ""}
+              onValueChange={(v) => setDetailsOpen(v === "details")}
             >
-              {t.cancel}
+              <AccordionItem value="details">
+                <AccordionTrigger className="text-muted-foreground hover:no-underline">
+                  {t.moreDetails}
+                </AccordionTrigger>
+                <AccordionContent className="flex flex-col gap-3">
+                  <Field>
+                    <FieldLabel htmlFor="payer">{t.incomePayer}</FieldLabel>
+                    <Select
+                      value={draft.payer || undefined}
+                      onValueChange={(v) => set("payer", v)}
+                      required
+                    >
+                      <SelectTrigger id="payer" className="h-10 w-full">
+                        <SelectValue placeholder={t.chooseCategory} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {withSaved(lists.payers, draft.payer || undefined).map(
+                          (p) => (
+                            <SelectItem key={p} value={p}>
+                              {p}
+                            </SelectItem>
+                          )
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="note">{t.note}</FieldLabel>
+                    <Textarea
+                      id="note"
+                      value={draft.note}
+                      onChange={(e) => set("note", e.target.value)}
+                      rows={2}
+                    />
+                  </Field>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+
+            {error && (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
+
+            <Button type="submit" size="lg" className="h-12 text-base">
+              {editing === null ? t.addIncome : t.save}
             </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              className="flex-1"
-              onClick={() => void remove()}
-            >
-              {t.delete}
-            </Button>
-          </div>
-        )}
-      </form>
-
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{t.incomeReason}</TableHead>
-            <TableHead>{t.details}</TableHead>
-            <TableHead>{t.date}</TableHead>
-            <TableHead className="text-right">{t.amount}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {incomes?.map((income) => (
-            <TableRow
-              key={income.id}
-              role="button"
-              tabIndex={0}
-              aria-label={t.editIncome}
-              onClick={() => selectIncome(income)}
-              onKeyDown={(ev) => {
-                if (ev.target !== ev.currentTarget) return
-                if (ev.key !== "Enter" && ev.key !== " ") return
-                ev.preventDefault()
-                selectIncome(income)
-              }}
-              className={`cursor-pointer ${
-                editing === income.id ? "opacity-50" : ""
-              }`}
-            >
-              <TableCell className="truncate">
-                {[
-                  nameOf(categories, income.category_id),
-                  nameOf(clients, income.client_id),
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </TableCell>
-              <TableCell className="text-xs whitespace-normal text-muted-foreground">
-                {[income.payer, income.note].filter(Boolean).join(" · ")}
-              </TableCell>
-              <TableCell className="whitespace-normal">
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-xs text-muted-foreground">
-                    {income.payment_date ? formatDate(income.payment_date) : ""}
-                  </span>
-                  {/* An unpaid Income says so, because that is the one thing
-                      the amount does not tell you: this money has not
-                      arrived and counts toward nothing. Ticket 14 turns
-                      these into a list of their own; here they only have to
-                      be recognisable. */}
-                  {!income.payment_date && (
-                    <span className="text-xs text-destructive">
-                      {t.notPaidYet}
-                      {income.invoice_sent_date &&
-                        ` · ${t.waitingSince(
-                          formatDate(income.invoice_sent_date)
-                        )}`}
-                    </span>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell className="text-right font-medium tabular-nums">
-                € {formatCents(income.amount_cents)}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      {incomes?.length === 0 && (
-        <p className="text-sm text-muted-foreground">{t.noIncomesYet}</p>
-      )}
+            {editing !== null && (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setEditing(null)
+                  setDraft(blankDraft())
+                  setDetailsOpen(false)
+                }}
+              >
+                {t.cancel}
+              </Button>
+            )}
+          </form>
+        </FormSidebar>
+      </div>
     </div>
   )
 }

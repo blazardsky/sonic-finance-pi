@@ -56,6 +56,7 @@ function SidebarProvider({
   defaultOpen = true,
   open: openProp,
   onOpenChange: setOpenProp,
+  cookieName = SIDEBAR_COOKIE_NAME,
   className,
   style,
   children,
@@ -64,6 +65,10 @@ function SidebarProvider({
   defaultOpen?: boolean
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  // A second Sidebar mounted elsewhere (e.g. a per-page form sidebar) needs
+  // its own persistence key, so its open/closed state doesn't overwrite the
+  // main nav sidebar's cookie.
+  cookieName?: string
 }) {
   const isMobile = useIsMobile()
   const [openMobile, setOpenMobile] = React.useState(false)
@@ -82,9 +87,9 @@ function SidebarProvider({
       }
 
       // This sets the cookie to keep the sidebar state.
-      document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+      document.cookie = `${cookieName}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
     },
-    [setOpenProp, open]
+    [setOpenProp, open, cookieName]
   )
 
   // Helper to toggle the sidebar.
@@ -152,6 +157,8 @@ function Sidebar({
   side = "left",
   variant = "sidebar",
   collapsible = "offcanvas",
+  mobileWidth = SIDEBAR_WIDTH_MOBILE,
+  themed = true,
   className,
   children,
   dir,
@@ -160,17 +167,28 @@ function Sidebar({
   side?: "left" | "right"
   variant?: "sidebar" | "floating" | "inset"
   collapsible?: "offcanvas" | "icon" | "none"
+  // The nav's own mobile Sheet is a partial-width drawer (18rem, revealing
+  // the page behind it) — a form takeover wants the opposite, the full
+  // viewport width, so this is a prop rather than the constant every caller
+  // shares.
+  mobileWidth?: string
+  // bg-sidebar/text-sidebar-foreground are the main nav's own blue branding,
+  // baked into this component's own classes (not reachable through
+  // `className` — mobile's copy lives on a Radix Portal-rendered element,
+  // which a CSS custom property override on an ancestor never reaches).
+  // false swaps them for the page's plain --background/--foreground, for a
+  // panel meant to read as page content rather than a second nav.
+  themed?: boolean
 }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+  const bg = themed ? "bg-sidebar" : "bg-background"
+  const fg = themed ? "text-sidebar-foreground" : "text-foreground"
 
   if (collapsible === "none") {
     return (
       <div
         data-slot="sidebar"
-        className={cn(
-          "flex h-full w-(--sidebar-width) flex-col bg-sidebar text-sidebar-foreground",
-          className
-        )}
+        className={cn(`flex h-full w-(--sidebar-width) flex-col ${bg} ${fg}`, className)}
         {...props}
       >
         {children}
@@ -186,10 +204,13 @@ function Sidebar({
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
-          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+          // SheetContent's own data-[side=*]:w-3/4 is a higher-specificity
+          // selector than a plain w-(--sidebar-width) override, so matching
+          // its selector shape here is what actually lets mobileWidth win.
+          className={`data-[side=left]:w-(--sidebar-width) data-[side=right]:w-(--sidebar-width) data-[side=left]:sm:max-w-none data-[side=right]:sm:max-w-none ${bg} p-0 ${fg} [&>button]:hidden`}
           style={
             {
-              "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
+              "--sidebar-width": mobileWidth,
             } as React.CSSProperties
           }
           side={side}
@@ -206,7 +227,7 @@ function Sidebar({
 
   return (
     <div
-      className="group peer hidden text-sidebar-foreground md:block"
+      className={`group peer hidden ${fg} md:block`}
       data-state={state}
       data-collapsible={state === "collapsed" ? collapsible : ""}
       data-variant={variant}
@@ -241,7 +262,7 @@ function Sidebar({
         <div
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
-          className="flex size-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border"
+          className={`flex size-full flex-col ${bg} group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border`}
         >
           {children}
         </div>

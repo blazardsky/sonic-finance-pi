@@ -106,7 +106,7 @@ export function Month() {
   }, [month])
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col gap-6 p-6">
+    <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6">
       <div className="flex items-center gap-2">
         <Button
           variant="ghost"
@@ -124,7 +124,7 @@ export function Month() {
           // month it could mean — the one on screen stays.
           onChange={(e) => e.target.value && setMonth(e.target.value)}
           max={thisMonth()}
-          className="h-10 text-center"
+          className="h-10 w-auto text-center"
         />
         <Button
           variant="ghost"
@@ -145,142 +145,163 @@ export function Month() {
         </p>
       )}
 
-      {totals && (
-        <dl className="flex flex-col divide-y divide-border">
-          {/* The two totals borrow the nav's own words for the screens they
-              are the sum of: one concept, one word. */}
-          <Row label={t.incomes} cents={totals.income_cents} />
-          <Row label={t.expenses} cents={totals.expense_cents} />
-          {/* The difference is the answer, so it is the big one — and the only
-              number here that can be negative, which the sign and the colour
-              both say. */}
-          <Row label={t.difference} cents={totals.net_cents} big />
-        </dl>
-      )}
-
-      {/* Budget (computed), Target and Goal (household-set) — ticket 04.
-          Only for the current real month: a past or future month has no
-          "this month's target" to speak of. Target/Goal show even when
-          Budget itself has too little history, since they are just settings;
-          only Budget's own row waits for enough data. */}
-      {budget && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{t.budgetTargetGoal}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl className="flex flex-col divide-y divide-border">
-              {budget.available ? (
-                <Row label={t.budget} cents={budget.budget_cents} />
-              ) : (
-                <p className="py-3 text-sm text-muted-foreground">
-                  {t.budgetUnavailable}
-                </p>
-              )}
-              <Row label={t.target} cents={budget.target_cents} />
-              <Row label={t.savingsGoal} cents={budget.goal_cents} />
-            </dl>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* What is owed and what looks unbilled, above the breakdown: it is a
-          notice rather than a report, and a forgotten invoice is worth more
-          than knowing which Category the shopping went under. It renders
-          nothing when nothing is pending. */}
-      <PendingPayments />
-
-      {/* Where the money went. Every line is real spend — the breakdown adds
-          up to the expense total above it, with an itemised shop split across
-          its Categories and no "uncategorised" line to absorb a remainder. */}
-      {totals && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            {t.byCategory}
-          </h2>
-          {totals.by_category.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t.nothingSpent}</p>
-          ) : (
-            <dl className="flex flex-col divide-y divide-border">
-              {totals.by_category.map((line) => (
-                <div
-                  key={line.category_id}
-                  className="flex items-baseline justify-between gap-3 py-2"
-                >
-                  <dt className="truncate">{line.category}</dt>
-                  <dd className="whitespace-nowrap tabular-nums">
-                    € {formatCents(line.amount_cents)}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          )}
-        </section>
-      )}
-
-      {/* Weekly, not daily: a month's worth of daily bars would be too thin
-          to read on a phone. Bucketed here rather than by a second endpoint —
-          a week is a client-side grouping of the same daily rows the
-          by_category breakdown above is drawn from (cmd/reports.go). An edge
-          week that only partly falls in this month keeps its real date
-          range, per the ticket, rather than being merged into a neighbour. */}
-      {daily.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{t.weeklyTrend}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CategoryTrendChart
-              buckets={weeklyBuckets(daily)}
-              categories={categoriesIn(daily)}
-            />
-          </CardContent>
-        </Card>
-      )}
-
-      {/* The confirmation strip: what was just typed, newest first. An
-          Expense reads as money out and an Income as money in, which is the
-          one thing about an entry this list has to get across.
-
-          An Income with no date is one that has not been paid, and it gets
-          neither a sign nor full-strength text: it sits directly under a money
-          in total that excludes it, and a "+ € 800,00" here would be ADR-0003's
-          named bug rendered on screen. */}
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium text-muted-foreground">
-          {t.recentEntries}
-        </h2>
-        {recent.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t.noEntriesYet}</p>
-        ) : (
-          <ul className="flex flex-col divide-y divide-border">
-            {recent.map((entry) => (
-              <li
-                key={`${entry.direction}-${entry.id}`}
-                className="flex items-baseline justify-between gap-3 py-2"
-              >
-                <span className="min-w-0">
-                  <span className="truncate">{entry.category}</span>{" "}
-                  <span className="text-xs text-muted-foreground">
-                    {entry.date ? formatDate(entry.date) : t.notPaidYet}
-                  </span>
-                </span>
-                <span
-                  className={`whitespace-nowrap tabular-nums ${
-                    entry.date ? "" : "text-muted-foreground"
-                  }`}
-                >
-                  {entry.date && (entry.direction === "expense" ? "−" : "+")}{" "}
-                  <SpoilerAmount
-                    cents={entry.amount_cents}
-                    gift={entry.is_gift}
-                  />
-                </span>
-              </li>
-            ))}
-          </ul>
+      {/* Every card below is free to sit next to whatever fits beside it —
+          nothing here is pinned to a fixed column count, so a wide screen
+          fills with stat-shaped cards side by side while a narrow one just
+          stacks them, same content either way. */}
+      <div className="flex flex-wrap items-start gap-6">
+        {totals && (
+          <Card className="min-w-64 flex-1">
+            <CardContent>
+              <dl className="flex flex-col divide-y divide-border">
+                {/* The two totals borrow the nav's own words for the screens
+                    they are the sum of: one concept, one word. */}
+                <Row label={t.incomes} cents={totals.income_cents} />
+                <Row label={t.expenses} cents={totals.expense_cents} />
+                {/* The difference is the answer, so it is the big one — and
+                    the only number here that can be negative, which the sign
+                    and the colour both say. */}
+                <Row label={t.difference} cents={totals.net_cents} big />
+              </dl>
+            </CardContent>
+          </Card>
         )}
-      </section>
+
+        {/* Budget (computed), Target and Goal (household-set) — ticket 04.
+            Only for the current real month: a past or future month has no
+            "this month's target" to speak of. Target/Goal show even when
+            Budget itself has too little history, since they are just
+            settings; only Budget's own row waits for enough data. */}
+        {budget && (
+          <Card className="min-w-64 flex-1">
+            <CardHeader>
+              <CardTitle>{t.budgetTargetGoal}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="flex flex-col divide-y divide-border">
+                {budget.available ? (
+                  <Row label={t.budget} cents={budget.budget_cents} />
+                ) : (
+                  <p className="py-3 text-sm text-muted-foreground">
+                    {t.budgetUnavailable}
+                  </p>
+                )}
+                <Row label={t.target} cents={budget.target_cents} />
+                <Row label={t.savingsGoal} cents={budget.goal_cents} />
+              </dl>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* What is owed and what looks unbilled: it is a notice rather than a
+            report, and a forgotten invoice is worth more than knowing which
+            Category the shopping went under. It renders nothing when nothing
+            is pending. */}
+        <PendingPayments className="min-w-72 flex-1" />
+
+        {/* Where the money went. Every line is real spend — the breakdown
+            adds up to the expense total above it, with an itemised shop split
+            across its Categories and no "uncategorised" line to absorb a
+            remainder. */}
+        {totals && (
+          <Card className="min-w-72 flex-1">
+            <CardHeader>
+              <CardTitle>{t.byCategory}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {totals.by_category.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {t.nothingSpent}
+                </p>
+              ) : (
+                <dl className="flex flex-col divide-y divide-border">
+                  {totals.by_category.map((line) => (
+                    <div
+                      key={line.category_id}
+                      className="flex items-baseline justify-between gap-3 py-2"
+                    >
+                      <dt className="truncate">{line.category}</dt>
+                      <dd className="whitespace-nowrap tabular-nums">
+                        € {formatCents(line.amount_cents)}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Weekly, not daily: a month's worth of daily bars would be too thin
+            to read on a phone. Bucketed here rather than by a second
+            endpoint — a week is a client-side grouping of the same daily rows
+            the by_category breakdown above is drawn from (cmd/reports.go).
+            An edge week that only partly falls in this month keeps its real
+            date range, per the ticket, rather than being merged into a
+            neighbour. A wide min-width so it claims a full row on its own at
+            most screen sizes — a bar chart wants the room a stat card doesn't
+            need. */}
+        {daily.length > 0 && (
+          <Card className="min-w-full flex-[2] lg:min-w-[32rem]">
+            <CardHeader>
+              <CardTitle>{t.weeklyTrend}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CategoryTrendChart
+                buckets={weeklyBuckets(daily)}
+                categories={categoriesIn(daily)}
+              />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* The confirmation strip: what was just typed, newest first. An
+            Expense reads as money out and an Income as money in, which is the
+            one thing about an entry this list has to get across.
+
+            An Income with no date is one that has not been paid, and it gets
+            neither a sign nor full-strength text: it sits directly under a
+            money in total that excludes it, and a "+ € 800,00" here would be
+            ADR-0003's named bug rendered on screen. */}
+        <Card className="min-w-72 flex-1">
+          <CardHeader>
+            <CardTitle>{t.recentEntries}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {recent.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t.noEntriesYet}</p>
+            ) : (
+              <ul className="flex flex-col divide-y divide-border">
+                {recent.map((entry) => (
+                  <li
+                    key={`${entry.direction}-${entry.id}`}
+                    className="flex items-baseline justify-between gap-3 py-2"
+                  >
+                    <span className="min-w-0">
+                      <span className="truncate">{entry.category}</span>{" "}
+                      <span className="text-xs text-muted-foreground">
+                        {entry.date ? formatDate(entry.date) : t.notPaidYet}
+                      </span>
+                    </span>
+                    <span
+                      className={`whitespace-nowrap tabular-nums ${
+                        entry.date ? "" : "text-muted-foreground"
+                      }`}
+                    >
+                      {entry.date &&
+                        (entry.direction === "expense" ? "−" : "+")}{" "}
+                      <SpoilerAmount
+                        cents={entry.amount_cents}
+                        gift={entry.is_gift}
+                      />
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
