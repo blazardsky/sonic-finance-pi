@@ -134,18 +134,14 @@ export function Incomes() {
     setDraft((d) => ({ ...d, [key]: value }))
 
   useEffect(() => {
-    if (draft.client_id === "") {
-      setClientContracts([])
-      return
-    }
     let cancelled = false
-    apiJSON<Contract[]>(`/api/clients/${draft.client_id}/contracts`)
-      .then((cs) => {
-        if (!cancelled) setClientContracts(cs)
-      })
-      .catch(() => {
-        if (!cancelled) setClientContracts([])
-      })
+    Promise.resolve(
+      draft.client_id === ""
+        ? []
+        : apiJSON<Contract[]>(`/api/clients/${draft.client_id}/contracts`).catch(() => []),
+    ).then((cs) => {
+      if (!cancelled) setClientContracts(cs)
+    })
     return () => {
       cancelled = true
     }

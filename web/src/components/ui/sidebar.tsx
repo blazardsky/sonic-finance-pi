@@ -159,6 +159,8 @@ function Sidebar({
   collapsible = "offcanvas",
   mobileWidth = SIDEBAR_WIDTH_MOBILE,
   themed = true,
+  contained = false,
+  onContainedEdgeChange,
   className,
   children,
   dir,
@@ -179,10 +181,56 @@ function Sidebar({
   // false swaps them for the page's plain --background/--foreground, for a
   // panel meant to read as page content rather than a second nav.
   themed?: boolean
+  // Default desktop behaviour docks the panel `fixed` to the true *viewport*
+  // edge — correct for a global nav spanning the whole window, wrong for a
+  // per-page panel: on a screen wider than the page's own
+  // max-w-(--content-max-width), the panel ends up outside the centered
+  // content area entirely (ticket 14). `contained` keeps it `fixed` (so it
+  // stays visible regardless of how the page scrolls, same as the default
+  // branch — `<main>`'s `overflow-auto` never actually engages in this app,
+  // so a `sticky` panel bound to it would just scroll away with the page)
+  // but measures its horizontal edge off an in-flow placeholder instead of
+  // hardcoding the viewport edge, so it docks to the *content* column's
+  // edge on wide screens. Desktop, offcanvas + variant="sidebar" only — the
+  // one shape `form-sidebar.tsx` actually needs; the icon-rail/floating/inset
+  // combinations below aren't reachable through this flag.
+  contained?: boolean
+  // Reports the same measured edge (see below) so a sibling like
+  // `FormSidebarTrigger` can dock its own `fixed` position against it
+  // instead of the true viewport edge, without this primitive needing to
+  // know that trigger exists.
+  onContainedEdgeChange?: (edgePx: number) => void
 }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
   const bg = themed ? "bg-sidebar" : "bg-background"
   const fg = themed ? "text-sidebar-foreground" : "text-foreground"
+
+  // Tracks the placeholder's edge (viewport px), recomputed whenever it
+  // moves or resizes — window resize, a breakpoint change, or the content
+  // column's own width changing (e.g. its max-width capping in). Read only
+  // by the `contained` branch below; called unconditionally so hook order
+  // never depends on the `contained` prop.
+  const containedGapRef = React.useRef<HTMLDivElement>(null)
+  const [containedEdge, setContainedEdge] = React.useState(0)
+  React.useLayoutEffect(() => {
+    if (!contained) return
+    const el = containedGapRef.current
+    if (!el) return
+    const measure = () => {
+      const rect = el.getBoundingClientRect()
+      const edge = side === "right" ? window.innerWidth - rect.right : rect.left
+      setContainedEdge(edge)
+      onContainedEdgeChange?.(edge)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    window.addEventListener("resize", measure)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener("resize", measure)
+    }
+  }, [contained, side, onContainedEdgeChange])
 
   if (collapsible === "none") {
     return (
@@ -222,6 +270,46 @@ function Sidebar({
           <div className="flex h-full w-full flex-col">{children}</div>
         </SheetContent>
       </Sheet>
+    )
+  }
+
+  if (contained) {
+    return (
+      <div
+        className={`group peer hidden ${fg} md:block`}
+        data-state={state}
+        data-collapsible={state === "collapsed" ? collapsible : ""}
+        data-variant={variant}
+        data-side={side}
+        data-slot="sidebar"
+      >
+        {/* In-flow stand-in reserving this panel's row space — the fixed
+            copy beside it doesn't occupy flow space on its own, and its
+            rect is what tells the fixed copy where the content edge is. */}
+        <div
+          ref={containedGapRef}
+          data-slot="sidebar-gap"
+          className="w-(--sidebar-width) shrink-0 bg-transparent transition-[width] duration-200 ease-linear group-data-[collapsible=offcanvas]:w-0"
+        />
+        <div
+          data-slot="sidebar-container"
+          data-side={side}
+          style={{ [side === "right" ? "right" : "left"]: containedEdge }}
+          className={cn(
+            "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) shrink-0 overflow-hidden transition-[width] duration-200 ease-linear group-data-[collapsible=offcanvas]:w-0 group-data-[side=left]:border-r group-data-[side=right]:border-l md:flex",
+            className
+          )}
+          {...props}
+        >
+          <div
+            data-sidebar="sidebar"
+            data-slot="sidebar-inner"
+            className={`flex size-full min-h-0 flex-col ${bg}`}
+          >
+            {children}
+          </div>
+        </div>
+      </div>
     )
   }
 

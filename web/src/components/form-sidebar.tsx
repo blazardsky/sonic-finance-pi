@@ -45,6 +45,12 @@ function FormSidebar({
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }) {
+  // The measured content-edge (viewport px), reported by the `contained`
+  // Sidebar below — shared with FormSidebarTrigger so its own `fixed`
+  // position tracks the same edge rather than the true viewport edge
+  // (ticket 14).
+  const [edge, setEdge] = React.useState(0)
+
   return (
     <SidebarProvider
       cookieName={FORM_SIDEBAR_COOKIE_NAME}
@@ -58,6 +64,8 @@ function FormSidebar({
         variant="sidebar"
         mobileWidth="100vw"
         themed={false}
+        contained
+        onContainedEdgeChange={setEdge}
       >
         {title && (
           <SidebarHeader className="border-b p-4">
@@ -68,22 +76,27 @@ function FormSidebar({
           {children}
         </SidebarContent>
       </Sidebar>
-      <FormSidebarTrigger />
+      <FormSidebarTrigger edge={edge} />
     </SidebarProvider>
   )
 }
 
 // Both states are `fixed` to the real viewport edge — not placed in normal
 // flow — because this component can be mounted anywhere in a page's layout,
-// and the panel itself is always `fixed` to the viewport regardless of where
-// its flex-row placeholder happens to sit. An in-flow trigger button ends up
-// visually underneath the (higher-stacking, `fixed`) open panel whenever the
-// page's content column is narrower than the viewport; anchoring this to the
-// viewport too, above the panel's z-index, is what keeps it reachable in both
-// the open and closed state. Desktop: a small edge tab, sliding over to track
-// the panel's left edge when open. Mobile: a FAB pinned to the bottom, since
-// the panel becomes a full-width Sheet there.
-function FormSidebarTrigger({ className }: { className?: string }) {
+// and the panel itself is always `fixed` regardless of where its flex-row
+// placeholder happens to sit. An in-flow trigger ends up visually underneath
+// the (higher-stacking, `fixed`) open panel; anchoring this to the same
+// measured edge, above the panel's z-index, is what keeps it reachable in
+// both the open and closed state. Desktop: a small edge tab, sliding over to
+// track the panel's left edge when open. Mobile: a FAB pinned to the bottom,
+// since the panel becomes a full-width Sheet there.
+function FormSidebarTrigger({
+  className,
+  edge,
+}: {
+  className?: string
+  edge: number
+}) {
   const { isMobile, open, openMobile, toggleSidebar } = useSidebar()
   const isOpen = isMobile ? openMobile : open
   const label = isOpen ? t.hideForm : t.showForm
@@ -116,9 +129,14 @@ function FormSidebarTrigger({ className }: { className?: string }) {
       aria-label={label}
       title={label}
       onClick={toggleSidebar}
+      style={{ right: open ? `calc(${edge}px + var(--sidebar-width))` : `${edge}px` }}
       className={cn(
-        "fixed top-1/2 z-20 -translate-y-1/2 rounded-l-lg rounded-r-none border border-r-0 shadow-sm transition-[right] duration-200 ease-linear",
-        open ? "right-(--sidebar-width)" : "right-0",
+        // A translate-based top-1/2 centering (Tailwind v4 compiles that to
+        // the standalone CSS `translate` property, not `transform`) left
+        // Chromium's hit-test region stale on this `fixed`, dynamically
+        // re-positioned button — real clicks landed ~16px off from the
+        // painted position. calc() avoids `translate` entirely.
+        "fixed top-[calc(50%-1rem)] z-20 rounded-l-lg rounded-r-none border border-r-0 shadow-sm transition-[right] duration-200 ease-linear",
         className
       )}
     >

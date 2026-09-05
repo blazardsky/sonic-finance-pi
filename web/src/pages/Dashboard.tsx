@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import {
+  RiBellFill,
+  RiBellLine,
   RiCheckboxCircleLine,
   RiErrorWarningLine,
   RiScales3Line,
@@ -25,7 +27,7 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card"
 import { Input } from "@/components/ui/input"
-import { Switch } from "@/components/ui/switch"
+import { Toggle } from "@/components/ui/toggle"
 import { CategoryTrendChart } from "@/components/CategoryTrendChart"
 import { SpoilerAmount } from "@/components/SpoilerAmount"
 import { Progress } from "@/components/ui/progress"
@@ -606,18 +608,25 @@ function RemindersCard() {
                 key={r.id}
                 className="flex items-center justify-between gap-3 py-2"
               >
-                <label className="flex min-w-0 flex-1 items-center gap-2">
-                  <Switch
-                    checked={r.enabled}
-                    onCheckedChange={(checked) =>
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  {/* A single independent on/off per row, not a segmented
+                      set — any number of Reminders can be enabled at once —
+                      so Toggle, not ToggleGroup (ticket 14). */}
+                  <Toggle
+                    size="sm"
+                    pressed={r.enabled}
+                    onPressedChange={(pressed) =>
                       void write(`/api/reminders/${r.id}`, {
                         method: "PATCH",
-                        body: JSON.stringify({ enabled: checked }),
+                        body: JSON.stringify({ enabled: pressed }),
                       })
                     }
-                  />
+                    aria-label={t.reminderToggleLabel(r.label, r.enabled)}
+                  >
+                    {r.enabled ? <RiBellFill /> : <RiBellLine />}
+                  </Toggle>
                   <span className="truncate text-sm">{r.label}</span>
-                </label>
+                </div>
                 <Button
                   type="button"
                   size="xs"
