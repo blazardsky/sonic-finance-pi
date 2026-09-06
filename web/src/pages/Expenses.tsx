@@ -360,7 +360,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                     {e.note}
                   </TableCell>
                   <TableCell className="whitespace-normal">
-                    <div className="flex flex-col gap-0.5">
+                    <div className="flex w-48 flex-col gap-0.5">
                       {/* Negozio, Pagato da and Metodo di pagamento have no
                           column of their own on any width — this is the one
                           place to reach them. Note keeps its own column on

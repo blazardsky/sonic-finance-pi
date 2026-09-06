@@ -439,7 +439,7 @@ export function Incomes({
                     {income.payer}
                   </TableCell>
                   <TableCell className="whitespace-normal">
-                    <div className="flex flex-col gap-0.5">
+                    <div className="flex w-48 flex-col gap-0.5">
                       {/* Fattura inviata and Note have no column of their
                           own — this is the one place to reach them. */}
                       {(income.invoice_sent_date || income.note) && (
