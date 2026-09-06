@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-- [ ] At least one radial chart and one pie chart added to `YearlyReport.tsx`.
-- [ ] Charts are built from data the page already receives — no new endpoint unless the existing response shape genuinely can't support it.
-- [ ] Charts use the same shadcn chart primitives/pattern as `Year.tsx`'s existing `BarChart` (`ChartContainer`/`ChartTooltip`/`ChartLegend`) for visual consistency with the rest of the app.
-- [ ] The existing full-year-breakdown table and cumulative line chart are unaffected.
+- [x] At least one radial chart and one pie chart added to `YearlyReport.tsx`.
+- [x] Charts are built from data the page already receives — no new endpoint unless the existing response shape genuinely can't support it.
+- [x] Charts use the same shadcn chart primitives/pattern as `Year.tsx`'s existing `BarChart` (`ChartContainer`/`ChartTooltip`/`ChartLegend`) for visual consistency with the rest of the app.
+- [x] The existing full-year-breakdown table and cumulative line chart are unaffected.
