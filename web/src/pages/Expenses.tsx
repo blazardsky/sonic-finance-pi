@@ -113,7 +113,7 @@ const itemsCents = (items: ItemDraft[]) =>
 // "Modifica" action is how an entry gets corrected, which loads it into the
 // same form and reopens the panel if it was closed, since there is only ever
 // one form on the screen.
-export function Expenses() {
+export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
   const [expenses, setExpenses] = useState<Expense[] | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
   const [lists, setLists] = useState<Lists>({
@@ -129,6 +129,11 @@ export function Expenses() {
   const [editing, setEditing] = useState<number | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  // Captured once at mount, not read live — a mobile quick-add shortcut is
+  // meant to open the panel on arrival, not force it back open every time
+  // App re-renders with the flag still set (see App.tsx's reset-on-navigate-
+  // away).
+  const [openMobileOnArrival] = useState(() => quickAdd ?? false)
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
@@ -311,10 +316,10 @@ export function Expenses() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{t.category}</TableHead>
-                <TableHead>{t.details}</TableHead>
                 <TableHead>{t.date}</TableHead>
                 <TableHead className="text-right">{t.amount}</TableHead>
+                <TableHead>{t.category}</TableHead>
+                <TableHead>{t.details}</TableHead>
                 <TableHead className="w-10">{t.actions}</TableHead>
               </TableRow>
             </TableHeader>
@@ -324,6 +329,15 @@ export function Expenses() {
                   key={e.id}
                   className={editing === e.id ? "opacity-50" : ""}
                 >
+                  <TableCell className="text-xs text-muted-foreground">
+                    {formatDate(e.occurred_on)}
+                  </TableCell>
+                  <TableCell className="text-right font-medium tabular-nums">
+                    <SpoilerAmount
+                      cents={e.amount_cents}
+                      gift={isGiftCategory(categories, e.category_id)}
+                    />
+                  </TableCell>
                   <TableCell>{nameOf(categories, e.category_id)}</TableCell>
                   <TableCell className="whitespace-normal">
                     <div className="flex flex-col gap-0.5">
@@ -352,15 +366,6 @@ export function Expenses() {
                         </span>
                       ))}
                     </div>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {formatDate(e.occurred_on)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">
-                    <SpoilerAmount
-                      cents={e.amount_cents}
-                      gift={isGiftCategory(categories, e.category_id)}
-                    />
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -400,6 +405,7 @@ export function Expenses() {
           title={editing === null ? t.addExpense : t.editExpense}
           open={sidebarOpen}
           onOpenChange={setSidebarOpen}
+          openMobile={openMobileOnArrival}
         >
           <form onSubmit={submit} className="flex flex-col gap-3">
             <Field>

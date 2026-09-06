@@ -54,6 +54,7 @@ function useSidebar() {
 
 function SidebarProvider({
   defaultOpen = true,
+  defaultOpenMobile = false,
   open: openProp,
   onOpenChange: setOpenProp,
   cookieName = SIDEBAR_COOKIE_NAME,
@@ -63,6 +64,10 @@ function SidebarProvider({
   ...props
 }: React.ComponentProps<"div"> & {
   defaultOpen?: boolean
+  // Mobile's Sheet has no controlled `open` prop (see FormSidebarTrigger's
+  // doc comment) — this is the one hook a caller gets to start it open, e.g.
+  // a quick-action shortcut that navigates straight into a page's form.
+  defaultOpenMobile?: boolean
   open?: boolean
   onOpenChange?: (open: boolean) => void
   // A second Sidebar mounted elsewhere (e.g. a per-page form sidebar) needs
@@ -71,7 +76,7 @@ function SidebarProvider({
   cookieName?: string
 }) {
   const isMobile = useIsMobile()
-  const [openMobile, setOpenMobile] = React.useState(false)
+  const [openMobile, setOpenMobile] = React.useState(defaultOpenMobile)
 
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.

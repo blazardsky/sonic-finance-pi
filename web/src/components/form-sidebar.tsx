@@ -38,12 +38,18 @@ function FormSidebar({
   className,
   open,
   onOpenChange,
+  openMobile,
 }: {
   title?: React.ReactNode
   children: React.ReactNode
   className?: string
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  // Starts the mobile Sheet open, one-shot at mount — for a caller that
+  // navigates here wanting the form already showing (e.g. a mobile quick-add
+  // shortcut). `open`/`onOpenChange` can't do this themselves: they only
+  // reach the desktop panel.
+  openMobile?: boolean
 }) {
   // The measured content-edge (viewport px), reported by the `contained`
   // Sidebar below — shared with FormSidebarTrigger so its own `fixed`
@@ -57,6 +63,7 @@ function FormSidebar({
       className="contents"
       open={open}
       onOpenChange={onOpenChange}
+      defaultOpenMobile={openMobile}
     >
       <Sidebar
         side="right"
@@ -68,8 +75,9 @@ function FormSidebar({
         onContainedEdgeChange={setEdge}
       >
         {title && (
-          <SidebarHeader className="border-b p-4">
+          <SidebarHeader className="flex-row items-center justify-between border-b p-4">
             <h2 className="font-heading text-base font-medium">{title}</h2>
+            <FormSidebarClose />
           </SidebarHeader>
         )}
         <SidebarContent className={cn("gap-4 p-4", className)}>
@@ -78,6 +86,32 @@ function FormSidebar({
       </Sidebar>
       <FormSidebarTrigger edge={edge} />
     </SidebarProvider>
+  )
+}
+
+// Mobile's dedicated close control, sat in the header next to the title
+// rather than reusing the outside FAB as a toggle. Radix's Dialog treats any
+// tap outside its Content as a dismiss and closes it before that tap's own
+// click handler runs — the FAB, living outside the Sheet, raced its own
+// onClick against that auto-dismiss and the two cancelled out, so the
+// "close" tap visibly did nothing. Living inside the Content (the header is
+// part of it) sidesteps that race entirely. Desktop has no equivalent: its
+// panel is never full-width, so FormSidebarTrigger's edge tab is always
+// reachable and stays the only control there.
+function FormSidebarClose() {
+  const { isMobile, setOpenMobile } = useSidebar()
+  if (!isMobile) return null
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-lg"
+      aria-label={t.hideForm}
+      title={t.hideForm}
+      onClick={() => setOpenMobile(false)}
+    >
+      <RiCloseLine />
+    </Button>
   )
 }
 
@@ -103,6 +137,10 @@ function FormSidebarTrigger({
   const Icon = isOpen ? RiCloseLine : RiAddLine
 
   if (isMobile) {
+    // Open-only here — FormSidebarClose (rendered inside the Sheet) is what
+    // closes it once open, so this FAB has nothing left to do while open and
+    // simply isn't rendered.
+    if (isOpen) return null
     return (
       <Button
         type="button"
@@ -112,11 +150,14 @@ function FormSidebarTrigger({
         title={label}
         onClick={toggleSidebar}
         className={cn(
-          "fixed right-6 bottom-6 z-40 rounded-full shadow-lg",
+          // size-16 (64px) overrides icon-lg's own size-9 — the biggest tap
+          // target on the page, since it's the primary way in to logging an
+          // entry.
+          "fixed right-6 bottom-6 z-40 size-16 rounded-full shadow-lg",
           className
         )}
       >
-        <Icon />
+        <RiAddLine className="size-6" />
       </Button>
     )
   }

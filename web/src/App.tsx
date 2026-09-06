@@ -45,6 +45,19 @@ export type Screen =
 export function App() {
   const [state, setState] = useState<State>("checking")
   const [screen, setScreen] = useState<Screen>("dashboard")
+  // Set by the mobile-only "Aggiungi spesa" header shortcut alongside the
+  // screen change, so Expenses knows to open its panel on arrival. Cleared as
+  // soon as the user leaves Expenses, so a later plain nav back in via the
+  // menu doesn't reopen it.
+  const [expensesQuickAdd, setExpensesQuickAdd] = useState(false)
+  // Adjusted during render (React's own pattern for this) rather than an
+  // effect, since an effect setting state right back would cost an extra
+  // render for no visible frame in between.
+  const [quickAddScreen, setQuickAddScreen] = useState(screen)
+  if (screen !== quickAddScreen) {
+    setQuickAddScreen(screen)
+    if (screen !== "expenses" && expensesQuickAdd) setExpensesQuickAdd(false)
+  }
   // The Pi has no RTC. When its clock is unset it generates no Recurring
   // expenses, and a month short a rent with nothing said about it is how a
   // household concludes the app has lost the rent. Assumed fine until health
@@ -95,7 +108,13 @@ export function App() {
   return (
     <SidebarProvider>
       <div className="flex min-h-svh w-full flex-col gap-2 bg-shell p-2 md:gap-3 md:p-3">
-        <SiteHeader screen={screen} />
+        <SiteHeader
+          screen={screen}
+          onQuickAddExpense={() => {
+            setScreen("expenses")
+            setExpensesQuickAdd(true)
+          }}
+        />
         <div className="flex min-h-0 flex-1 gap-2 md:gap-3">
           <AppSidebar screen={screen} onNavigate={setScreen} />
           <main className="min-h-0 flex-1 overflow-auto rounded-sm bg-background shadow-sm">
@@ -110,7 +129,7 @@ export function App() {
             {screen === "month" && <Month />}
             {screen === "year" && <Year />}
             {screen === "yearReport" && <YearlyReport />}
-            {screen === "expenses" && <Expenses />}
+            {screen === "expenses" && <Expenses quickAdd={expensesQuickAdd} />}
             {screen === "incomes" && <Incomes />}
             {screen === "recurring" && <RecurringExpenses />}
             {screen === "savings" && <Savings />}

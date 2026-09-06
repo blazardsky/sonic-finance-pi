@@ -307,10 +307,10 @@ export function Incomes() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{t.incomeReason}</TableHead>
-                <TableHead>{t.details}</TableHead>
                 <TableHead>{t.date}</TableHead>
                 <TableHead className="text-right">{t.amount}</TableHead>
+                <TableHead>{t.incomeReason}</TableHead>
+                <TableHead>{t.details}</TableHead>
                 <TableHead className="w-10">{t.actions}</TableHead>
               </TableRow>
             </TableHeader>
@@ -320,17 +320,6 @@ export function Incomes() {
                   key={income.id}
                   className={editing === income.id ? "opacity-50" : ""}
                 >
-                  <TableCell className="truncate">
-                    {[
-                      nameOf(categories, income.category_id),
-                      nameOf(clients, income.client_id),
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </TableCell>
-                  <TableCell className="text-xs whitespace-normal text-muted-foreground">
-                    {[income.payer, income.note].filter(Boolean).join(" · ")}
-                  </TableCell>
                   <TableCell className="whitespace-normal">
                     <div className="flex flex-col gap-0.5">
                       <span className="text-xs text-muted-foreground">
@@ -356,6 +345,17 @@ export function Incomes() {
                   </TableCell>
                   <TableCell className="text-right font-medium tabular-nums">
                     € {formatCents(income.amount_cents)}
+                  </TableCell>
+                  <TableCell className="truncate">
+                    {[
+                      nameOf(categories, income.category_id),
+                      nameOf(clients, income.client_id),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </TableCell>
+                  <TableCell className="text-xs whitespace-normal text-muted-foreground">
+                    {[income.payer, income.note].filter(Boolean).join(" · ")}
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>

@@ -1,8 +1,15 @@
-import { RiComputerLine, RiMoonLine, RiSunLine } from "@remixicon/react"
+import {
+  RiAddLine,
+  RiComputerLine,
+  RiMoonLine,
+  RiShoppingBasketLine,
+  RiSunLine,
+} from "@remixicon/react"
 
 import { useTheme } from "@/components/theme-provider"
 import { Button } from "@/components/ui/button"
 import { SidebarTrigger } from "@/components/ui/sidebar"
+import { cn } from "@/lib/utils"
 import { t } from "@/lib/strings"
 import type { Screen } from "@/App"
 
@@ -39,12 +46,38 @@ function ThemeToggle() {
   )
 }
 
-export function SiteHeader({ screen }: { screen: Screen }) {
+export function SiteHeader({
+  screen,
+  onQuickAddExpense,
+}: {
+  screen: Screen
+  onQuickAddExpense: () => void
+}) {
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 rounded-sm bg-header px-4 text-header-foreground">
       <SidebarTrigger className={headerButton} />
       <span className="font-heading text-base font-medium">{t[screen]}</span>
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-1">
+        {/* Mobile-only: on desktop, Expenses' own panel is a click away and
+            always open by default (Expenses.tsx), so this shortcut would be
+            redundant there. Homepage-only: Expenses.tsx only reads its
+            quickAdd prop once, at mount — already being on Expenses would
+            leave a second tap with nothing to remount and re-read it. */}
+        {screen === "dashboard" && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t.addExpense}
+            title={t.addExpense}
+            className={cn(headerButton, "md:hidden")}
+            onClick={onQuickAddExpense}
+          >
+            <span className="relative inline-flex">
+              <RiShoppingBasketLine />
+              <RiAddLine className="absolute -top-1 -right-1 size-2.5 rounded-full bg-header-foreground text-header" />
+            </span>
+          </Button>
+        )}
         <ThemeToggle />
       </div>
     </header>
