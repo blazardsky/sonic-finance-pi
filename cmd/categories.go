@@ -83,6 +83,12 @@ type category struct {
 	// match it by (spoiler ticket).
 	Gift bool `json:"gift"`
 
+	// Freelance is Base narrowed the same way Gift is, for the Income form:
+	// whether Fattura inviata is worth asking for depends on this Category
+	// being Freelance, and a renamed "Freelance" is still exactly as much
+	// Freelance as before.
+	Freelance bool `json:"freelance"`
+
 	code string
 }
 
@@ -271,16 +277,17 @@ func findCategory(w http.ResponseWriter, db *sql.DB, rawID string) (category, bo
 }
 
 // The one projection every read of a Category uses, and the scan that matches
-// it. `code` is reduced to the two booleans the API publishes — Base (protected
-// at all) and Gift (protected as specifically the spoiler's Category) — the
-// code itself stays an implementation detail of the reports that resolve by it.
+// it. `code` is reduced to the three booleans the API publishes — Base
+// (protected at all), Gift (protected as specifically the spoiler's Category)
+// and Freelance (the Income form's Fattura inviata field) — the code itself
+// stays an implementation detail of the reports that resolve by it.
 var categorySelect = fmt.Sprintf(
-	`SELECT id, name, applies_to, hidden, code IS NOT NULL, IFNULL(code, '') = '%s' FROM category`,
-	codeGift)
+	`SELECT id, name, applies_to, hidden, code IS NOT NULL, IFNULL(code, '') = '%s', IFNULL(code, '') = '%s' FROM category`,
+	codeGift, codeFreelance)
 
 func scanCategory(row interface{ Scan(...any) error }) (category, error) {
 	var c category
-	err := row.Scan(&c.ID, &c.Name, &c.AppliesTo, &c.Hidden, &c.Base, &c.Gift)
+	err := row.Scan(&c.ID, &c.Name, &c.AppliesTo, &c.Hidden, &c.Base, &c.Gift, &c.Freelance)
 	return c, err
 }
 

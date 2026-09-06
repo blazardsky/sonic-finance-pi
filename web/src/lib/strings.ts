@@ -108,6 +108,10 @@ export const t = {
   invoiceSentDate: "Fattura inviata",
   notPaidYet: "Da incassare",
   waitingSince: (date: string) => `in attesa dal ${date}`,
+  // The row action that sets payment_date to today, for an invoiced Income
+  // still waiting on its money — one tap rather than opening the form to
+  // pick today off the DatePicker.
+  markPaid: "Segna come incassata",
   // The Client Combobox's empty-search-results state.
   noClientsFound: "Nessun cliente trovato.",
   incomeNotSaved: "Entrata non salvata. Riprova.",

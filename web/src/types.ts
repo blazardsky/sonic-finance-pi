@@ -14,6 +14,10 @@ export type Category = {
   // blur resolves by identity, so an Expense list can tell it apart from any
   // other Base category without matching on its (renameable) name.
   gift: boolean
+  // Base narrowed the same way, to the Freelance category — the one the
+  // Income form reads to decide whether Fattura inviata belongs on screen,
+  // without matching on its (renameable) name.
+  freelance: boolean
 }
 
 // Who money comes from, as one row rather than three spellings. Not a
