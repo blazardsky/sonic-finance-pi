@@ -135,7 +135,13 @@ export function AppSidebar({
             <SheetTitle>{t.appName}</SheetTitle>
             <SheetDescription>{t.appName}</SheetDescription>
           </SheetHeader>
-          <Nav screen={screen} onNavigate={onNavigate} />
+          <Nav
+            screen={screen}
+            onNavigate={(s) => {
+              onNavigate(s)
+              setOpenMobile(false)
+            }}
+          />
           <Brand />
         </SheetContent>
       </Sheet>

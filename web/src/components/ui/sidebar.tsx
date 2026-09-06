@@ -296,7 +296,16 @@ function Sidebar({
           data-side={side}
           style={{ [side === "right" ? "right" : "left"]: containedEdge }}
           className={cn(
-            "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) shrink-0 overflow-hidden transition-[width] duration-200 ease-linear group-data-[collapsible=offcanvas]:w-0 group-data-[side=left]:border-r group-data-[side=right]:border-l md:flex",
+            // Vertically inset by the shell's own frame constants (App.tsx:
+            // p-3 + the h-14 header + gap-3 = top-20; p-3 again on the
+            // bottom) rather than `inset-y-0 h-svh` — that docked to the
+            // true viewport top/bottom, overlapping the header and the
+            // shell's padding. Still `fixed`, not measured off `<main>`:
+            // the shell only sets `min-h-svh`, so a tall page grows past
+            // the viewport and the *window* scrolls — `<main>`'s own
+            // rect isn't viewport-bounded, and this panel is meant to stay
+            // put regardless of how far the page has scrolled (ticket 14).
+            "fixed top-20 bottom-3 z-10 hidden w-(--sidebar-width) shrink-0 overflow-hidden transition-[width] duration-200 ease-linear group-data-[collapsible=offcanvas]:w-0 group-data-[side=left]:border-r group-data-[side=right]:border-l md:flex",
             className
           )}
           {...props}
