@@ -4,7 +4,8 @@ import {
   RiDashboardLine,
   RiExchangeFundsLine,
   RiFileChartLine,
-  RiLineChartLine,
+  RiFileList3Line,
+  RiPieChartLine,
   RiPriceTag3Line,
   RiRepeatLine,
   RiSettings3Line,
@@ -40,20 +41,26 @@ const icons: Record<Screen, typeof RiDashboardLine> = {
   expenses: RiShoppingBag3Line,
   incomes: RiWallet3Line,
   recurring: RiRepeatLine,
-  savings: RiExchangeFundsLine,
+  investments: RiExchangeFundsLine,
+  savings: RiPieChartLine,
   categories: RiPriceTag3Line,
   clients: RiTeamLine,
-  holdings: RiLineChartLine,
+  holdings: RiFileList3Line,
   settings: RiSettings3Line,
 }
 
 // Three groups, the same altitude the screens are already ordered at: where
-// things stand, what gets typed, what gets managed.
+// things stand, what gets typed, what gets managed. Risparmi is a read-only
+// recap (no entries besides the starting balance), so it sits with Overview
+// rather than Entries.
 const groups: { label: string; screens: Screen[] }[] = [
-  { label: t.navOverview, screens: ["dashboard", "month", "year", "yearReport"] },
+  {
+    label: t.navOverview,
+    screens: ["dashboard", "month", "year", "yearReport", "savings"],
+  },
   {
     label: t.navEntries,
-    screens: ["expenses", "incomes", "recurring", "savings"],
+    screens: ["expenses", "incomes", "recurring", "investments"],
   },
   {
     label: t.navManagement,

@@ -6,6 +6,7 @@ import { Dashboard } from "@/pages/Dashboard"
 import { Expenses } from "@/pages/Expenses"
 import { Holdings } from "@/pages/Holdings"
 import { Incomes } from "@/pages/Incomes"
+import { Investments } from "@/pages/Investments"
 import { Login } from "@/pages/Login"
 import { Month } from "@/pages/Month"
 import { RecurringExpenses } from "@/pages/RecurringExpenses"
@@ -37,6 +38,7 @@ export type Screen =
   | "expenses"
   | "incomes"
   | "recurring"
+  | "investments"
   | "savings"
   | "categories"
   | "clients"
@@ -148,6 +150,7 @@ export function App() {
             {screen === "expenses" && <Expenses quickAdd={expensesQuickAdd} />}
             {screen === "incomes" && <Incomes editIncomeId={incomeToEdit} />}
             {screen === "recurring" && <RecurringExpenses />}
+            {screen === "investments" && <Investments />}
             {screen === "savings" && <Savings />}
             {screen === "categories" && <Categories />}
             {screen === "clients" && <Clients />}

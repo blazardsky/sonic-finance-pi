@@ -323,9 +323,9 @@ export const t = {
   contract: "Contratto",
   extraIncome: "Extra (nessun contratto)",
 
-  // Holdings — the fixed list of stocks/ETFs/crypto/bonds the household
+  // Titoli — the fixed list of stocks/ETFs/crypto/bonds the household
   // invests in (ticket 03 is what records buying and selling one)
-  holdings: "Investimenti",
+  holdings: "Titoli",
   holdingName: "Nome",
   holdingType: "Tipo",
   addHolding: "Aggiungi investimento",
@@ -338,24 +338,26 @@ export const t = {
   holdingTypeBond: "Obbligazione",
   holdingTypeOther: "Altro",
 
-  // Savings — the dedicated Buy/Sell form (ticket 03): a buy posts to
+  // Investimenti — the dedicated Buy/Sell form (ticket 03): a buy posts to
   // /api/expenses and a sell to /api/incomes, both under the Investments
   // category, so this screen's own vocabulary is deliberately thin.
-  savings: "Risparmi",
+  investments: "Investimenti",
   buy: "Acquisto",
   sell: "Vendita",
   holding: "Investimento",
   chooseHolding: "Scegli un investimento",
   noHoldingsToBuySell:
-    "Nessun investimento in elenco. Aggiungine uno nella pagina Investimenti.",
+    "Nessun investimento in elenco. Aggiungine uno nella pagina Titoli.",
   buySellNotSaved: "Operazione non salvata. Riprova.",
   recordBuy: "Registra acquisto",
   recordSell: "Registra vendita",
   noBuysSellsYet: "Nessun acquisto o vendita registrato.",
 
-  // Savings total, starting balance, and portfolio breakdown (ticket 07) —
-  // GET /api/reports/savings. The starting balance is edited right here and
-  // saved through the same /api/settings payload Target and Goal use.
+  // Risparmi — read-only recap (ticket 07): total Savings, starting balance,
+  // and the portfolio breakdown from GET /api/reports/savings. No entries are
+  // added here except the starting balance, saved through the same
+  // /api/settings payload Target and Goal use.
+  savings: "Risparmi",
   startingBalance: "Saldo di partenza",
   startingBalanceHint: "Il risparmio accumulato prima di usare l'app.",
   startingBalanceNotSaved: "Saldo di partenza non salvato. Riprova.",
