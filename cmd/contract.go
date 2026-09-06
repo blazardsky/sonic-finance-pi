@@ -234,11 +234,15 @@ func contractClientID(db *sql.DB, id int64) (int64, bool, error) {
 // already linked to this Contract is an invoice already sent, and spec's
 // accounted_cents is deliberately "regardless of payment status" so that
 // money already invoiced is never suggested for invoicing twice.
-const contractSelect = `SELECT id, client_id, start_month, end_month, total_cents,
+// Every column is qualified with contract., unneeded when contractSelect
+// queries the bare table but required once contractsDueThisMonth joins in
+// client — id and client_id would otherwise be ambiguous between the two.
+const contractColumns = `contract.id, contract.client_id, contract.start_month, contract.end_month, contract.total_cents,
 	(SELECT COALESCE(SUM(amount_cents), 0) FROM income
 		WHERE income.contract_id = contract.id AND income.payment_date IS NOT NULL),
-	(SELECT COALESCE(SUM(amount_cents), 0) FROM income WHERE income.contract_id = contract.id)
-	FROM contract`
+	(SELECT COALESCE(SUM(amount_cents), 0) FROM income WHERE income.contract_id = contract.id)`
+
+const contractSelect = `SELECT ` + contractColumns + ` FROM contract`
 
 func scanContract(row interface{ Scan(...any) error }) (contract, error) {
 	var c contract
@@ -247,31 +251,56 @@ func scanContract(row interface{ Scan(...any) error }) (contract, error) {
 	return c, err
 }
 
-// contractsDueThisMonth sums InvoiceTargetCents across every Contract
-// currently inside its own range — start_month <= current <= end_month — for
-// the Dashboard's Clienti card. A Contract not yet begun, or already past
-// end_month (Overdue), contributes nothing here: neither is "an active one"
-// in the sense the card asks about.
-func contractsDueThisMonth(db *sql.DB, now func() time.Time) (int64, error) {
+// clientContractDue is one Client's share of an active Contract this month —
+// the Dashboard's Clienti card, one badge per Client. Client travels as a
+// name for the same reason outstandingIncome's does: the card holds no
+// Client list of its own to look a hidden one's name up in.
+type clientContractDue struct {
+	ClientID int64  `json:"client_id"`
+	Client   string `json:"client"`
+	DueCents int64  `json:"due_cents"`
+}
+
+// contractsDueThisMonth answers, per Client, InvoiceTargetCents for whichever
+// Contract is currently inside its own range — start_month <= current <=
+// end_month. A Contract not yet begun, or already past end_month (Overdue),
+// is left out entirely: neither is "an active one" in the sense the card
+// asks about. A Client whose active Contract is already fully invoiced this
+// month (InvoiceTargetCents zero) is left out too — there is nothing left to
+// say it owes.
+//
+// Two Contracts for the same Client never overlap in range (contractOverlaps
+// enforces it at write time), so this is at most one row per Client.
+func contractsDueThisMonth(db *sql.DB, now func() time.Time) ([]clientContractDue, error) {
 	current := now().Format(monthLayout)
-	rows, err := db.Query(contractSelect+` WHERE start_month <= ? AND end_month >= ?`, current, current)
+	rows, err := db.Query(`SELECT `+contractColumns+`, client.name
+		FROM contract
+		JOIN client ON client.id = contract.client_id
+		WHERE contract.start_month <= ? AND contract.end_month >= ?`, current, current)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	defer rows.Close()
 
-	var total int64
+	out := []clientContractDue{}
 	for rows.Next() {
-		c, err := scanContract(rows)
-		if err != nil {
-			return 0, err
+		var c contract
+		var clientName string
+		if err := rows.Scan(&c.ID, &c.ClientID, &c.StartMonth, &c.EndMonth, &c.TotalCents,
+			&c.ReceivedCents, &c.AccountedCents, &clientName); err != nil {
+			return nil, err
 		}
 		if err := computeContractFigures(&c, current); err != nil {
-			return 0, err
+			return nil, err
 		}
-		total += c.InvoiceTargetCents
+		if c.InvoiceTargetCents <= 0 {
+			continue
+		}
+		out = append(out, clientContractDue{
+			ClientID: c.ClientID, Client: clientName, DueCents: c.InvoiceTargetCents,
+		})
 	}
-	return total, rows.Err()
+	return out, rows.Err()
 }
 
 // computeContractFigures fills in ExpectedSoFarCents, InvoiceTargetCents and Overdue

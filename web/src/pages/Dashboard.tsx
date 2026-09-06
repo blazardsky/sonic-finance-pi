@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import {
+  RiCheckboxBlankCircleLine,
+  RiCheckboxCircleFill,
   RiCheckboxCircleLine,
   RiCheckLine,
   RiErrorWarningLine,
-  RiNotification3Fill,
-  RiNotification3Line,
   RiScales3Line,
   RiShoppingBag3Line,
   RiWallet3Line,
@@ -520,16 +520,22 @@ function ClientsCard({
             {error}
           </p>
         )}
-        {/* Only shown once a Contract is actually active — zero here means
-            no Contract currently covers this month, not that nothing is
-            owed (Contracts and pending Incomes are unrelated numbers). */}
-        {pending.contracts_due_this_month_cents > 0 && (
-          <p className="text-sm">
-            <span className="text-muted-foreground">{t.dueThisMonth}:</span>{" "}
-            <span className="font-medium tabular-nums">
-              € {formatCents(pending.contracts_due_this_month_cents)}
+        {/* One badge per Client with a currently active Contract — empty
+            means no Contract covers this month, not that nothing is owed
+            (Contracts and pending Incomes are unrelated numbers). */}
+        {pending.contracts_due_this_month.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <span className="text-sm text-muted-foreground">
+              {t.dueThisMonth}
             </span>
-          </p>
+            <div className="flex flex-wrap gap-1">
+              {pending.contracts_due_this_month.map((c) => (
+                <Badge key={c.client_id} variant="outline" className="tabular-nums">
+                  {c.client}: € {formatCents(c.due_cents)}
+                </Badge>
+              ))}
+            </div>
+          </div>
         )}
         <div className="flex flex-col gap-3 @[28rem]:flex-row @[28rem]:items-start">
           <ClientAlert
@@ -729,7 +735,7 @@ function RemindersCard() {
                   }
                   aria-label={t.reminderToggleLabel(r.label, r.enabled)}
                 >
-                  {r.enabled ? <RiNotification3Fill /> : <RiNotification3Line />}
+                  {r.enabled ? <RiCheckboxCircleFill /> : <RiCheckboxBlankCircleLine />}
                   <span className="truncate text-sm font-normal">
                     {r.label}
                   </span>
