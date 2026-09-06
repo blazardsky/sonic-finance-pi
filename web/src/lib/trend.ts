@@ -103,15 +103,13 @@ export function weeklyBuckets(daily: DailyCategoryTotal[]): TrendBucket[] {
     }))
 }
 
-// categoryColor reuses the five --chart-N tokens (index.css) that already
-// draw the Dashboard's net-worth sparkline — the app's whole categorical
-// palette — so a Category reads the same colour in both trend charts. Keyed
-// by id rather than by position, so a Category keeps its colour as the set of
+// categoryColor spaces Categories around the hue wheel by the golden angle,
+// so any number of them stay visually distinct instead of cycling through a
+// handful of --chart-N tokens that were all the same blue family — the fix
+// for the collision the old five-token version was named for. Keyed by id
+// rather than by position, so a Category keeps its colour as the set of
 // Categories in view changes.
-//
-// ponytail: only 5 hues exist, so a household with more than 5 Categories
-// spending in the same window will see two share a colour. Add more
-// --chart-N tokens in index.css if that becomes a real complaint.
 export function categoryColor(categoryId: number): string {
-  return `var(--chart-${(categoryId % 5) + 1})`
+  const hue = (categoryId * 137.508) % 360
+  return `oklch(0.62 0.16 ${hue.toFixed(1)})`
 }

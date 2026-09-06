@@ -165,11 +165,17 @@ export function YearlyReport() {
   )
 }
 
-function Figure({ label, cents }: { label: string; cents: number }) {
+// Exported for Month's income/expense/difference card (ticket 01), the same
+// small-box reading both report pages already use.
+export function Figure({ label, cents }: { label: string; cents: number }) {
   return (
     <div className="rounded-md border border-border p-3">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-lg font-medium tabular-nums">€ {formatCents(cents)}</p>
+      <p
+        className={`text-lg font-medium tabular-nums ${cents < 0 ? "text-destructive" : ""}`}
+      >
+        € {formatCents(cents)}
+      </p>
     </div>
   )
 }
