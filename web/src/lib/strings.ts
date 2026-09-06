@@ -158,7 +158,7 @@ export const t = {
   // state. See cmd/pending.go.
   clientsThisMonth: "Clienti questo mese",
   dueThisMonth: "Dovuto questo mese",
-  invoicesSentTitle: "Fatture",
+  invoicesSentTitle: "Fatture da fare",
   invoicesAllSent: "Tutti i clienti abituali sono stati fatturati questo mese.",
   noPendingClients: "Nessun pagamento in attesa.",
   markPaidLabel: (name: string) => `Segna come incassato: ${name}`,

@@ -486,6 +486,18 @@ function ClientsCard({
   // matching how PendingPayments.tsx (Month.tsx) already reads this list.
   const waiting = pending.outstanding
   const unbilled = pending.not_yet_invoiced
+  const dueThisMonth = pending.contracts_due_this_month
+  const totalDueCents = dueThisMonth.reduce((sum, c) => sum + c.due_cents, 0)
+  const dueByClient = new Map(dueThisMonth.map((c) => [c.client_id, c.due_cents]))
+  // Every Client this month's invoicing touches: the nudge (unbilled) and
+  // whoever has an active Contract still owing something, deduped by id —
+  // a Client can be in both, and then gets one badge carrying the amount.
+  const invoicesToDo = [
+    ...unbilled,
+    ...dueThisMonth.filter(
+      (c) => !unbilled.some((u) => u.client_id === c.client_id)
+    ),
+  ]
   const [error, setError] = useState("")
 
   // clockOK false means the Pi's own clock cannot be trusted, and today()
@@ -520,22 +532,17 @@ function ClientsCard({
             {error}
           </p>
         )}
-        {/* One badge per Client with a currently active Contract — empty
-            means no Contract covers this month, not that nothing is owed
-            (Contracts and pending Incomes are unrelated numbers). */}
-        {pending.contracts_due_this_month.length > 0 && (
-          <div className="flex flex-col gap-1">
-            <span className="text-sm text-muted-foreground">
-              {t.dueThisMonth}
+        {/* Only shown once a Contract is actually active — empty here means
+            no Contract currently covers this month, not that nothing is
+            owed (Contracts and pending Incomes are unrelated numbers). The
+            per-Client breakdown is folded into Fatture da fare below. */}
+        {totalDueCents > 0 && (
+          <p className="text-sm">
+            <span className="text-muted-foreground">{t.dueThisMonth}:</span>{" "}
+            <span className="font-medium tabular-nums">
+              € {formatCents(totalDueCents)}
             </span>
-            <div className="flex flex-wrap gap-1">
-              {pending.contracts_due_this_month.map((c) => (
-                <Badge key={c.client_id} variant="outline" className="tabular-nums">
-                  {c.client}: € {formatCents(c.due_cents)}
-                </Badge>
-              ))}
-            </div>
-          </div>
+          </p>
         )}
         <div className="flex flex-col gap-3 @[28rem]:flex-row @[28rem]:items-start">
           <ClientAlert
@@ -573,11 +580,20 @@ function ClientsCard({
           <ClientAlert
             title={t.invoicesSentTitle}
             okText={t.invoicesAllSent}
-            clients={unbilled.map((c) => ({ key: c.client_id, name: c.client }))}
-            // Nothing numeric travels with this list (NotYetInvoicedClient is
-            // just an id and a name) — the HoverCard surfaces why the Client is
-            // listed at all instead, the same explanation Month.tsx's own
-            // pending-payments section gives once for the whole list.
+            clients={invoicesToDo.map((c) => {
+              const dueCents = dueByClient.get(c.client_id)
+              return {
+                key: c.client_id,
+                name:
+                  dueCents != null
+                    ? `${c.client}: € ${formatCents(dueCents)}`
+                    : c.client,
+              }
+            })}
+            // Nothing else travels with this list — the HoverCard surfaces
+            // why the Client is listed at all, the same explanation
+            // Month.tsx's own pending-payments section gives once for the
+            // whole list.
             hoverContent={() => (
               <p className="text-xs text-muted-foreground">
                 {t.notYetInvoicedHint}
