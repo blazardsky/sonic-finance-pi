@@ -44,8 +44,8 @@ type outstandingIncome struct {
 	WaitingSince string `json:"waiting_since"`
 	DaysWaiting  int    `json:"days_waiting"`
 	// Empty when no invoice was sent: waiting_since then falls back to the
-	// day the Income was typed. The Dashboard's "in attesa" list wants the
-	// real invoice date and skips the empty ones.
+	// day the Income was typed, and every reader of this list — the
+	// Dashboard's "in attesa" card included — shows the entry regardless.
 	InvoiceSentDate string `json:"invoice_sent_date"`
 }
 

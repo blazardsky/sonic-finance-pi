@@ -107,7 +107,14 @@ const draftOf = (income: Income): Draft => ({
 // the list fills the rest of the width. Choosing a row's "Modifica" action is
 // how an entry gets corrected, which loads it into the same form and reopens
 // the panel if it was closed, since there is only ever one form on the screen.
-export function Incomes() {
+export function Incomes({
+  editIncomeId,
+}: {
+  // Set by the Dashboard's "mark as paid" quick action when the clock isn't
+  // trustworthy enough to guess a date on its own: this Income opens straight
+  // into the form instead, for the household to type the date itself.
+  editIncomeId?: number | null
+}) {
   const [incomes, setIncomes] = useState<Income[] | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
   const [clients, setClients] = useState<Client[]>([])
@@ -178,6 +185,25 @@ export function Incomes() {
   useEffect(() => {
     void load()
   }, [load])
+
+  // Adjusted during render (App.tsx's own pattern for this, e.g.
+  // quickAddScreen) rather than an effect: applied tracks the last
+  // editIncomeId this form has already loaded, so arriving with a new one
+  // selects it once incomes has loaded far enough to contain it, and an edit
+  // submitted from this same form afterwards doesn't reselect the
+  // just-saved Income right back into the form the submit handler just
+  // cleared.
+  const [appliedEditId, setAppliedEditId] = useState<number | null>(null)
+  if (editIncomeId !== appliedEditId) {
+    const income =
+      editIncomeId != null
+        ? incomes?.find((i) => i.id === editIncomeId)
+        : undefined
+    if (editIncomeId == null || income) {
+      setAppliedEditId(editIncomeId ?? null)
+      if (income) selectIncome(income)
+    }
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()

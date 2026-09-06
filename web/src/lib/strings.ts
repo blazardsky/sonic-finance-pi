@@ -150,6 +150,7 @@ export const t = {
   invoicesSentTitle: "Fatture",
   invoicesAllSent: "Tutti i clienti abituali sono stati fatturati questo mese.",
   noPendingClients: "Nessun pagamento in attesa.",
+  markPaidLabel: (name: string) => `Segna come incassato: ${name}`,
 
   // Month — where the month stands
   month: "Mese",
