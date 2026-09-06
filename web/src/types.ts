@@ -14,6 +14,9 @@ export type Category = {
   // blur resolves by identity, so an Expense list can tell it apart from any
   // other Base category without matching on its (renameable) name.
   gift: boolean
+  // Assigned once, at random, when the Category is created — never derived
+  // from its id — so the trend charts' palette scales past --chart-1..5.
+  color: string
 }
 
 // Who money comes from, as one row rather than three spellings. Not a
@@ -230,6 +233,7 @@ export type DailyCategoryTotal = {
   day: string
   category_id: number
   category: string
+  category_color: string
   amount_cents: number
 }
 

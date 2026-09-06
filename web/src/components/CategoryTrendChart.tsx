@@ -9,7 +9,7 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart"
 import { formatCents } from "@/lib/money"
-import { categoryColor, type TrendBucket } from "@/lib/trend"
+import type { TrendBucket } from "@/lib/trend"
 
 // The one stacked bar chart both trend charts are — a day's or a week's spend
 // as a stack of Category segments — so the Dashboard's rolling chart and the
@@ -22,13 +22,10 @@ export function CategoryTrendChart({
   categories,
 }: {
   buckets: TrendBucket[]
-  categories: { id: number; name: string }[]
+  categories: { id: number; name: string; color: string }[]
 }) {
   const chartConfig = Object.fromEntries(
-    categories.map((c) => [
-      String(c.id),
-      { label: c.name, color: categoryColor(c.id) },
-    ])
+    categories.map((c) => [String(c.id), { label: c.name, color: c.color }])
   ) satisfies ChartConfig
 
   const data = buckets.map((b) => ({

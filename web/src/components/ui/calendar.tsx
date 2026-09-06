@@ -21,9 +21,14 @@ function Calendar({
   locale,
   formatters,
   components,
+  dayColors,
   ...props
 }: React.ComponentProps<typeof DayPicker> & {
   buttonVariant?: React.ComponentProps<typeof Button>["variant"]
+  // dayColors: YYYY-MM-DD -> CSS color, dotted onto that day's cell — keyed
+  // by date rather than a boolean modifier so the dot can carry the same
+  // per-category colour as the list row it corresponds to.
+  dayColors?: Record<string, string>
 }) {
   const defaultClassNames = getDefaultClassNames()
 
@@ -162,7 +167,7 @@ function Calendar({
           )
         },
         DayButton: ({ ...props }) => (
-          <CalendarDayButton locale={locale} {...props} />
+          <CalendarDayButton locale={locale} dayColors={dayColors} {...props} />
         ),
         WeekNumber: ({ children, ...props }) => {
           return (
@@ -185,8 +190,13 @@ function CalendarDayButton({
   day,
   modifiers,
   locale,
+  children,
+  dayColors,
   ...props
-}: React.ComponentProps<typeof DayButton> & { locale?: Partial<Locale> }) {
+}: React.ComponentProps<typeof DayButton> & {
+  locale?: Partial<Locale>
+  dayColors?: Record<string, string>
+}) {
   const defaultClassNames = getDefaultClassNames()
 
   const ref = React.useRef<HTMLButtonElement>(null)
@@ -215,7 +225,25 @@ function CalendarDayButton({
         className
       )}
       {...props}
-    />
+    >
+      {children}
+      {/* dayColors: a day with an upcoming Recurring due gets a dot in that
+          Category's colour — the same colour the list below marks its row
+          with (see lib/pickers.ts's colorOf). */}
+      {(() => {
+        const key = `${day.date.getFullYear()}-${String(day.date.getMonth() + 1).padStart(2, "0")}-${String(day.date.getDate()).padStart(2, "0")}`
+        const color = dayColors?.[key]
+        return (
+          color && (
+            <span
+              aria-hidden
+              className="absolute bottom-1 left-1/2 size-1 -translate-x-1/2 rounded-full"
+              style={{ backgroundColor: color }}
+            />
+          )
+        )
+      })()}
+    </Button>
   )
 }
 

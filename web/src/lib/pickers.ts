@@ -49,6 +49,18 @@ export function nameOf(
     : (rows.find((r) => r.id === id)?.name ?? "")
 }
 
+// A Category's colour for an id an entry carries — same lookup as nameOf,
+// for the random per-Category colour (assigned once, at creation) rather
+// than the old --chart-N hue-by-id computation.
+export function colorOf(
+  rows: { id: number; color: string }[],
+  id: number | null | ""
+): string {
+  return id === null || id === ""
+    ? ""
+    : (rows.find((r) => r.id === id)?.color ?? "")
+}
+
 // Whether an Expense's Category is the Gift one — what a list of full Expense
 // rows (which only carry category_id) needs to know to spoiler an amount.
 // Resolved against the loaded Category list's own `gift` flag, never by name.

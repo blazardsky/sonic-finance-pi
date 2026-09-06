@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"strconv"
 	"strings"
@@ -83,7 +84,20 @@ type category struct {
 	// match it by (spoiler ticket).
 	Gift bool `json:"gift"`
 
+	// Color is assigned once, at random, when the Category is created (this
+	// ticket) — never recomputed from the id — so a chart's palette is not
+	// just --chart-1..5 restretched across however many Categories exist.
+	Color string `json:"color"`
+
 	code string
+}
+
+// randomCategoryColor is a fresh Category's colour: same lightness and chroma
+// as the app's existing --chart-N tokens (index.css), a random hue, so a
+// household with any number of Categories still gets legible, evenly varied
+// colours instead of the five-hue blue family the charts used before.
+func randomCategoryColor() string {
+	return fmt.Sprintf("oklch(0.62 0.15 %.1f)", rand.Float64()*360)
 }
 
 // migrateCategories is schema step 1: the table and its seed rows. Seeding
@@ -106,6 +120,40 @@ func migrateCategories(tx *sql.Tx) error {
 		code := sql.NullString{String: c.code, Valid: c.code != ""}
 		if _, err := tx.Exec(`INSERT INTO category (name, applies_to, code) VALUES (?, ?, ?)`,
 			c.Name, c.AppliesTo, code); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// migrateCategoryColor is schema step 11: adds the column, then backfills
+// every Category that predates it with its own random colour — the seed rows
+// migrateCategories already inserted included — so an upgraded install gets
+// the same varied palette a fresh one gets from handleCreateCategory on.
+func migrateCategoryColor(tx *sql.Tx) error {
+	if _, err := tx.Exec(`ALTER TABLE category ADD COLUMN color TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	rows, err := tx.Query(`SELECT id FROM category`)
+	if err != nil {
+		return err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	rows.Close()
+
+	for _, id := range ids {
+		if _, err := tx.Exec(`UPDATE category SET color = ? WHERE id = ?`, randomCategoryColor(), id); err != nil {
 			return err
 		}
 	}
@@ -154,13 +202,13 @@ func handleCreateCategory(db *sql.DB) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		c := category{Name: strings.TrimSpace(body.Name), AppliesTo: body.AppliesTo}
+		c := category{Name: strings.TrimSpace(body.Name), AppliesTo: body.AppliesTo, Color: randomCategoryColor()}
 		if err := c.validate(); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
 
-		res, err := db.Exec(`INSERT INTO category (name, applies_to) VALUES (?, ?)`, c.Name, c.AppliesTo)
+		res, err := db.Exec(`INSERT INTO category (name, applies_to, color) VALUES (?, ?, ?)`, c.Name, c.AppliesTo, c.Color)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -275,12 +323,12 @@ func findCategory(w http.ResponseWriter, db *sql.DB, rawID string) (category, bo
 // at all) and Gift (protected as specifically the spoiler's Category) — the
 // code itself stays an implementation detail of the reports that resolve by it.
 var categorySelect = fmt.Sprintf(
-	`SELECT id, name, applies_to, hidden, code IS NOT NULL, IFNULL(code, '') = '%s' FROM category`,
+	`SELECT id, name, applies_to, hidden, code IS NOT NULL, IFNULL(code, '') = '%s', color FROM category`,
 	codeGift)
 
 func scanCategory(row interface{ Scan(...any) error }) (category, error) {
 	var c category
-	err := row.Scan(&c.ID, &c.Name, &c.AppliesTo, &c.Hidden, &c.Base, &c.Gift)
+	err := row.Scan(&c.ID, &c.Name, &c.AppliesTo, &c.Hidden, &c.Base, &c.Gift, &c.Color)
 	return c, err
 }
 

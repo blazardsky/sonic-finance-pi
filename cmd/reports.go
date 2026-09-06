@@ -209,7 +209,11 @@ type dailyCategoryTotal struct {
 	Day         string `json:"day"`
 	CategoryID  int64  `json:"category_id"`
 	Category    string `json:"category"`
-	AmountCents int64  `json:"amount_cents"`
+	// CategoryColor rides along with the name so the trend charts can colour
+	// a Category's bar without fetching the whole Category list — the same
+	// denormalisation Category already gets.
+	CategoryColor string `json:"category_color"`
+	AmountCents   int64  `json:"amount_cents"`
 }
 
 // readDailyBreakdown is readBreakdown over a date range instead of a month,
@@ -227,7 +231,7 @@ type dailyCategoryTotal struct {
 // callers build them from a validated month or from the clock, never from
 // request input directly.
 func readDailyBreakdown(db *sql.DB, from, to string) ([]dailyCategoryTotal, error) {
-	rows, err := db.Query(`SELECT share.day, c.id, c.name, SUM(share.amount_cents)
+	rows, err := db.Query(`SELECT share.day, c.id, c.name, c.color, SUM(share.amount_cents)
 		FROM (
 			SELECT e.occurred_on AS day, e.category_id, e.amount_cents - COALESCE(
 				(SELECT SUM(i.amount_cents) FROM item i WHERE i.expense_id = e.id), 0
@@ -239,7 +243,7 @@ func readDailyBreakdown(db *sql.DB, from, to string) ([]dailyCategoryTotal, erro
 			WHERE e.occurred_on BETWEEN ? AND ?
 		) share
 		JOIN category c ON c.id = share.category_id
-		GROUP BY share.day, c.id, c.name
+		GROUP BY share.day, c.id, c.name, c.color
 		HAVING SUM(share.amount_cents) > 0
 		ORDER BY share.day, SUM(share.amount_cents) DESC, c.name COLLATE NOCASE`, from, to, from, to)
 	if err != nil {
@@ -252,7 +256,7 @@ func readDailyBreakdown(db *sql.DB, from, to string) ([]dailyCategoryTotal, erro
 	out := []dailyCategoryTotal{}
 	for rows.Next() {
 		var d dailyCategoryTotal
-		if err := rows.Scan(&d.Day, &d.CategoryID, &d.Category, &d.AmountCents); err != nil {
+		if err := rows.Scan(&d.Day, &d.CategoryID, &d.Category, &d.CategoryColor, &d.AmountCents); err != nil {
 			return nil, err
 		}
 		out = append(out, d)

@@ -43,20 +43,25 @@ function mondayOf(date: string): string {
 
 // categoriesIn is every Category a daily report mentions, biggest total
 // first — the order both the legend and the by_category list already use.
-// The name travels with the id straight off the rows themselves, so a trend
-// chart never has to hold the whole Category list just to label its legend.
+// The name and colour travel with the id straight off the rows themselves,
+// so a trend chart never has to hold the whole Category list just to label
+// or colour its legend.
 export function categoriesIn(
   daily: DailyCategoryTotal[]
-): { id: number; name: string }[] {
-  const totals = new Map<number, { name: string; total: number }>()
+): { id: number; name: string; color: string }[] {
+  const totals = new Map<number, { name: string; color: string; total: number }>()
   for (const row of daily) {
-    const c = totals.get(row.category_id) ?? { name: row.category, total: 0 }
+    const c = totals.get(row.category_id) ?? {
+      name: row.category,
+      color: row.category_color,
+      total: 0,
+    }
     c.total += row.amount_cents
     totals.set(row.category_id, c)
   }
   return [...totals.entries()]
     .sort(([, a], [, b]) => b.total - a.total)
-    .map(([id, c]) => ({ id, name: c.name }))
+    .map(([id, c]) => ({ id, name: c.name, color: c.color }))
 }
 
 // dailyBuckets is one bucket per day in days, in that order, whether or not
@@ -103,15 +108,3 @@ export function weeklyBuckets(daily: DailyCategoryTotal[]): TrendBucket[] {
     }))
 }
 
-// categoryColor reuses the five --chart-N tokens (index.css) that already
-// draw the Dashboard's net-worth sparkline — the app's whole categorical
-// palette — so a Category reads the same colour in both trend charts. Keyed
-// by id rather than by position, so a Category keeps its colour as the set of
-// Categories in view changes.
-//
-// ponytail: only 5 hues exist, so a household with more than 5 Categories
-// spending in the same window will see two share a colour. Add more
-// --chart-N tokens in index.css if that becomes a real complaint.
-export function categoryColor(categoryId: number): string {
-  return `var(--chart-${(categoryId % 5) + 1})`
-}

@@ -16,6 +16,7 @@ type categoryJSON struct {
 	Hidden    bool   `json:"hidden"`
 	Base      bool   `json:"base"`
 	Gift      bool   `json:"gift"`
+	Color     string `json:"color"`
 }
 
 // categoryPath addresses one Category the way the API does.
@@ -378,6 +379,23 @@ func TestDeletingACategoryInUseIsRefused(t *testing.T) {
 	bici := a.createCategoryNamed(t, "Bici")
 	if res := a.delete(t, categoryPath(bici.ID)); res.StatusCode != http.StatusNoContent {
 		t.Errorf("DELETE an unused Category = %d, want 204", res.StatusCode)
+	}
+}
+
+// A Category's colour is assigned at random when it is created, not derived
+// from its id or name — the two Categories created back to back here must
+// each get a colour, and not the same one.
+func TestCreatedCategoryGetsARandomColor(t *testing.T) {
+	a := newTestApp(t)
+
+	first := a.createCategoryNamed(t, "Prima")
+	second := a.createCategoryNamed(t, "Seconda")
+
+	if first.Color == "" || second.Color == "" {
+		t.Fatalf("Category.color = %q, %q, want both non-empty", first.Color, second.Color)
+	}
+	if first.Color == second.Color {
+		t.Errorf("two Categories created back to back both got color %q, want random per Category", first.Color)
 	}
 }
 
