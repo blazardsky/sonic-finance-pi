@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import {
   RiCheckboxCircleLine,
+  RiCheckLine,
   RiErrorWarningLine,
   RiNotification3Fill,
   RiNotification3Line,
@@ -92,7 +93,13 @@ const daysUntil = (date: string) => {
 // totals report the app already computes (Year.tsx, Month.tsx read the same
 // endpoints) or a plain read of one — nothing is invented that the server
 // does not already know.
-export function Dashboard() {
+export function Dashboard({
+  clockOK,
+  onEditIncome,
+}: {
+  clockOK: boolean
+  onEditIncome: (id: number) => void
+}) {
   const [recent, setRecent] = useState<RecentEntry[]>([])
   const [recurring, setRecurring] = useState<Recurring[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -190,7 +197,14 @@ export function Dashboard() {
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
         <div className="flex flex-col gap-4">
           <UpcomingCard upcoming={upcoming} categories={categories} />
-          {pending && <ClientsCard pending={pending} />}
+          {pending && (
+            <ClientsCard
+              pending={pending}
+              clockOK={clockOK}
+              onEditIncome={onEditIncome}
+              onPaid={load}
+            />
+          )}
           <RemindersCard />
         </div>
 
@@ -440,53 +454,106 @@ function UpcomingCard({
 // total_earned_cents is deliberately left out, since it lives on /api/clients,
 // a request this card has never made and shouldn't start making just for a
 // hover detail.
-function ClientsCard({ pending }: { pending: Pending }) {
-  const waiting = pending.outstanding.filter(
-    (o) => o.client !== "" && o.invoice_sent_date !== ""
-  )
+function ClientsCard({
+  pending,
+  clockOK,
+  onEditIncome,
+  onPaid,
+}: {
+  pending: Pending
+  clockOK: boolean
+  onEditIncome: (id: number) => void
+  onPaid: () => Promise<void>
+}) {
+  // Every unpaid Income, same list readOutstanding answers — an Income with
+  // no Client and one with no invoice date are both money genuinely owed
+  // (ADR-0003), so neither is a reason to leave it off the one screen that
+  // says what is owed. category fills in for a name when there is no Client,
+  // matching how PendingPayments.tsx (Month.tsx) already reads this list.
+  const waiting = pending.outstanding
   const unbilled = pending.not_yet_invoiced
+  const [error, setError] = useState("")
+
+  // clockOK false means the Pi's own clock cannot be trusted, and today()
+  // reads the browser regardless — but a badge tapped from across the room
+  // is not the moment to gamble a payment date the household never chose.
+  // The edit form is where it types the date itself instead.
+  async function markPaid(id: number) {
+    if (!clockOK) {
+      onEditIncome(id)
+      return
+    }
+    setError("")
+    try {
+      await api(`/api/incomes/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ payment_date: today() }),
+      })
+      await onPaid()
+    } catch {
+      setError(t.incomeNotSaved)
+    }
+  }
 
   return (
     <Card className="@container">
       <CardHeader>
         <CardTitle>{t.clientsThisMonth}</CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3 @[28rem]:flex-row @[28rem]:items-start">
-        <ClientAlert
-          title={t.pendingPayments}
-          okText={t.noPendingClients}
-          clients={waiting.map((o) => ({
-            key: o.id,
-            name: o.client,
-            date: formatDate(o.invoice_sent_date),
-            amountCents: o.amount_cents,
-            daysWaiting: o.days_waiting,
-          }))}
-          hoverContent={(c) => (
-            <div className="flex flex-col gap-1">
-              <p className="font-medium tabular-nums">
-                € {formatCents(c.amountCents)}
-              </p>
+      <CardContent className="flex flex-col gap-3">
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
+        <div className="flex flex-col gap-3 @[28rem]:flex-row @[28rem]:items-start">
+          <ClientAlert
+            title={t.pendingPayments}
+            okText={t.noPendingClients}
+            clients={waiting.map((o) => ({
+              key: o.id,
+              name: o.client || o.category,
+              date: formatDate(o.waiting_since),
+              amountCents: o.amount_cents,
+              daysWaiting: o.days_waiting,
+            }))}
+            hoverContent={(c) => (
+              <div className="flex flex-col gap-1">
+                <p className="font-medium tabular-nums">
+                  € {formatCents(c.amountCents)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t.waitingDays(c.daysWaiting)}
+                </p>
+              </div>
+            )}
+            action={(c) => (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t.markPaidLabel(c.name)}
+                onClick={() => void markPaid(c.key as number)}
+              >
+                <RiCheckLine />
+              </Button>
+            )}
+          />
+          <ClientAlert
+            title={t.invoicesSentTitle}
+            okText={t.invoicesAllSent}
+            clients={unbilled.map((c) => ({ key: c.client_id, name: c.client }))}
+            // Nothing numeric travels with this list (NotYetInvoicedClient is
+            // just an id and a name) — the HoverCard surfaces why the Client is
+            // listed at all instead, the same explanation Month.tsx's own
+            // pending-payments section gives once for the whole list.
+            hoverContent={() => (
               <p className="text-xs text-muted-foreground">
-                {t.waitingDays(c.daysWaiting)}
+                {t.notYetInvoicedHint}
               </p>
-            </div>
-          )}
-        />
-        <ClientAlert
-          title={t.invoicesSentTitle}
-          okText={t.invoicesAllSent}
-          clients={unbilled.map((c) => ({ key: c.client_id, name: c.client }))}
-          // Nothing numeric travels with this list (NotYetInvoicedClient is
-          // just an id and a name) — the HoverCard surfaces why the Client is
-          // listed at all instead, the same explanation Month.tsx's own
-          // pending-payments section gives once for the whole list.
-          hoverContent={() => (
-            <p className="text-xs text-muted-foreground">
-              {t.notYetInvoicedHint}
-            </p>
-          )}
-        />
+            )}
+          />
+        </div>
       </CardContent>
     </Card>
   )
@@ -499,11 +566,13 @@ function ClientAlert<
   okText,
   clients,
   hoverContent,
+  action,
 }: {
   title: string
   okText: string
   clients: T[]
   hoverContent: (client: T) => ReactNode
+  action?: (client: T) => ReactNode
 }) {
   const ok = clients.length === 0
   return (
@@ -522,6 +591,7 @@ function ClientAlert<
                 {c.date != null && (
                   <span className="text-xs tabular-nums">{c.date}</span>
                 )}
+                {action?.(c)}
               </span>
             ))}
       </AlertDescription>

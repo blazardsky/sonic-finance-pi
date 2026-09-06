@@ -405,7 +405,8 @@ export type OutstandingIncome = {
   waiting_since: string
   days_waiting: number
   // "" when no invoice was sent — waiting_since then falls back to the day
-  // the Income was typed. The Dashboard's "in attesa" list skips those.
+  // the Income was typed, and every reader of this list shows the entry
+  // regardless.
   invoice_sent_date: string
 }
 

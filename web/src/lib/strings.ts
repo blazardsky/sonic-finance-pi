@@ -104,6 +104,7 @@ export const t = {
   // One concept, two wordings, exactly as Category is "Motivo" here.
   incomePayer: "Ricevuto da",
   invalidIncomePayer: "Scegli da chi è arrivato.",
+  invalidIncomeClient: "Scegli un cliente.",
   paymentDate: "Data incasso",
   invoiceSentDate: "Fattura inviata",
   notPaidYet: "Da incassare",
@@ -158,6 +159,7 @@ export const t = {
   invoicesSentTitle: "Fatture",
   invoicesAllSent: "Tutti i clienti abituali sono stati fatturati questo mese.",
   noPendingClients: "Nessun pagamento in attesa.",
+  markPaidLabel: (name: string) => `Segna come incassato: ${name}`,
 
   // Month — where the month stands
   month: "Mese",

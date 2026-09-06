@@ -51,6 +51,11 @@ export function App() {
   // soon as the user leaves Expenses, so a later plain nav back in via the
   // menu doesn't reopen it.
   const [expensesQuickAdd, setExpensesQuickAdd] = useState(false)
+  // Set by the Dashboard's "mark as paid" quick action when the clock isn't
+  // trustworthy enough to guess a date on its own — Incomes opens straight
+  // into editing this Income instead, the same deep-link shape
+  // expensesQuickAdd already uses for its own screen.
+  const [incomeToEdit, setIncomeToEdit] = useState<number | null>(null)
   // Adjusted during render (React's own pattern for this) rather than an
   // effect, since an effect setting state right back would cost an extra
   // render for no visible frame in between.
@@ -58,6 +63,7 @@ export function App() {
   if (screen !== quickAddScreen) {
     setQuickAddScreen(screen)
     if (screen !== "expenses" && expensesQuickAdd) setExpensesQuickAdd(false)
+    if (screen !== "incomes" && incomeToEdit !== null) setIncomeToEdit(null)
   }
   // The Pi has no RTC. When its clock is unset it generates no Recurring
   // expenses, and a month short a rent with nothing said about it is how a
@@ -127,12 +133,20 @@ export function App() {
                 </p>
               </div>
             )}
-            {screen === "dashboard" && <Dashboard />}
+            {screen === "dashboard" && (
+              <Dashboard
+                clockOK={clockOK}
+                onEditIncome={(id) => {
+                  setIncomeToEdit(id)
+                  setScreen("incomes")
+                }}
+              />
+            )}
             {screen === "month" && <Month />}
             {screen === "year" && <Year />}
             {screen === "yearReport" && <YearlyReport />}
             {screen === "expenses" && <Expenses quickAdd={expensesQuickAdd} />}
-            {screen === "incomes" && <Incomes />}
+            {screen === "incomes" && <Incomes editIncomeId={incomeToEdit} />}
             {screen === "recurring" && <RecurringExpenses />}
             {screen === "savings" && <Savings />}
             {screen === "categories" && <Categories />}
