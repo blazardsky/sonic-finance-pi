@@ -16,6 +16,7 @@ type categoryJSON struct {
 	Hidden    bool   `json:"hidden"`
 	Base      bool   `json:"base"`
 	Gift      bool   `json:"gift"`
+	Freelance bool   `json:"freelance"`
 }
 
 // categoryPath addresses one Category the way the API does.
@@ -161,6 +162,22 @@ func TestGiftIsExposedForTheGiftCategoryOnly(t *testing.T) {
 	for _, name := range []string{seedFreelanceName, seedTaxesName, seedInvestmentiName, "Alimentari"} {
 		if c := a.category(t, name); c.Gift {
 			t.Errorf("%s.gift = true, want false", name)
+		}
+	}
+}
+
+// The Income form resolves the Freelance Category by identity the same way —
+// so it is true for Freelance and nothing else, including the other Base
+// categories.
+func TestFreelanceIsExposedForTheFreelanceCategoryOnly(t *testing.T) {
+	a := newTestApp(t)
+
+	if freelance := a.category(t, seedFreelanceName); !freelance.Freelance {
+		t.Errorf("%s.freelance = false, want true", seedFreelanceName)
+	}
+	for _, name := range []string{seedTaxesName, seedInvestmentiName, seedRegaliName, "Alimentari"} {
+		if c := a.category(t, name); c.Freelance {
+			t.Errorf("%s.freelance = true, want false", name)
 		}
 	}
 }

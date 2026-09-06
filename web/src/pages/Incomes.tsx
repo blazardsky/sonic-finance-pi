@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from "react"
-import { RiDeleteBinLine, RiEditLine, RiMoreLine } from "@remixicon/react"
+import {
+  RiArrowDownSLine,
+  RiArrowUpSLine,
+  RiDeleteBinLine,
+  RiEditLine,
+  RiMoreLine,
+} from "@remixicon/react"
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Button } from "@/components/ui/button"
@@ -32,6 +38,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/lib/api"
 import { DatePicker } from "@/components/date-picker"
 import { FormSidebar } from "@/components/form-sidebar"
+import { toast } from "@/lib/toast"
 import {
   formatCents,
   formatDate,
@@ -130,6 +137,17 @@ export function Incomes() {
   // Client's are ever relevant to the form open at a time.
   const [clientContracts, setClientContracts] = useState<Contract[]>([])
 
+  // Fattura inviata and Note have no column of their own — this is what a
+  // row's Dettagli toggle expands to show instead.
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
+  const toggleExpanded = (id: number) =>
+    setExpandedIds((s) => {
+      const next = new Set(s)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
 
@@ -223,6 +241,7 @@ export function Incomes() {
     // A correction is finished. A new Income is often one of several invoices
     // in a sitting, so the reason, Client and Payer stay where they are.
     const wasEditing = editing !== null
+    if (!wasEditing) toast(t.added)
     setEditing(null)
     setDraft((d) =>
       wasEditing
@@ -264,6 +283,13 @@ export function Incomes() {
     categories,
     "income",
     categories.find((c) => c.id === draft.category_id)
+  )
+
+  // Whether Fattura inviata belongs on screen, which is only for the
+  // Freelance reason — a gift or a salary is never invoiced. Resolved
+  // against the loaded Category list's own `freelance` flag, never by name.
+  const isFreelance = categories.some(
+    (c) => c.id === draft.category_id && c.freelance
   )
 
   // The Client picker is the first one in the app, and filtering hidden ones
@@ -310,6 +336,8 @@ export function Incomes() {
                 <TableHead>{t.date}</TableHead>
                 <TableHead className="text-right">{t.amount}</TableHead>
                 <TableHead>{t.incomeReason}</TableHead>
+                <TableHead>{t.client}</TableHead>
+                <TableHead>{t.incomePayer}</TableHead>
                 <TableHead>{t.details}</TableHead>
                 <TableHead className="w-10">{t.actions}</TableHead>
               </TableRow>
@@ -347,15 +375,49 @@ export function Incomes() {
                     € {formatCents(income.amount_cents)}
                   </TableCell>
                   <TableCell className="truncate">
-                    {[
-                      nameOf(categories, income.category_id),
-                      nameOf(clients, income.client_id),
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
+                    {nameOf(categories, income.category_id)}
                   </TableCell>
-                  <TableCell className="text-xs whitespace-normal text-muted-foreground">
-                    {[income.payer, income.note].filter(Boolean).join(" · ")}
+                  <TableCell className="truncate text-xs text-muted-foreground">
+                    {nameOf(clients, income.client_id)}
+                  </TableCell>
+                  <TableCell className="truncate text-xs text-muted-foreground">
+                    {income.payer}
+                  </TableCell>
+                  <TableCell className="whitespace-normal">
+                    <div className="flex flex-col gap-0.5">
+                      {/* Fattura inviata and Note have no column of their
+                          own — this is the one place to reach them. */}
+                      {(income.invoice_sent_date || income.note) && (
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 text-xs text-muted-foreground"
+                          onClick={() => toggleExpanded(income.id)}
+                          aria-expanded={expandedIds.has(income.id)}
+                          aria-label={t.details}
+                        >
+                          {expandedIds.has(income.id) ? (
+                            <RiArrowUpSLine className="size-3.5" />
+                          ) : (
+                            <RiArrowDownSLine className="size-3.5" />
+                          )}
+                          {t.details}
+                        </button>
+                      )}
+                      {expandedIds.has(income.id) && (
+                        <div className="flex flex-col gap-0.5">
+                          {income.invoice_sent_date && (
+                            <span className="truncate text-xs text-muted-foreground">
+                              {t.invoiceSentDate}: {formatDate(income.invoice_sent_date)}
+                            </span>
+                          )}
+                          {income.note && (
+                            <span className="truncate text-xs text-muted-foreground">
+                              {t.note}: {income.note}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -502,18 +564,22 @@ export function Incomes() {
                 buttons showing a full date each — because the whole point of
                 this screen is that they are different questions: when the
                 invoice went out, and whether the money has arrived. An empty
-                payment date is not a missing field — it is the unpaid state. */}
-            <Field>
-              <FieldLabel htmlFor="invoice_sent_date">
-                {t.invoiceSentDate}
-              </FieldLabel>
-              <DatePicker
-                id="invoice_sent_date"
-                value={draft.invoice_sent_date}
-                onValueChange={(v) => set("invoice_sent_date", v)}
-                className="w-full"
-              />
-            </Field>
+                payment date is not a missing field — it is the unpaid state.
+                Fattura inviata is Freelance-only: a gift or a salary is never
+                invoiced, so the question does not belong on screen for one. */}
+            {isFreelance && (
+              <Field>
+                <FieldLabel htmlFor="invoice_sent_date">
+                  {t.invoiceSentDate}
+                </FieldLabel>
+                <DatePicker
+                  id="invoice_sent_date"
+                  value={draft.invoice_sent_date}
+                  onValueChange={(v) => set("invoice_sent_date", v)}
+                  className="w-full"
+                />
+              </Field>
+            )}
             <Field>
               <FieldLabel htmlFor="payment_date">{t.paymentDate}</FieldLabel>
               <DatePicker
