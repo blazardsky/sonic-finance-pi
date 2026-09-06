@@ -224,8 +224,22 @@ export function Categories() {
           title={t.addCategory}
           open={sidebarOpen}
           onOpenChange={setSidebarOpen}
+          footer={
+            <Button
+              type="submit"
+              form="category-form"
+              size="lg"
+              className="h-12 text-base"
+            >
+              {t.addCategory}
+            </Button>
+          }
         >
-          <form onSubmit={add} className="flex flex-col gap-3">
+          <form
+            id="category-form"
+            onSubmit={add}
+            className="flex flex-col gap-3 md:pb-24"
+          >
             <Field>
               <FieldLabel htmlFor="name">{t.categoryName}</FieldLabel>
               <Input
@@ -257,9 +271,6 @@ export function Categories() {
               </RadioGroup>
             </Field>
 
-            <Button type="submit" size="lg" className="h-12 text-base">
-              {t.addCategory}
-            </Button>
           </form>
         </FormSidebar>
       </div>

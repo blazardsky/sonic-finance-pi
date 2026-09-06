@@ -131,9 +131,9 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
   const [editing, setEditing] = useState<number | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  // Negozio and Note get their own columns but are hidden on narrow screens
-  // for space — this is what a row's mobile-only toggle in the Dettagli
-  // column expands to show instead.
+  // Which rows have their Dettagli disclosure open — Negozio, Pagato da and
+  // Metodo di pagamento have no column of their own on any width, and Note's
+  // column is hidden below md, so this is what expands to show them.
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
   const toggleExpanded = (id: number) =>
     setExpandedIds((s) => {
@@ -334,11 +334,6 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                 <TableHead className="text-right">{t.amount}</TableHead>
                 <TableHead>{t.category}</TableHead>
                 <TableHead className="hidden md:table-cell">
-                  {t.store}
-                </TableHead>
-                <TableHead>{t.payer}</TableHead>
-                <TableHead>{t.paymentMethod}</TableHead>
-                <TableHead className="hidden md:table-cell">
                   {t.note}
                 </TableHead>
                 <TableHead>{t.details}</TableHead>
@@ -362,26 +357,19 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                   </TableCell>
                   <TableCell>{nameOf(categories, e.category_id)}</TableCell>
                   <TableCell className="hidden truncate text-xs text-muted-foreground md:table-cell">
-                    {e.store}
-                  </TableCell>
-                  <TableCell className="truncate text-xs text-muted-foreground">
-                    {e.payer}
-                  </TableCell>
-                  <TableCell className="truncate text-xs text-muted-foreground">
-                    {e.payment_method}
-                  </TableCell>
-                  <TableCell className="hidden truncate text-xs text-muted-foreground md:table-cell">
                     {e.note}
                   </TableCell>
                   <TableCell className="whitespace-normal">
                     <div className="flex flex-col gap-0.5">
-                      {/* Negozio and Note have their own columns above, hidden
-                          below md — this is the one place left to reach them
-                          on a narrow screen. */}
-                      {(e.store || e.note) && (
+                      {/* Negozio, Pagato da and Metodo di pagamento have no
+                          column of their own on any width — this is the one
+                          place to reach them. Note keeps its own column on
+                          desktop, so it only needs reaching here on a narrow
+                          screen. */}
+                      {(e.store || e.payer || e.payment_method || e.note) && (
                         <button
                           type="button"
-                          className="flex items-center gap-1 text-xs text-muted-foreground md:hidden"
+                          className="flex items-center gap-1 text-xs text-muted-foreground"
                           onClick={() => toggleExpanded(e.id)}
                           aria-expanded={expandedIds.has(e.id)}
                           aria-label={t.details}
@@ -395,14 +383,24 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                         </button>
                       )}
                       {expandedIds.has(e.id) && (
-                        <div className="flex flex-col gap-0.5 md:hidden">
+                        <div className="flex flex-col gap-0.5">
                           {e.store && (
                             <span className="truncate text-xs text-muted-foreground">
                               {t.store}: {e.store}
                             </span>
                           )}
-                          {e.note && (
+                          {e.payer && (
                             <span className="truncate text-xs text-muted-foreground">
+                              {t.payer}: {e.payer}
+                            </span>
+                          )}
+                          {e.payment_method && (
+                            <span className="truncate text-xs text-muted-foreground">
+                              {t.paymentMethod}: {e.payment_method}
+                            </span>
+                          )}
+                          {e.note && (
+                            <span className="truncate text-xs text-muted-foreground md:hidden">
                               {t.note}: {e.note}
                             </span>
                           )}
@@ -466,8 +464,39 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
           open={sidebarOpen}
           onOpenChange={setSidebarOpen}
           openMobile={openMobileOnArrival}
+          footer={
+            <div className="flex flex-col gap-2">
+              <Button
+                type="submit"
+                form="expense-form"
+                size="lg"
+                className="h-12 text-base"
+              >
+                {editing === null ? t.addExpense : t.save}
+              </Button>
+              {editing !== null && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setEditing(null)
+                    setDraft(blankDraft())
+                    setDetailsOpen(true)
+                  }}
+                >
+                  {t.cancel}
+                </Button>
+              )}
+            </div>
+          }
         >
-          <form onSubmit={submit} className="flex flex-col gap-3">
+          <form
+            id="expense-form"
+            onSubmit={submit}
+            // md:pb-32 reserves room for the footer prop's fixed bar below,
+            // which overlaps in-flow content rather than pushing it up.
+            className="flex flex-col gap-3 md:pb-32"
+          >
             <Field>
               <FieldLabel htmlFor="amount">{t.amount}</FieldLabel>
               <InputGroup className="h-12">
@@ -488,36 +517,34 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
               </InputGroup>
             </Field>
 
-            <div className="flex gap-2">
-              <Field className="flex-1">
-                <FieldLabel htmlFor="occurred_on">{t.date}</FieldLabel>
-                <DatePicker
-                  id="occurred_on"
-                  value={draft.occurred_on}
-                  onValueChange={(v) => set("occurred_on", v)}
-                  className="w-full"
-                />
-              </Field>
-              <Field className="flex-1">
-                <FieldLabel htmlFor="category">{t.category}</FieldLabel>
-                <Select
-                  value={draft.category_id === "" ? undefined : String(draft.category_id)}
-                  onValueChange={(v) => set("category_id", Number(v))}
-                  required
-                >
-                  <SelectTrigger id="category" className="h-10 w-full">
-                    <SelectValue placeholder={t.chooseCategory} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {pickable(draft.category_id).map((c) => (
-                      <SelectItem key={c.id} value={String(c.id)}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-            </div>
+            <Field>
+              <FieldLabel htmlFor="occurred_on">{t.date}</FieldLabel>
+              <DatePicker
+                id="occurred_on"
+                value={draft.occurred_on}
+                onValueChange={(v) => set("occurred_on", v)}
+                className="w-full"
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="category">{t.category}</FieldLabel>
+              <Select
+                value={draft.category_id === "" ? undefined : String(draft.category_id)}
+                onValueChange={(v) => set("category_id", Number(v))}
+                required
+              >
+                <SelectTrigger id="category" className="h-10 w-full">
+                  <SelectValue placeholder={t.chooseCategory} />
+                </SelectTrigger>
+                <SelectContent>
+                  {pickable(draft.category_id).map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
 
             {/* Only for a tax payment, and outside the details disclosure: for
                 this one Expense the year it relates to is not a detail, it is the
@@ -734,28 +761,6 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                 {error}
               </p>
             )}
-
-            {/* Sticky rather than in-flow: the form above can run long
-                (Items, notes, ...), and the submit button is the one thing
-                that must stay reachable without scrolling all the way down. */}
-            <div className="sticky bottom-0 -mx-4 -mb-4 flex flex-col gap-2 border-t bg-background p-4">
-              <Button type="submit" size="lg" className="h-12 text-base">
-                {editing === null ? t.addExpense : t.save}
-              </Button>
-              {editing !== null && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => {
-                    setEditing(null)
-                    setDraft(blankDraft())
-                    setDetailsOpen(true)
-                  }}
-                >
-                  {t.cancel}
-                </Button>
-              )}
-            </div>
           </form>
         </FormSidebar>
       </div>

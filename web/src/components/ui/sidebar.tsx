@@ -190,14 +190,15 @@ function Sidebar({
   // edge — correct for a global nav spanning the whole window, wrong for a
   // per-page panel: on a screen wider than the page's own
   // max-w-(--content-max-width), the panel ends up outside the centered
-  // content area entirely (ticket 14). `contained` keeps it `fixed` (so it
-  // stays visible regardless of how the page scrolls, same as the default
-  // branch — `<main>`'s `overflow-auto` never actually engages in this app,
-  // so a `sticky` panel bound to it would just scroll away with the page)
-  // but measures its horizontal edge off an in-flow placeholder instead of
-  // hardcoding the viewport edge, so it docks to the *content* column's
-  // edge on wide screens. Desktop, offcanvas + variant="sidebar" only — the
-  // one shape `form-sidebar.tsx` actually needs; the icon-rail/floating/inset
+  // content area entirely (ticket 14). `contained` instead renders it in
+  // normal flow, sized by its own content and scrolling with the rest of the
+  // page — a form longer than one screen just grows the page rather than
+  // getting a second, viewport-bounded scrollbar of its own — but still
+  // measures its horizontal edge (for FormSidebarTrigger, which stays
+  // genuinely `fixed`) off that in-flow box instead of hardcoding the
+  // viewport edge, so the trigger docks to the *content* column's edge on
+  // wide screens. Desktop, offcanvas + variant="sidebar" only — the one
+  // shape `form-sidebar.tsx` actually needs; the icon-rail/floating/inset
   // combinations below aren't reachable through this flag.
   contained?: boolean
   // Reports the same measured edge (see below) so a sibling like
@@ -210,13 +211,12 @@ function Sidebar({
   const bg = themed ? "bg-sidebar" : "bg-background"
   const fg = themed ? "text-sidebar-foreground" : "text-foreground"
 
-  // Tracks the placeholder's edge (viewport px), recomputed whenever it
-  // moves or resizes — window resize, a breakpoint change, or the content
-  // column's own width changing (e.g. its max-width capping in). Read only
-  // by the `contained` branch below; called unconditionally so hook order
-  // never depends on the `contained` prop.
+  // Tracks the panel's edge (viewport px), recomputed whenever it moves or
+  // resizes — window resize, a breakpoint change, or the content column's
+  // own width changing (e.g. its max-width capping in). Read only by the
+  // `contained` branch below; called unconditionally so hook order never
+  // depends on the `contained` prop.
   const containedGapRef = React.useRef<HTMLDivElement>(null)
-  const [containedEdge, setContainedEdge] = React.useState(0)
   React.useLayoutEffect(() => {
     if (!contained) return
     const el = containedGapRef.current
@@ -224,7 +224,6 @@ function Sidebar({
     const measure = () => {
       const rect = el.getBoundingClientRect()
       const edge = side === "right" ? window.innerWidth - rect.right : rect.left
-      setContainedEdge(edge)
       onContainedEdgeChange?.(edge)
     }
     measure()
@@ -288,29 +287,19 @@ function Sidebar({
         data-side={side}
         data-slot="sidebar"
       >
-        {/* In-flow stand-in reserving this panel's row space — the fixed
-            copy beside it doesn't occupy flow space on its own, and its
-            rect is what tells the fixed copy where the content edge is. */}
+        {/* In-flow, not fixed: sized by its own content rather than clamped
+            to the viewport, so a form longer than one screen just grows the
+            column and scrolls with the rest of the page instead of getting
+            its own separate, viewport-bounded scrollbar. The measured rect
+            still tells FormSidebarTrigger — genuinely fixed, since it must
+            stay reachable while this panel is closed — where the content
+            edge is (ticket 14). */}
         <div
           ref={containedGapRef}
-          data-slot="sidebar-gap"
-          className="w-(--sidebar-width) shrink-0 bg-transparent transition-[width] duration-200 ease-linear group-data-[collapsible=offcanvas]:w-0"
-        />
-        <div
           data-slot="sidebar-container"
           data-side={side}
-          style={{ [side === "right" ? "right" : "left"]: containedEdge }}
           className={cn(
-            // Vertically inset by the shell's own frame constants (App.tsx:
-            // p-3 + the h-14 header + gap-3 = top-20; p-3 again on the
-            // bottom) rather than `inset-y-0 h-svh` — that docked to the
-            // true viewport top/bottom, overlapping the header and the
-            // shell's padding. Still `fixed`, not measured off `<main>`:
-            // the shell only sets `min-h-svh`, so a tall page grows past
-            // the viewport and the *window* scrolls — `<main>`'s own
-            // rect isn't viewport-bounded, and this panel is meant to stay
-            // put regardless of how far the page has scrolled (ticket 14).
-            "fixed top-20 bottom-3 z-10 hidden w-(--sidebar-width) shrink-0 overflow-hidden transition-[width] duration-200 ease-linear group-data-[collapsible=offcanvas]:w-0 group-data-[side=left]:border-r group-data-[side=right]:border-l md:flex",
+            "hidden w-(--sidebar-width) shrink-0 overflow-x-hidden transition-[width] duration-200 ease-linear group-data-[collapsible=offcanvas]:w-0 group-data-[side=left]:border-r group-data-[side=right]:border-l md:flex",
             className
           )}
           {...props}
@@ -318,7 +307,7 @@ function Sidebar({
           <div
             data-sidebar="sidebar"
             data-slot="sidebar-inner"
-            className={`flex size-full min-h-0 flex-col ${bg}`}
+            className={`flex w-full flex-col ${bg}`}
           >
             {children}
           </div>

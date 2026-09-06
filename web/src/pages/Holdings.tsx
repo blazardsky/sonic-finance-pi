@@ -158,8 +158,36 @@ export function Holdings() {
           title={editing === null ? t.addHolding : t.editHolding}
           open={sidebarOpen}
           onOpenChange={setSidebarOpen}
+          footer={
+            <div className="flex flex-col gap-2">
+              <Button
+                type="submit"
+                form="holding-form"
+                size="lg"
+                className="h-12 text-base"
+              >
+                {editing === null ? t.addHolding : t.save}
+              </Button>
+              {editing !== null && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setEditing(null)
+                    setDraft(blankDraft())
+                  }}
+                >
+                  {t.cancel}
+                </Button>
+              )}
+            </div>
+          }
         >
-          <form onSubmit={submit} className="flex flex-col gap-3">
+          <form
+            id="holding-form"
+            onSubmit={submit}
+            className="flex flex-col gap-3 md:pb-32"
+          >
             <Field>
               <FieldLabel htmlFor="name">{t.holdingName}</FieldLabel>
               <Input
@@ -191,21 +219,6 @@ export function Holdings() {
               </Select>
             </Field>
 
-            <Button type="submit" size="lg" className="h-12 text-base">
-              {editing === null ? t.addHolding : t.save}
-            </Button>
-            {editing !== null && (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  setEditing(null)
-                  setDraft(blankDraft())
-                }}
-              >
-                {t.cancel}
-              </Button>
-            )}
           </form>
         </FormSidebar>
       </div>

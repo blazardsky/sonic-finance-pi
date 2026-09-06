@@ -19,6 +19,7 @@ export const t = {
   // (Expenses, Incomes, Categories, Clients, Recurring). Everything else a
   // column shows already has its own string above/below, screen by screen.
   details: "Dettagli",
+  status: "Stato",
   actions: "Azioni",
 
   // Date picker (web/src/components/date-picker.tsx) — the one placeholder

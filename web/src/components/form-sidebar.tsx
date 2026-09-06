@@ -35,6 +35,7 @@ const FORM_SIDEBAR_COOKIE_NAME = "form_sidebar_state"
 function FormSidebar({
   title,
   children,
+  footer,
   className,
   open,
   onOpenChange,
@@ -42,6 +43,14 @@ function FormSidebar({
 }: {
   title?: React.ReactNode
   children: React.ReactNode
+  // The submit/cancel action bar, kept reachable without scrolling: since
+  // the panel above is now sized by its own content and scrolls with the
+  // page (no longer viewport-clamped), this is rendered outside that flow,
+  // in its own always-on-screen strip — `fixed` to the viewport bottom on
+  // desktop, an ordinary flex-column tail on mobile's already viewport-sized
+  // Sheet. Not inside a caller's own `<form>` element: give the form an
+  // `id` and this its submit button's `form={id}` to keep them associated.
+  footer?: React.ReactNode
   className?: string
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -52,9 +61,9 @@ function FormSidebar({
   openMobile?: boolean
 }) {
   // The measured content-edge (viewport px), reported by the `contained`
-  // Sidebar below — shared with FormSidebarTrigger so its own `fixed`
-  // position tracks the same edge rather than the true viewport edge
-  // (ticket 14).
+  // Sidebar below — shared with FormSidebarTrigger and FormSidebarFooter so
+  // their own `fixed` position tracks the same edge rather than the true
+  // viewport edge (ticket 14).
   const [edge, setEdge] = React.useState(0)
 
   return (
@@ -83,6 +92,7 @@ function FormSidebar({
         <SidebarContent className={cn("gap-4 p-4", className)}>
           {children}
         </SidebarContent>
+        {footer && <FormSidebarFooter edge={edge}>{footer}</FormSidebarFooter>}
       </Sidebar>
       <FormSidebarTrigger edge={edge} />
     </SidebarProvider>
@@ -112,6 +122,38 @@ function FormSidebarClose() {
     >
       <RiCloseLine />
     </Button>
+  )
+}
+
+// The submit/cancel bar, kept on screen without scrolling. Mobile's Sheet is
+// already exactly viewport height, so an ordinary flex-column tail item
+// already sits at the visible bottom — no positioning trick needed there.
+// Desktop's panel above is no longer viewport-clamped (it grows with its
+// content and scrolls with the page), so this is `fixed` to the viewport
+// bottom instead, docked to the same measured edge as FormSidebarTrigger.
+function FormSidebarFooter({
+  children,
+  edge,
+}: {
+  children: React.ReactNode
+  edge: number
+}) {
+  const { isMobile, open } = useSidebar()
+  if (isMobile) {
+    return <div className="shrink-0 border-t bg-background p-4">{children}</div>
+  }
+  // Unlike mobile's Sheet, the desktop panel's own content stays mounted
+  // (just width-collapsed) while closed — this bar is `fixed`, outside that
+  // collapsing box, so it has to hide itself instead of being clipped along
+  // with it.
+  if (!open) return null
+  return (
+    <div
+      style={{ right: `${edge}px` }}
+      className="fixed bottom-3 z-20 w-(--sidebar-width) border-t bg-background p-4 shadow-sm"
+    >
+      {children}
+    </div>
   )
 }
 
@@ -172,12 +214,8 @@ function FormSidebarTrigger({
       onClick={toggleSidebar}
       style={{ right: open ? `calc(${edge}px + var(--sidebar-width))` : `${edge}px` }}
       className={cn(
-        // A translate-based top-1/2 centering (Tailwind v4 compiles that to
-        // the standalone CSS `translate` property, not `transform`) left
-        // Chromium's hit-test region stale on this `fixed`, dynamically
-        // re-positioned button — real clicks landed ~16px off from the
-        // painted position. calc() avoids `translate` entirely.
-        "fixed top-[calc(50%-1rem)] z-20 rounded-l-lg rounded-r-none border border-r-0 shadow-sm transition-[right] duration-200 ease-linear",
+        // top-20 = same inset as the contained panel (shell + header).
+        "fixed top-20 z-20 rounded-none border border-r-0 bg-black text-white shadow-sm transition-[right] duration-200 ease-linear hover:bg-black hover:text-white aria-expanded:bg-black aria-expanded:text-white dark:bg-white dark:text-black dark:hover:bg-white dark:hover:text-black dark:aria-expanded:bg-white dark:aria-expanded:text-black",
         className
       )}
     >

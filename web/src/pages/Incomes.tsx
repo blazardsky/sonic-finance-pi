@@ -520,8 +520,37 @@ export function Incomes({
           title={editing === null ? t.addIncome : t.editIncome}
           open={sidebarOpen}
           onOpenChange={setSidebarOpen}
+          footer={
+            <div className="flex flex-col gap-2">
+              <Button
+                type="submit"
+                form="income-form"
+                size="lg"
+                className="h-12 text-base"
+              >
+                {editing === null ? t.addIncome : t.save}
+              </Button>
+              {editing !== null && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setEditing(null)
+                    setDraft(blankDraft())
+                    setDetailsOpen(false)
+                  }}
+                >
+                  {t.cancel}
+                </Button>
+              )}
+            </div>
+          }
         >
-          <form onSubmit={submit} className="flex flex-col gap-3">
+          <form
+            id="income-form"
+            onSubmit={submit}
+            className="flex flex-col gap-3 md:pb-32"
+          >
             <Field>
               <FieldLabel htmlFor="amount">{t.amount}</FieldLabel>
               <InputGroup className="h-12">
@@ -705,22 +734,6 @@ export function Incomes({
               </p>
             )}
 
-            <Button type="submit" size="lg" className="h-12 text-base">
-              {editing === null ? t.addIncome : t.save}
-            </Button>
-            {editing !== null && (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  setEditing(null)
-                  setDraft(blankDraft())
-                  setDetailsOpen(false)
-                }}
-              >
-                {t.cancel}
-              </Button>
-            )}
           </form>
         </FormSidebar>
       </div>

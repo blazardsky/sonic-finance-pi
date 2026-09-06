@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import {
+  RiArrowDownSLine,
+  RiArrowUpSLine,
   RiDeleteBinLine,
   RiEditLine,
   RiMoreLine,
@@ -109,11 +111,6 @@ const draftOf = (r: Recurring): Draft => ({
 export const running = (r: Recurring) =>
   !r.end_month || r.end_month > thisMonth()
 
-// Whichever template details were filled in, on one quiet line — empty when
-// there are none, which is the same question as whether to show the line.
-const details = (r: Recurring) =>
-  [r.store, r.payer, r.payment_method, r.note].filter(Boolean).join(" · ")
-
 // The window on one line, which is what "is this still running" is read from.
 const windowOf = (r: Recurring) =>
   `${formatMonth(r.start_month)} → ${
@@ -139,6 +136,17 @@ export function RecurringExpenses() {
   const [editing, setEditing] = useState<number | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  // Which rows have their Dettagli disclosure open — Negozio, Pagato da and
+  // Metodo di pagamento have no column of their own; Status and Note do, and
+  // are never in here.
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
+  const toggleExpanded = (id: number) =>
+    setExpandedIds((s) => {
+      const next = new Set(s)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
@@ -327,6 +335,10 @@ export function RecurringExpenses() {
             <TableHeader>
               <TableRow>
                 <TableHead>{t.category}</TableHead>
+                <TableHead>{t.status}</TableHead>
+                <TableHead className="hidden md:table-cell">
+                  {t.note}
+                </TableHead>
                 <TableHead>{t.details}</TableHead>
                 <TableHead className="text-right">{t.amount}</TableHead>
                 <TableHead className="w-10">{t.actions}</TableHead>
@@ -343,21 +355,62 @@ export function RecurringExpenses() {
                   >
                     {nameOf(categories, r.category_id)}
                   </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {/* Whether it is still running, said in words rather than
+                        by a colour alone, next to the window it is read
+                        from. */}
+                    {r.day_of_month} · {windowOf(r)} ·{" "}
+                    {running(r) ? t.ongoing : t.endedIn(formatMonth(r.end_month))}
+                  </TableCell>
+                  <TableCell className="hidden truncate text-xs text-muted-foreground md:table-cell">
+                    {r.note}
+                  </TableCell>
                   <TableCell className="whitespace-normal">
                     <div className="flex flex-col gap-0.5">
-                      {/* Whether it is still running, said in words rather than
-                          by a colour alone, next to the window it is read
-                          from. */}
-                      <span className="text-xs text-muted-foreground">
-                        {r.day_of_month} · {windowOf(r)} ·{" "}
-                        {running(r)
-                          ? t.ongoing
-                          : t.endedIn(formatMonth(r.end_month))}
-                      </span>
-                      {details(r) && (
-                        <span className="truncate text-xs text-muted-foreground">
-                          {details(r)}
-                        </span>
+                      {/* Negozio, Pagato da and Metodo di pagamento have no
+                          column of their own on any width — this is the one
+                          place to reach them. Note keeps its own column on
+                          desktop, so it only needs reaching here on a narrow
+                          screen. */}
+                      {(r.store || r.payer || r.payment_method || r.note) && (
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 text-xs text-muted-foreground"
+                          onClick={() => toggleExpanded(r.id)}
+                          aria-expanded={expandedIds.has(r.id)}
+                          aria-label={t.details}
+                        >
+                          {expandedIds.has(r.id) ? (
+                            <RiArrowUpSLine className="size-3.5" />
+                          ) : (
+                            <RiArrowDownSLine className="size-3.5" />
+                          )}
+                          {t.details}
+                        </button>
+                      )}
+                      {expandedIds.has(r.id) && (
+                        <div className="flex flex-col gap-0.5">
+                          {r.store && (
+                            <span className="truncate text-xs text-muted-foreground">
+                              {t.store}: {r.store}
+                            </span>
+                          )}
+                          {r.payer && (
+                            <span className="truncate text-xs text-muted-foreground">
+                              {t.payer}: {r.payer}
+                            </span>
+                          )}
+                          {r.payment_method && (
+                            <span className="truncate text-xs text-muted-foreground">
+                              {t.paymentMethod}: {r.payment_method}
+                            </span>
+                          )}
+                          {r.note && (
+                            <span className="truncate text-xs text-muted-foreground md:hidden">
+                              {t.note}: {r.note}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
                   </TableCell>
@@ -409,8 +462,37 @@ export function RecurringExpenses() {
           title={editing === null ? t.addRecurring : t.editRecurring}
           open={sidebarOpen}
           onOpenChange={setSidebarOpen}
+          footer={
+            <div className="flex flex-col gap-2">
+              <Button
+                type="submit"
+                form="recurring-form"
+                size="lg"
+                className="h-12 text-base"
+              >
+                {editing === null ? t.addRecurring : t.save}
+              </Button>
+              {editing !== null && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setEditing(null)
+                    setDraft(blankDraft())
+                    setDetailsOpen(false)
+                  }}
+                >
+                  {t.cancel}
+                </Button>
+              )}
+            </div>
+          }
         >
-          <form onSubmit={submit} className="flex flex-col gap-3">
+          <form
+            id="recurring-form"
+            onSubmit={submit}
+            className="flex flex-col gap-3 md:pb-32"
+          >
             <Field>
               <FieldLabel htmlFor="amount">{t.amount}</FieldLabel>
               <InputGroup className="h-10">
@@ -605,22 +687,6 @@ export function RecurringExpenses() {
               </AccordionItem>
             </Accordion>
 
-            <Button type="submit" size="lg" className="h-12 text-base">
-              {editing === null ? t.addRecurring : t.save}
-            </Button>
-            {editing !== null && (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  setEditing(null)
-                  setDraft(blankDraft())
-                  setDetailsOpen(false)
-                }}
-              >
-                {t.cancel}
-              </Button>
-            )}
           </form>
         </FormSidebar>
       </div>

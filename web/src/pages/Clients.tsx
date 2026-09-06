@@ -459,8 +459,22 @@ export function Clients() {
           title={t.addClient}
           open={sidebarOpen}
           onOpenChange={setSidebarOpen}
+          footer={
+            <Button
+              type="submit"
+              form="client-form"
+              size="lg"
+              className="h-12 text-base"
+            >
+              {t.addClient}
+            </Button>
+          }
         >
-          <form onSubmit={add} className="flex flex-col gap-3">
+          <form
+            id="client-form"
+            onSubmit={add}
+            className="flex flex-col gap-3 md:pb-24"
+          >
             <Field>
               <FieldLabel htmlFor="name">{t.clientName}</FieldLabel>
               <Input
@@ -472,9 +486,6 @@ export function Clients() {
                 className="h-10"
               />
             </Field>
-            <Button type="submit" size="lg" className="h-12 text-base">
-              {t.addClient}
-            </Button>
           </form>
         </FormSidebar>
       </div>
