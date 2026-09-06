@@ -56,7 +56,7 @@ const icons: Record<Screen, typeof RiDashboardLine> = {
 const groups: { label: string; screens: Screen[] }[] = [
   {
     label: t.navOverview,
-    screens: ["dashboard", "month", "year", "yearReport", "savings"],
+    screens: ["dashboard", "month", "year", "savings"],
   },
   {
     label: t.navEntries,
