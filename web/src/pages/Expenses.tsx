@@ -324,7 +324,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
   ].sort()
 
   return (
-    <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6">
+    <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
       <div className="flex flex-1 flex-wrap gap-6">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           <Table>
@@ -493,9 +493,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
           <form
             id="expense-form"
             onSubmit={submit}
-            // md:pb-32 reserves room for the footer prop's fixed bar below,
-            // which overlaps in-flow content rather than pushing it up.
-            className="flex flex-col gap-3 md:pb-32"
+            className="flex flex-col gap-3"
           >
             <Field>
               <FieldLabel htmlFor="amount">{t.amount}</FieldLabel>

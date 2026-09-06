@@ -165,7 +165,7 @@ function Sidebar({
   mobileWidth = SIDEBAR_WIDTH_MOBILE,
   themed = true,
   contained = false,
-  onContainedEdgeChange,
+  onContainedRectChange,
   className,
   children,
   dir,
@@ -201,19 +201,29 @@ function Sidebar({
   // shape `form-sidebar.tsx` actually needs; the icon-rail/floating/inset
   // combinations below aren't reachable through this flag.
   contained?: boolean
-  // Reports the same measured edge (see below) so a sibling like
-  // `FormSidebarTrigger` can dock its own `fixed` position against it
-  // instead of the true viewport edge, without this primitive needing to
-  // know that trigger exists.
-  onContainedEdgeChange?: (edgePx: number) => void
+  // Reports the panel's measured edge and bottom (viewport px), recomputed on
+  // resize *and* scroll — scroll matters here because this app's page scrolls
+  // as a whole (the shell is only `min-h-svh`, a floor, so `main`'s own
+  // `overflow-auto` never actually engages; nothing but the window itself
+  // scrolls), which is also why a sibling can't just lean on `position:
+  // sticky` for its own bottom-tracking — that only works against an
+  // ancestor that actually scrolls. `edge` is what FormSidebarTrigger docks
+  // its own `fixed` position against instead of the true viewport edge;
+  // `bottom` (and `viewportHeight`, alongside it since both are already
+  // recomputed on the same resize/scroll) is what FormSidebarFooter eases
+  // its own `fixed` bottom inset against as this box's true end nears.
+  // Neither primitive needs to know those siblings exist.
+  onContainedRectChange?: (rect: {
+    edge: number
+    bottom: number
+    viewportHeight: number
+  }) => void
 }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
   const bg = themed ? "bg-sidebar" : "bg-background"
   const fg = themed ? "text-sidebar-foreground" : "text-foreground"
 
-  // Tracks the panel's edge (viewport px), recomputed whenever it moves or
-  // resizes — window resize, a breakpoint change, or the content column's
-  // own width changing (e.g. its max-width capping in). Read only by the
+  // Tracks the panel's edge and bottom (viewport px). Read only by the
   // `contained` branch below; called unconditionally so hook order never
   // depends on the `contained` prop.
   const containedGapRef = React.useRef<HTMLDivElement>(null)
@@ -224,17 +234,23 @@ function Sidebar({
     const measure = () => {
       const rect = el.getBoundingClientRect()
       const edge = side === "right" ? window.innerWidth - rect.right : rect.left
-      onContainedEdgeChange?.(edge)
+      onContainedRectChange?.({
+        edge,
+        bottom: rect.bottom,
+        viewportHeight: window.innerHeight,
+      })
     }
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(el)
     window.addEventListener("resize", measure)
+    window.addEventListener("scroll", measure, { passive: true })
     return () => {
       ro.disconnect()
       window.removeEventListener("resize", measure)
+      window.removeEventListener("scroll", measure)
     }
-  }, [contained, side, onContainedEdgeChange])
+  }, [contained, side, onContainedRectChange])
 
   if (collapsible === "none") {
     return (
@@ -299,7 +315,14 @@ function Sidebar({
           data-slot="sidebar-container"
           data-side={side}
           className={cn(
-            "hidden w-(--sidebar-width) shrink-0 overflow-x-hidden transition-[width] duration-200 ease-linear group-data-[collapsible=offcanvas]:w-0 group-data-[side=left]:border-r group-data-[side=right]:border-l md:flex",
+            // h-full: without it this box (the one carrying the border) is
+            // only as tall as its own content, so a short form reads as a
+            // short-looking panel next to a taller list column. The row
+            // above already stretches this box to match its siblings via
+            // ordinary flex align-items (default: stretch) — this just lets
+            // that stretched height reach the border instead of stopping at
+            // the block child's auto-height content size.
+            "hidden h-full w-(--sidebar-width) shrink-0 overflow-x-hidden transition-[width] duration-200 ease-linear group-data-[collapsible=offcanvas]:w-0 group-data-[side=left]:border-r group-data-[side=right]:border-l md:flex",
             className
           )}
           {...props}

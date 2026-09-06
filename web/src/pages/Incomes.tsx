@@ -382,7 +382,7 @@ export function Incomes({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6">
+    <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
       <div className="flex flex-1 flex-wrap gap-6">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           <Table>
@@ -549,7 +549,7 @@ export function Incomes({
           <form
             id="income-form"
             onSubmit={submit}
-            className="flex flex-col gap-3 md:pb-32"
+            className="flex flex-col gap-3"
           >
             <Field>
               <FieldLabel htmlFor="amount">{t.amount}</FieldLabel>
