@@ -218,6 +218,16 @@ export function Incomes({
       return
     }
 
+    // Freelance is billed work: "whose money was it" (ticket 08's Payer rule)
+    // extends here to "who owes it". A gift or an Investment sell names
+    // nobody by design (cmd/income.go), so the requirement is Freelance-only
+    // and, unlike Payer, frontend-only — the server still accepts a null
+    // Client on any Category.
+    if (isFreelanceIncome && draft.client_id === "") {
+      setError(t.invalidIncomeClient)
+      return
+    }
+
     // The server refuses an Income with no Payer, but Payer lives inside the
     // details disclosure — closed, its Select unmounts, so the browser's own
     // required check on it never runs. Checked here instead, opening the
@@ -290,6 +300,19 @@ export function Incomes({
     categories,
     "income",
     categories.find((c) => c.id === draft.category_id)
+  )
+
+  // Freelance is a Base category (ADR-0008) applying to income like Gift
+  // does, so telling the two apart needs the one field Gift publishes that
+  // Freelance doesn't — the same "narrow a Base category down" trick
+  // Expenses.tsx's isTaxExpense and Savings.tsx's Investments check use,
+  // since the code behind `base` itself is never sent to the frontend.
+  const isFreelanceIncome = categories.some(
+    (c) =>
+      c.id === draft.category_id &&
+      c.base &&
+      c.applies_to === "income" &&
+      !c.gift
   )
 
   // The Client picker is the first one in the app, and filtering hidden ones
