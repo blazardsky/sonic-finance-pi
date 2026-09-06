@@ -367,7 +367,7 @@ export function RecurringExpenses() {
                     {r.note}
                   </TableCell>
                   <TableCell className="whitespace-normal">
-                    <div className="flex flex-col gap-0.5">
+                    <div className="flex w-48 flex-col gap-0.5">
                       <button
                         type="button"
                         className="flex items-center gap-1 text-xs text-muted-foreground"
