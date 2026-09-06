@@ -267,7 +267,9 @@ type clientContractDue struct {
 // is left out entirely: neither is "an active one" in the sense the card
 // asks about. A Client whose active Contract is already fully invoiced this
 // month (InvoiceTargetCents zero) is left out too — there is nothing left to
-// say it owes.
+// say it owes. A hidden Client is left out regardless of its Contract's
+// figures, same as readNotYetInvoiced: hiding is how a Client is retired, and
+// this card is a prompt to act, not a record of history.
 //
 // Two Contracts for the same Client never overlap in range (contractOverlaps
 // enforces it at write time), so this is at most one row per Client.
@@ -276,7 +278,7 @@ func contractsDueThisMonth(db *sql.DB, now func() time.Time) ([]clientContractDu
 	rows, err := db.Query(`SELECT `+contractColumns+`, client.name
 		FROM contract
 		JOIN client ON client.id = contract.client_id
-		WHERE contract.start_month <= ? AND contract.end_month >= ?`, current, current)
+		WHERE contract.start_month <= ? AND contract.end_month >= ? AND client.hidden = 0`, current, current)
 	if err != nil {
 		return nil, err
 	}
