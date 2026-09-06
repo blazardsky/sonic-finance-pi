@@ -244,7 +244,7 @@ export function Clients() {
   const contractForClient = clients?.find((c) => c.id === contractFor) ?? null
 
   return (
-    <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6">
+    <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
       <h1 className="font-medium">{t.clients}</h1>
 
       <div className="flex flex-1 flex-wrap gap-6">

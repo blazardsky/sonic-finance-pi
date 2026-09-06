@@ -107,7 +107,7 @@ export function Holdings() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6">
+    <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
       <h1 className="font-medium">{t.holdings}</h1>
 
       <div className="flex flex-1 flex-wrap gap-6">
@@ -186,7 +186,7 @@ export function Holdings() {
           <form
             id="holding-form"
             onSubmit={submit}
-            className="flex flex-col gap-3 md:pb-32"
+            className="flex flex-col gap-3"
           >
             <Field>
               <FieldLabel htmlFor="name">{t.holdingName}</FieldLabel>

@@ -60,11 +60,13 @@ function FormSidebar({
   // reach the desktop panel.
   openMobile?: boolean
 }) {
-  // The measured content-edge (viewport px), reported by the `contained`
-  // Sidebar below — shared with FormSidebarTrigger and FormSidebarFooter so
-  // their own `fixed` position tracks the same edge rather than the true
-  // viewport edge (ticket 14).
-  const [edge, setEdge] = React.useState(0)
+  // The measured content-edge and bottom (viewport px), reported by the
+  // `contained` Sidebar below — read by FormSidebarTrigger (which stays
+  // genuinely `fixed` even while the panel is closed, so it tracks this edge
+  // itself rather than the true viewport edge, ticket 14) and by
+  // FormSidebarFooter (which eases its own `fixed` bottom inset as this
+  // bottom nears the viewport's, ticket 07).
+  const [rect, setRect] = React.useState({ edge: 0, bottom: 0, viewportHeight: 0 })
 
   return (
     <SidebarProvider
@@ -73,6 +75,9 @@ function FormSidebar({
       open={open}
       onOpenChange={onOpenChange}
       defaultOpenMobile={openMobile}
+      // 20rem, wider than the main nav's 16rem (SIDEBAR_WIDTH) — this panel
+      // carries a whole form, the nav just carries labels (ticket 07).
+      style={{ "--sidebar-width": "20rem" } as React.CSSProperties}
     >
       <Sidebar
         side="right"
@@ -81,7 +86,7 @@ function FormSidebar({
         mobileWidth="100vw"
         themed={false}
         contained
-        onContainedEdgeChange={setEdge}
+        onContainedRectChange={setRect}
       >
         {title && (
           <SidebarHeader className="flex-row items-center justify-between border-b p-4">
@@ -92,12 +97,27 @@ function FormSidebar({
         <SidebarContent className={cn("gap-4 p-4", className)}>
           {children}
         </SidebarContent>
-        {footer && <FormSidebarFooter edge={edge}>{footer}</FormSidebarFooter>}
+        {footer && (
+          <FormSidebarFooter
+            edge={rect.edge}
+            panelBottom={rect.bottom}
+            viewportHeight={rect.viewportHeight}
+          >
+            {footer}
+          </FormSidebarFooter>
+        )}
       </Sidebar>
-      <FormSidebarTrigger edge={edge} />
+      <FormSidebarTrigger edge={rect.edge} />
     </SidebarProvider>
   )
 }
+
+// How close to the panel's true end (viewport px) the footer starts easing
+// off `bottom-0`, and how much of a gap (viewport px) it settles into once
+// there — ticket 07's "sits at bottom-0 ... eases to bottom-3 ... within
+// 3rem", at the default 16px root: 3rem and 0.75rem.
+const FOOTER_EASE_ZONE_PX = 48
+const FOOTER_REST_GAP_PX = 12
 
 // Mobile's dedicated close control, sat in the header next to the title
 // rather than reusing the outside FAB as a toggle. Radix's Dialog treats any
@@ -125,20 +145,31 @@ function FormSidebarClose() {
   )
 }
 
-// The submit/cancel bar, kept on screen without scrolling. Mobile's Sheet is
+// The submit/cancel bar, kept reachable without scrolling. Mobile's Sheet is
 // already exactly viewport height, so an ordinary flex-column tail item
 // already sits at the visible bottom — no positioning trick needed there.
-// Desktop's panel above is no longer viewport-clamped (it grows with its
-// content and scrolls with the page), so this is `fixed` to the viewport
-// bottom instead, docked to the same measured edge as FormSidebarTrigger.
+// Desktop's panel is `contained` (in flow, scrolling with the rest of the
+// page), so this is `fixed` to the viewport bottom instead, docked to the
+// same measured edge as FormSidebarTrigger — `position: sticky` would be the
+// simpler way to track "the viewport bottom, until the panel's own end",
+// but it only holds against an ancestor that actually scrolls, and this
+// app's shell doesn't: it's sized with `min-h-svh` (a floor), so a page
+// taller than the viewport grows the whole document instead of clipping
+// `main` into its own scrollport — the window is what scrolls, so this
+// tracks that directly instead.
 function FormSidebarFooter({
   children,
   edge,
+  panelBottom,
+  viewportHeight,
 }: {
   children: React.ReactNode
   edge: number
+  panelBottom: number
+  viewportHeight: number
 }) {
   const { isMobile, open } = useSidebar()
+
   if (isMobile) {
     return <div className="shrink-0 border-t bg-background p-4">{children}</div>
   }
@@ -147,10 +178,24 @@ function FormSidebarFooter({
   // collapsing box, so it has to hide itself instead of being clipped along
   // with it.
   if (!open) return null
+
+  // How far below the *current* viewport bottom the panel's true end sits —
+  // large while there's plenty of panel left to scroll through, shrinking
+  // to 0 right as the viewport bottom reaches it. Bottom-0 (flush) until
+  // that's within the ease zone, then a linear ease down to the rest gap, so
+  // the bar is never pushed past the panel's own end into whatever (if
+  // anything) follows it.
+  const distanceToEnd = panelBottom - viewportHeight
+  const eased = FOOTER_REST_GAP_PX * (1 - distanceToEnd / FOOTER_EASE_ZONE_PX)
+  const bottomInset =
+    distanceToEnd >= FOOTER_EASE_ZONE_PX
+      ? 0
+      : Math.min(FOOTER_REST_GAP_PX, Math.max(0, eased))
+
   return (
     <div
-      style={{ right: `${edge}px` }}
-      className="fixed bottom-3 z-20 w-(--sidebar-width) border-t bg-background p-4 shadow-sm"
+      style={{ right: `${edge}px`, bottom: `${bottomInset}px` }}
+      className="fixed z-20 w-(--sidebar-width) border-t bg-background p-4 shadow-sm"
     >
       {children}
     </div>
