@@ -32,11 +32,14 @@ type holdingBreakdown struct {
 
 // savingsReport is the Savings page's one request: the computed figure, the
 // starting balance it already includes (so the page can show and edit it on
-// its own), and the portfolio breakdown.
+// its own), the portfolio breakdown, and CombinedCents — Savings plus the
+// current portfolio value, so the page can show what the household holds
+// altogether (ticket 05).
 type savingsReport struct {
 	SavingsCents         int64              `json:"savings_cents"`
 	StartingBalanceCents int64              `json:"starting_balance_cents"`
 	Holdings             []holdingBreakdown `json:"holdings"`
+	CombinedCents        int64              `json:"combined_cents"`
 }
 
 func handleSavingsReport(db *sql.DB) http.HandlerFunc {
@@ -46,7 +49,7 @@ func handleSavingsReport(db *sql.DB) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		holdings, err := readHoldingBreakdown(db)
+		holdings, portfolioCents, err := readHoldingBreakdown(db)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -55,6 +58,7 @@ func handleSavingsReport(db *sql.DB) http.HandlerFunc {
 			SavingsCents:         savingsCents,
 			StartingBalanceCents: startingBalanceCents,
 			Holdings:             holdings,
+			CombinedCents:        savingsCents + portfolioCents,
 		})
 	}
 }
@@ -115,12 +119,14 @@ func computeSavingsCents(db *sql.DB, cutoff string) (savingsCents, startingBalan
 
 // readHoldingBreakdown is the portfolio percentage breakdown: each Holding's
 // net contribution (buys minus sells) as a percentage of the total across
-// every other Holding still standing. Same shape as readBreakdown's Category
+// every other Holding still standing, plus that total itself (ticket 05's
+// CombinedCents is Savings plus this, so the caller reuses it rather than
+// re-summing the same slice). Same shape as readBreakdown's Category
 // grouping (cmd/reports.go), applied to Holdings — buys and sells are summed
 // per Holding in SQL, but the zero-drop and the percentage itself are plain
 // Go arithmetic over the small handful of rows a household ever has, rather
 // than SQL cleverness for its own sake.
-func readHoldingBreakdown(db *sql.DB) ([]holdingBreakdown, error) {
+func readHoldingBreakdown(db *sql.DB) ([]holdingBreakdown, int64, error) {
 	rows, err := db.Query(`SELECT h.id, h.name, h.type,
 			COALESCE(buys.cents, 0) - COALESCE(sells.cents, 0) AS net_cents
 		FROM holding h
@@ -131,7 +137,7 @@ func readHoldingBreakdown(db *sql.DB) ([]holdingBreakdown, error) {
 			GROUP BY holding_id) sells ON sells.holding_id = h.id
 		ORDER BY h.name COLLATE NOCASE`)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -140,7 +146,7 @@ func readHoldingBreakdown(db *sql.DB) ([]holdingBreakdown, error) {
 	for rows.Next() {
 		var hb holdingBreakdown
 		if err := rows.Scan(&hb.HoldingID, &hb.Name, &hb.Type, &hb.NetCents); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		// A Holding never bought or fully sold back out nets to zero and is
 		// dropped entirely — the ticket's rule, not shown as a 0% row.
@@ -151,10 +157,10 @@ func readHoldingBreakdown(db *sql.DB) ([]holdingBreakdown, error) {
 		total += hb.NetCents
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	for i := range out {
 		out[i].Percent = float64(out[i].NetCents) * 100 / float64(total)
 	}
-	return out, nil
+	return out, total, nil
 }
