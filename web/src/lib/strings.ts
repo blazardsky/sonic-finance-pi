@@ -247,6 +247,10 @@ export const t = {
   medianHint: (year: string) =>
     `Sui mesi già conclusi del ${year}.`,
   noSpendThisYear: "Nessuna spesa in questo anno.",
+  // The pie/radial charts' catch-all bucket for Categories past the 5 colors
+  // --chart-1..5 give: named generically since which Categories fall into it
+  // changes every year.
+  otherCategories: "Altre categorie",
 
   // Pending payments — what is owed, and what looks unbilled
   pendingPayments: "In attesa di pagamento",

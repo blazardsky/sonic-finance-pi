@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useState } from "react"
-import { Line, LineChart, XAxis } from "recharts"
+import {
+  Label,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  PolarRadiusAxis,
+  RadialBar,
+  RadialBarChart,
+  XAxis,
+} from "recharts"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -60,6 +70,8 @@ export function YearlyReport() {
 
   const grid = useMemo(() => pivotByMonth(full?.by_month ?? [], year), [full, year])
   const path = useMemo(() => cumulativePath(totals?.months ?? []), [totals])
+  const slices = useMemo(() => categorySlices(categoryShares(full?.by_month ?? [])), [full])
+  const sliceConfig = useMemo(() => categorySliceConfig(slices), [slices])
   const step = (by: number) => setYear(String(Number(year) + by))
 
   return (
@@ -115,6 +127,18 @@ export function YearlyReport() {
             {t.financesPath}
           </h2>
           <FinancesPathChart path={path} />
+        </section>
+      )}
+
+      {slices.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-sm font-medium text-muted-foreground">
+            {t.byCategory}
+          </h2>
+          <div className="flex flex-wrap gap-6">
+            <CategoryPieChart slices={slices} config={sliceConfig} />
+            <CategoryRadialChart slices={slices} config={sliceConfig} />
+          </div>
         </section>
       )}
 
@@ -192,23 +216,14 @@ type GridRow = {
 // anything was spent in them — a report over a whole year is a shape, same
 // as Year.tsx's own view.
 function pivotByMonth(byMonth: FullYearReport["by_month"], year: string) {
-  const categoryTotals = new Map<number, { name: string; total: number }>()
   const perMonth = new Map<string, Record<number, number>>()
-
   for (const line of byMonth) {
-    const known = categoryTotals.get(line.category_id)
-    categoryTotals.set(line.category_id, {
-      name: line.category,
-      total: (known?.total ?? 0) + line.amount_cents,
-    })
     const row = perMonth.get(line.month) ?? {}
     row[line.category_id] = line.amount_cents
     perMonth.set(line.month, row)
   }
 
-  const categories = [...categoryTotals.entries()]
-    .sort((a, b) => b[1].total - a[1].total)
-    .map(([id, c]) => ({ id, name: c.name }))
+  const categories = categoryShares(byMonth).map((c) => ({ id: c.id, name: c.name }))
 
   let running = 0
   const rows: GridRow[] = t.monthsShort.map((label, i) => {
@@ -220,6 +235,162 @@ function pivotByMonth(byMonth: FullYearReport["by_month"], year: string) {
   })
 
   return { categories, rows }
+}
+
+// A Category's total for the whole year, biggest first — the same shape
+// pivotByMonth's column order and the pie/radial charts below all read.
+type CategoryShare = { id: number; name: string; amount: number }
+
+function categoryShares(byMonth: FullYearReport["by_month"]): CategoryShare[] {
+  const totals = new Map<number, { name: string; amount: number }>()
+  for (const line of byMonth) {
+    const known = totals.get(line.category_id)
+    totals.set(line.category_id, {
+      name: line.category,
+      amount: (known?.amount ?? 0) + line.amount_cents,
+    })
+  }
+  return [...totals.entries()]
+    .sort((a, b) => b[1].amount - a[1].amount)
+    .map(([id, c]) => ({ id, name: c.name, amount: c.amount }))
+}
+
+// One slice of the pie/radial charts: a Category's share of the year, or
+// (past the 5 colors --chart-1..5 give us) the rest lumped into "Altre
+// categorie" rather than cycling colors and making two different Categories
+// look like the same one.
+type CategorySlice = { key: string; label: string; amount: number; fill: string }
+
+const MAX_CATEGORY_SLICES = 5
+
+function categorySlices(shares: CategoryShare[]): CategorySlice[] {
+  const top = shares.slice(0, MAX_CATEGORY_SLICES)
+  const rest = shares.slice(MAX_CATEGORY_SLICES)
+
+  const slices: CategorySlice[] = top.map((c, i) => ({
+    key: `c${c.id}`,
+    label: c.name,
+    amount: c.amount,
+    fill: `var(--chart-${i + 1})`,
+  }))
+
+  if (rest.length > 0) {
+    slices.push({
+      key: "other",
+      label: t.otherCategories,
+      amount: rest.reduce((sum, c) => sum + c.amount, 0),
+      fill: "var(--muted-foreground)",
+    })
+  }
+
+  return slices
+}
+
+function categorySliceConfig(slices: CategorySlice[]): ChartConfig {
+  return Object.fromEntries(
+    slices.map((s) => [s.key, { label: s.label, color: s.fill }])
+  )
+}
+
+function CategoryPieChart({
+  slices,
+  config,
+}: {
+  slices: CategorySlice[]
+  config: ChartConfig
+}) {
+  return (
+    <ChartContainer config={config} className="mx-auto aspect-square max-h-64 w-full max-w-64">
+      <PieChart>
+        <ChartTooltip
+          content={
+            <ChartTooltipContent
+              hideLabel
+              nameKey="key"
+              // Pie's own dataKey is always "amount" — the slice a hovered
+              // wedge belongs to is on its payload, not its dataKey.
+              formatter={(value, _name, item) => (
+                <div className="flex flex-1 justify-between gap-2 leading-none">
+                  <span className="text-muted-foreground">
+                    {config[String(item.payload.key)]?.label}
+                  </span>
+                  <span className="font-mono font-medium tabular-nums">
+                    € {formatCents(Number(value))}
+                  </span>
+                </div>
+              )}
+            />
+          }
+        />
+        <Pie data={slices} dataKey="amount" nameKey="key" />
+        <ChartLegend content={<ChartLegendContent nameKey="key" />} />
+      </PieChart>
+    </ChartContainer>
+  )
+}
+
+function CategoryRadialChart({
+  slices,
+  config,
+}: {
+  slices: CategorySlice[]
+  config: ChartConfig
+}) {
+  const total = slices.reduce((sum, s) => sum + s.amount, 0)
+  // One stacked row: every slice as a ring of the same bar, its share of the
+  // year drawn as an arc length rather than a wedge — the same breakdown as
+  // the pie chart, read a second way.
+  const row = Object.fromEntries(slices.map((s) => [s.key, s.amount]))
+
+  return (
+    <ChartContainer config={config} className="mx-auto aspect-square max-h-64 w-full max-w-64">
+      <RadialBarChart data={[row]} innerRadius={30} outerRadius={110}>
+        <ChartTooltip
+          content={
+            <ChartTooltipContent
+              hideLabel
+              nameKey="key"
+              formatter={(value, _name, item) => (
+                <div className="flex flex-1 justify-between gap-2 leading-none">
+                  <span className="text-muted-foreground">
+                    {config[String(item.dataKey)]?.label}
+                  </span>
+                  <span className="font-mono font-medium tabular-nums">
+                    € {formatCents(Number(value))}
+                  </span>
+                </div>
+              )}
+            />
+          }
+        />
+        <PolarRadiusAxis tick={false} tickLine={false} axisLine={false}>
+          <Label
+            content={({ viewBox }) => {
+              if (!viewBox || !("cx" in viewBox) || !("cy" in viewBox)) return null
+              return (
+                <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
+                  <tspan x={viewBox.cx} y={viewBox.cy} className="fill-foreground font-medium tabular-nums">
+                    € {formatCents(total)}
+                  </tspan>
+                </text>
+              )
+            }}
+          />
+        </PolarRadiusAxis>
+        {slices.map((s) => (
+          <RadialBar
+            key={s.key}
+            dataKey={s.key}
+            stackId="a"
+            cornerRadius={4}
+            fill={`var(--color-${s.key})`}
+            className="stroke-transparent stroke-2"
+          />
+        ))}
+        <ChartLegend content={<ChartLegendContent />} />
+      </RadialBarChart>
+    </ChartContainer>
+  )
 }
 
 type PathPoint = { label: string; income: number; expense: number; net: number }
