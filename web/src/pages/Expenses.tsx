@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from "react"
-import { RiDeleteBinLine, RiEditLine, RiMoreLine } from "@remixicon/react"
+import {
+  RiArrowDownSLine,
+  RiArrowUpSLine,
+  RiDeleteBinLine,
+  RiEditLine,
+  RiMoreLine,
+} from "@remixicon/react"
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Button } from "@/components/ui/button"
@@ -26,6 +32,7 @@ import { api, apiJSON } from "@/lib/api"
 import { DatePicker } from "@/components/date-picker"
 import { FormSidebar } from "@/components/form-sidebar"
 import { SpoilerAmount } from "@/components/SpoilerAmount"
+import { toast } from "@/lib/toast"
 import { formatCents, formatDate, toCents, today, toTyped } from "@/lib/money"
 import { isGiftCategory, nameOf, pickableCategories, withSaved } from "@/lib/pickers"
 import { t } from "@/lib/strings"
@@ -95,11 +102,6 @@ const draftOf = (e: Expense): Draft => ({
   })),
 })
 
-// The details an Expense actually carries, on one line, for the list — empty
-// when it has none, which is the same question as whether to show the line.
-const details = (e: Expense) =>
-  [e.store, e.payer, e.payment_method, e.note].filter(Boolean).join(" · ")
-
 // itemsCents sums a draft breakdown, skipping what is not yet an amount. The
 // Expense's own total is never computed from this — ADR-0002 — it is only what
 // the form checks the total against and shows the remainder from.
@@ -127,8 +129,18 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
 
   const [draft, setDraft] = useState<Draft>(blankDraft)
   const [editing, setEditing] = useState<number | null>(null)
-  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  // Negozio, Metodo di pagamento and Note have no column of their own — this
+  // is what a row's Dettagli toggle expands to show instead.
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
+  const toggleExpanded = (id: number) =>
+    setExpandedIds((s) => {
+      const next = new Set(s)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   // Captured once at mount, not read live — a mobile quick-add shortcut is
   // meant to open the panel on arrival, not force it back open every time
   // App re-renders with the flag still set (see App.tsx's reset-on-navigate-
@@ -239,11 +251,12 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
     // A correction is finished; a new Expense is often one of several from the
     // same trip, so the date, Category, Payer and method stay where they are.
     const wasEditing = editing !== null
+    if (!wasEditing) toast(t.added)
     setEditing(null)
     setDraft((d) =>
       wasEditing ? blankDraft() : { ...d, amount: "", store: "", note: "", items: [] }
     )
-    if (wasEditing) setDetailsOpen(false)
+    if (wasEditing) setDetailsOpen(true)
     await load()
   }
 
@@ -319,6 +332,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                 <TableHead>{t.date}</TableHead>
                 <TableHead className="text-right">{t.amount}</TableHead>
                 <TableHead>{t.category}</TableHead>
+                <TableHead>{t.payer}</TableHead>
                 <TableHead>{t.details}</TableHead>
                 <TableHead className="w-10">{t.actions}</TableHead>
               </TableRow>
@@ -339,14 +353,47 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                     />
                   </TableCell>
                   <TableCell>{nameOf(categories, e.category_id)}</TableCell>
+                  <TableCell className="truncate text-xs text-muted-foreground">
+                    {e.payer}
+                  </TableCell>
                   <TableCell className="whitespace-normal">
                     <div className="flex flex-col gap-0.5">
-                      {/* Whichever details were filled in, on one quiet line: it
-                          is what the household reads the list for. */}
-                      {details(e) && (
-                        <span className="truncate text-xs text-muted-foreground">
-                          {details(e)}
-                        </span>
+                      {/* Negozio, Metodo di pagamento and Note have no column
+                          of their own — this is the one place to reach them. */}
+                      {(e.store || e.payment_method || e.note) && (
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 text-xs text-muted-foreground"
+                          onClick={() => toggleExpanded(e.id)}
+                          aria-expanded={expandedIds.has(e.id)}
+                          aria-label={t.details}
+                        >
+                          {expandedIds.has(e.id) ? (
+                            <RiArrowUpSLine className="size-3.5" />
+                          ) : (
+                            <RiArrowDownSLine className="size-3.5" />
+                          )}
+                          {t.details}
+                        </button>
+                      )}
+                      {expandedIds.has(e.id) && (
+                        <div className="flex flex-col gap-0.5">
+                          {e.store && (
+                            <span className="truncate text-xs text-muted-foreground">
+                              {t.store}: {e.store}
+                            </span>
+                          )}
+                          {e.payment_method && (
+                            <span className="truncate text-xs text-muted-foreground">
+                              {t.paymentMethod}: {e.payment_method}
+                            </span>
+                          )}
+                          {e.note && (
+                            <span className="truncate text-xs text-muted-foreground">
+                              {t.note}: {e.note}
+                            </span>
+                          )}
+                        </div>
                       )}
                       {/* Each Item on its own line, indented under the Expense it
                           was broken out of: the point of an Item is that this
@@ -675,22 +722,27 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
               </p>
             )}
 
-            <Button type="submit" size="lg" className="h-12 text-base">
-              {editing === null ? t.addExpense : t.save}
-            </Button>
-            {editing !== null && (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  setEditing(null)
-                  setDraft(blankDraft())
-                  setDetailsOpen(false)
-                }}
-              >
-                {t.cancel}
+            {/* Sticky rather than in-flow: the form above can run long
+                (Items, notes, ...), and the submit button is the one thing
+                that must stay reachable without scrolling all the way down. */}
+            <div className="sticky bottom-0 -mx-4 -mb-4 flex flex-col gap-2 border-t bg-background p-4">
+              <Button type="submit" size="lg" className="h-12 text-base">
+                {editing === null ? t.addExpense : t.save}
               </Button>
-            )}
+              {editing !== null && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setEditing(null)
+                    setDraft(blankDraft())
+                    setDetailsOpen(true)
+                  }}
+                >
+                  {t.cancel}
+                </Button>
+              )}
+            </div>
           </form>
         </FormSidebar>
       </div>

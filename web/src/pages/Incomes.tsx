@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import {
   RiArrowDownSLine,
   RiArrowUpSLine,
+  RiCheckLine,
   RiDeleteBinLine,
   RiEditLine,
   RiMoreLine,
@@ -44,6 +45,7 @@ import {
   formatDate,
   formatMonth,
   toCents,
+  today,
   toTyped,
 } from "@/lib/money"
 import { nameOf, pickableCategories, withSaved } from "@/lib/pickers"
@@ -258,6 +260,23 @@ export function Incomes() {
     await load()
   }
 
+  // A quick way to record that the money landed today, for an invoiced
+  // Income still waiting on it — payment_date is the only field this PATCH
+  // sends, so nothing else about the Income changes.
+  async function markPaid(income: Income) {
+    setError("")
+    try {
+      await api(`/api/incomes/${income.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ payment_date: today() }),
+      })
+    } catch {
+      setError(t.incomeNotSaved)
+      return
+    }
+    await load()
+  }
+
   async function removeIncome(income: Income) {
     if (!confirm(t.confirmDeleteIncome(formatCents(income.amount_cents))))
       return
@@ -435,6 +454,14 @@ export function Incomes() {
                         <DropdownMenuItem onClick={() => selectIncome(income)}>
                           <RiEditLine /> {t.editIncome}
                         </DropdownMenuItem>
+                        {/* Only for an invoiced Income still waiting on its
+                            money — nothing to mark paid otherwise, and one
+                            already paid has nothing left to set. */}
+                        {income.invoice_sent_date && !income.payment_date && (
+                          <DropdownMenuItem onClick={() => void markPaid(income)}>
+                            <RiCheckLine /> {t.markPaid}
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem
                           variant="destructive"
                           onClick={() => void removeIncome(income)}
