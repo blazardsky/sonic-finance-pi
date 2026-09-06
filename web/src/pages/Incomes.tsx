@@ -32,6 +32,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/lib/api"
 import { DatePicker } from "@/components/date-picker"
 import { FormSidebar } from "@/components/form-sidebar"
+import { toast } from "@/lib/toast"
 import {
   formatCents,
   formatDate,
@@ -223,6 +224,7 @@ export function Incomes() {
     // A correction is finished. A new Income is often one of several invoices
     // in a sitting, so the reason, Client and Payer stay where they are.
     const wasEditing = editing !== null
+    if (!wasEditing) toast(t.added)
     setEditing(null)
     setDraft((d) =>
       wasEditing

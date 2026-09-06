@@ -30,6 +30,10 @@ export const t = {
   showForm: "Mostra modulo",
   hideForm: "Nascondi modulo",
 
+  // Toast (web/src/components/toast.tsx) — shown after a successful add,
+  // shared by every FormSidebar-based page.
+  added: "Aggiunto.",
+
   // Login
   password: "Password",
   logIn: "Accedi",

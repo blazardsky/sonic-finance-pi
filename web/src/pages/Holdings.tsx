@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/table"
 import { api } from "@/lib/api"
 import { FormSidebar } from "@/components/form-sidebar"
+import { toast } from "@/lib/toast"
 import { t } from "@/lib/strings"
 import type { Holding, HoldingType } from "@/types"
 
@@ -97,6 +98,7 @@ export function Holdings() {
     )
     if (!ok) return
     const wasEditing = editing !== null
+    if (!wasEditing) toast(t.added)
     setEditing(null)
     // Adding several similar Holdings in a row is common (a handful of ETFs
     // set up at once) — the type stays, only the name clears. Finishing an

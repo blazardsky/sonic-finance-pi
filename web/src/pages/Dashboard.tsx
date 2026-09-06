@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import {
-  RiBellFill,
-  RiBellLine,
   RiCheckboxCircleLine,
   RiErrorWarningLine,
+  RiNotification3Fill,
+  RiNotification3Line,
   RiScales3Line,
   RiShoppingBag3Line,
   RiWallet3Line,
@@ -35,7 +35,7 @@ import { api, apiJSON } from "@/lib/api"
 import { formatCents, formatDate, thisMonth, thisYear, today } from "@/lib/money"
 import { nameOf } from "@/lib/pickers"
 import { t } from "@/lib/strings"
-import { addDays, categoriesIn, dailyBuckets } from "@/lib/trend"
+import { addDays, categoriesIn, categoryColor, dailyBuckets } from "@/lib/trend"
 import type {
   Category,
   DailyCategoryTotal,
@@ -377,6 +377,9 @@ function UpcomingCard({
   categories: Category[]
 }) {
   const [selected, setSelected] = useState<Date | undefined>(new Date())
+  const dayColors = Object.fromEntries(
+    upcoming.map((u) => [u.date, categoryColor(u.r.category_id)])
+  )
 
   return (
     <Card className="@container">
@@ -388,6 +391,7 @@ function UpcomingCard({
           mode="single"
           selected={selected}
           onSelect={setSelected}
+          dayColors={dayColors}
           className="mx-auto shrink-0 @[28rem]:mx-0"
         />
         {upcoming.length === 0 ? (
@@ -401,12 +405,19 @@ function UpcomingCard({
                 key={r.id}
                 className="flex items-baseline justify-between gap-3 py-2"
               >
-                <span className="min-w-0">
-                  <span className="truncate">
-                    {nameOf(categories, r.category_id)}
-                  </span>{" "}
-                  <span className="text-xs text-muted-foreground">
-                    {t.dueIn(daysUntil(date))}
+                <span className="flex min-w-0 items-baseline gap-1.5">
+                  <span
+                    aria-hidden
+                    className="size-1.5 shrink-0 translate-y-[-1px] rounded-full"
+                    style={{ backgroundColor: categoryColor(r.category_id) }}
+                  />
+                  <span className="min-w-0">
+                    <span className="truncate">
+                      {nameOf(categories, r.category_id)}
+                    </span>{" "}
+                    <span className="text-xs text-muted-foreground">
+                      {t.dueIn(daysUntil(date))}
+                    </span>
                   </span>
                 </span>
                 <span className="whitespace-nowrap tabular-nums">
@@ -608,25 +619,26 @@ function RemindersCard() {
                 key={r.id}
                 className="flex items-center justify-between gap-3 py-2"
               >
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                  {/* A single independent on/off per row, not a segmented
-                      set — any number of Reminders can be enabled at once —
-                      so Toggle, not ToggleGroup (ticket 14). */}
-                  <Toggle
-                    size="sm"
-                    pressed={r.enabled}
-                    onPressedChange={(pressed) =>
-                      void write(`/api/reminders/${r.id}`, {
-                        method: "PATCH",
-                        body: JSON.stringify({ enabled: pressed }),
-                      })
-                    }
-                    aria-label={t.reminderToggleLabel(r.label, r.enabled)}
-                  >
-                    {r.enabled ? <RiBellFill /> : <RiBellLine />}
-                  </Toggle>
-                  <span className="truncate text-sm">{r.label}</span>
-                </div>
+                {/* A single independent on/off per row, not a segmented
+                    set — any number of Reminders can be enabled at once —
+                    so Toggle, not ToggleGroup (ticket 14). */}
+                <Toggle
+                  size="sm"
+                  className="min-w-0 flex-1 justify-start gap-2 px-2.5 data-[state=on]:bg-credit/10 data-[state=on]:text-credit dark:data-[state=on]:bg-credit/20"
+                  pressed={r.enabled}
+                  onPressedChange={(pressed) =>
+                    void write(`/api/reminders/${r.id}`, {
+                      method: "PATCH",
+                      body: JSON.stringify({ enabled: pressed }),
+                    })
+                  }
+                  aria-label={t.reminderToggleLabel(r.label, r.enabled)}
+                >
+                  {r.enabled ? <RiNotification3Fill /> : <RiNotification3Line />}
+                  <span className="truncate text-sm font-normal">
+                    {r.label}
+                  </span>
+                </Toggle>
                 <Button
                   type="button"
                   size="xs"
@@ -644,7 +656,10 @@ function RemindersCard() {
             ))}
           </ul>
         )}
-        <form onSubmit={(event) => void add(event)} className="flex gap-2">
+        <form
+          onSubmit={(event) => void add(event)}
+          className="flex flex-col gap-2"
+        >
           <Input
             value={label}
             onChange={(event) => setLabel(event.target.value)}

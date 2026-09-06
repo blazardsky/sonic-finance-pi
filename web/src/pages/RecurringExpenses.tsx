@@ -30,6 +30,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/lib/api"
 import { FormSidebar } from "@/components/form-sidebar"
+import { toast } from "@/lib/toast"
 import {
   formatCents,
   formatMonth,
@@ -242,6 +243,7 @@ export function RecurringExpenses() {
       }
     )
     if (!ok) return
+    if (editing === null) toast(t.added)
     setEditing(null)
     setDraft(blankDraft())
     setDetailsOpen(false)

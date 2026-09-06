@@ -16,6 +16,7 @@ import {
 import { api, apiJSON } from "@/lib/api"
 import { DatePicker } from "@/components/date-picker"
 import { FormSidebar } from "@/components/form-sidebar"
+import { toast } from "@/lib/toast"
 import { formatCents, formatDate, toCents, toTyped, today } from "@/lib/money"
 import { nameOf, withSaved } from "@/lib/pickers"
 import { t } from "@/lib/strings"
@@ -192,6 +193,7 @@ export function Savings() {
       setError(t.buySellNotSaved)
       return
     }
+    toast(t.added)
     // The Holding and Payer are often the same for the next entry — a PAC
     // contribution split across a few lines, say — so only the amount clears.
     setDraft((d) => ({ ...d, amount: "" }))

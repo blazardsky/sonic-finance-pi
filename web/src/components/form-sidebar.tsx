@@ -153,7 +153,7 @@ function FormSidebarTrigger({
           // size-16 (64px) overrides icon-lg's own size-9 — the biggest tap
           // target on the page, since it's the primary way in to logging an
           // entry.
-          "fixed right-6 bottom-6 z-40 size-16 rounded-full shadow-lg",
+          "fixed right-6 bottom-6 z-40 size-16 shadow-lg",
           className
         )}
       >

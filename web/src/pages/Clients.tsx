@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/table"
 import { api, apiJSON } from "@/lib/api"
 import { FormSidebar } from "@/components/form-sidebar"
+import { toast } from "@/lib/toast"
 import { formatCents, formatMonth, toCents } from "@/lib/money"
 import { pickableCategories } from "@/lib/pickers"
 import { t } from "@/lib/strings"
@@ -113,8 +114,10 @@ export function Clients() {
         method: "POST",
         body: JSON.stringify({ name }),
       })
-    )
+    ) {
       setName("")
+      toast(t.added)
+    }
   }
 
   async function rename(c: Client, to: string) {

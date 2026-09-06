@@ -16,6 +16,7 @@ import { YearlyReport } from "@/pages/YearlyReport"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 import { SidebarProvider } from "@/components/ui/sidebar"
+import { Toast } from "@/components/toast"
 import { t } from "@/lib/strings"
 
 // /api/health doubles as the session check: it sits behind auth like every
@@ -107,6 +108,7 @@ export function App() {
   // blue, distinct from the sidebar and main content's light background.
   return (
     <SidebarProvider>
+      <Toast />
       <div className="flex min-h-svh w-full flex-col gap-2 bg-shell p-2 md:gap-3 md:p-3">
         <SiteHeader
           screen={screen}

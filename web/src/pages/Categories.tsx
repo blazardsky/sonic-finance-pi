@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table"
 import { api } from "@/lib/api"
 import { FormSidebar } from "@/components/form-sidebar"
+import { toast } from "@/lib/toast"
 import { t } from "@/lib/strings"
 import type { Applies, Category } from "@/types"
 
@@ -88,7 +89,10 @@ export function Categories() {
       method: "POST",
       body: JSON.stringify({ name, applies_to: appliesTo }),
     })
-    if (created) setName("")
+    if (created) {
+      setName("")
+      toast(t.added)
+    }
   }
 
   async function rename(category: Category, to: string) {
