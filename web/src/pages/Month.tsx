@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 
 import { PendingPayments } from "@/pages/PendingPayments"
+import { Figure } from "@/pages/YearlyReport"
 import { CategoryTrendChart } from "@/components/CategoryTrendChart"
 import { SpoilerAmount } from "@/components/SpoilerAmount"
 import { Button } from "@/components/ui/button"
@@ -151,17 +152,16 @@ export function Month() {
           stacks them, same content either way. */}
       <div className="flex flex-wrap items-start gap-6">
         {totals && (
-          <Card className="min-w-64 flex-1">
+          <Card className="min-w-72 flex-1">
             <CardContent>
-              <dl className="flex flex-col divide-y divide-border">
-                {/* The two totals borrow the nav's own words for the screens
-                    they are the sum of: one concept, one word. */}
-                <Row label={t.incomes} cents={totals.income_cents} />
-                <Row label={t.expenses} cents={totals.expense_cents} />
-                {/* The difference is the answer, so it is the big one — and
-                    the only number here that can be negative, which the sign
-                    and the colour both say. */}
-                <Row label={t.difference} cents={totals.net_cents} big />
+              {/* Three small boxes, the same reading YearlyReport's own
+                  figures use, rather than the plain label/value rows every
+                  other card here still is — the totals get to look like the
+                  answer the screen opens on. */}
+              <dl className="grid grid-cols-3 gap-3">
+                <Figure label={t.incomes} cents={totals.income_cents} />
+                <Figure label={t.expenses} cents={totals.expense_cents} />
+                <Figure label={t.difference} cents={totals.net_cents} />
               </dl>
             </CardContent>
           </Card>
@@ -285,7 +285,11 @@ export function Month() {
                     </span>
                     <span
                       className={`whitespace-nowrap tabular-nums ${
-                        entry.date ? "" : "text-muted-foreground"
+                        !entry.date
+                          ? "text-muted-foreground"
+                          : entry.direction === "expense"
+                            ? "text-destructive"
+                            : "text-credit"
                       }`}
                     >
                       {entry.date &&
