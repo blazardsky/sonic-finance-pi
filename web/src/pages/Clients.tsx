@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from "react"
 import {
+  RiAddLine,
   RiArrowDownSLine,
   RiArrowUpSLine,
   RiDeleteBinLine,
@@ -19,6 +20,7 @@ import {
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useSidebar } from "@/components/ui/sidebar"
 import {
   Table,
   TableBody,
@@ -44,11 +46,14 @@ const NONE = "__none__"
 // on this list — it is the only place one can be brought back from — and are
 // what the Income picker filters out.
 //
-// Name and Categoria predefinita are one form in the sidebar (same
-// add/edit-in-place shape as Incomes.tsx), so editing a Client is never split
-// across a table cell and a panel. The table itself stays view-only: what it
-// shows (name, default category, contracts) it never lets you change
-// directly — everything lands in the sidebar via Azioni > Modifica cliente.
+// The table is view-only: name, Categoria predefinita and Contratti are read
+// here, never edited here. Everything that changes a Client lands in the
+// sidebar via its row's own Azioni menu — Modifica cliente (name + Categoria
+// predefinita, the same add/edit shape Incomes.tsx uses) and Aggiungi
+// contratto are two separate entries, not one combined form: a Contract
+// can't exist before its Client does (the API scopes creation under
+// /api/clients/:id/contracts), and conflating "add a Client" with "add this
+// Client's Contract" was the exact coupling this screen used to have.
 export function Clients() {
   const [clients, setClients] = useState<Client[] | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
@@ -56,22 +61,27 @@ export function Clients() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   // The Client form: id null means "add a new Client", otherwise the id being
-  // edited — same shape Incomes.tsx uses for its own add/edit form.
+  // edited — same shape Incomes.tsx uses for its own add/edit form. Mutually
+  // exclusive with contractFor below: selecting one clears the other.
   const [editing, setEditing] = useState<number | null>(null)
   const [name, setName] = useState("")
   const [defaultCategoryId, setDefaultCategoryId] = useState<number | null>(null)
 
-  // Contracts, per Client — loaded lazily the first time a row is expanded
-  // rather than for every Client up front, since most reads of this screen
-  // care about nothing past the name and the total.
-  const [expanded, setExpanded] = useState<number | null>(null)
-  const [contracts, setContracts] = useState<Contract[]>([])
+  // The Client currently getting a new Contract in the sidebar — its own
+  // mode, entirely separate from the Client form above.
+  const [contractFor, setContractFor] = useState<number | null>(null)
   const [newContract, setNewContract] = useState({
     start_month: "",
     end_month: "",
     amount: "",
   })
   const [contractError, setContractError] = useState("")
+
+  // Contracts, per Client — loaded lazily the first time a row is expanded
+  // rather than for every Client up front, since most reads of this screen
+  // care about nothing past the name and the total.
+  const [expanded, setExpanded] = useState<number | null>(null)
+  const [contracts, setContracts] = useState<Contract[]>([])
 
   function resetForm() {
     setEditing(null)
@@ -82,9 +92,16 @@ export function Clients() {
   // Loads a Client into the form and makes sure the panel holding it is
   // actually visible, same reasoning as Incomes.tsx's selectIncome.
   function selectClient(c: Client) {
+    setContractFor(null)
     setEditing(c.id)
     setName(c.name)
     setDefaultCategoryId(c.default_category_id)
+    setSidebarOpen(true)
+  }
+
+  function startContract(c: Client) {
+    resetForm()
+    setContractFor(c.id)
     setNewContract({ start_month: "", end_month: "", amount: "" })
     setContractError("")
     setSidebarOpen(true)
@@ -189,12 +206,15 @@ export function Clients() {
     await refreshContracts(clientId)
   }
 
+  // Returns whether the Contract was saved, so the sidebar (which alone knows
+  // about the mobile Sheet) can close itself only once there is something to
+  // close for.
   async function addContract(clientId: number, event: React.FormEvent) {
     event.preventDefault()
     const cents = toCents(newContract.amount)
     if (cents === null || cents <= 0) {
       setContractError(t.invalidAmount)
-      return
+      return false
     }
     setContractError("")
     try {
@@ -208,15 +228,20 @@ export function Clients() {
       })
     } catch {
       setContractError(t.contractNotSaved)
-      return
+      return false
     }
-    setNewContract({ start_month: "", end_month: "", amount: "" })
     toast(t.added)
+    setNewContract({ start_month: "", end_month: "", amount: "" })
+    setContractFor(null)
+    setSidebarOpen(false)
     // `contracts` backs whichever row is expanded in the table, which may be
     // a different Client than the one this form is for — only refresh it
     // when the two agree.
     if (expanded === clientId) await refreshContracts(clientId)
+    return true
   }
+
+  const contractForClient = clients?.find((c) => c.id === contractFor) ?? null
 
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6">
@@ -247,7 +272,13 @@ export function Clients() {
             <TableBody>
               {clients?.map((c) => (
                 <Fragment key={c.id}>
-                  <TableRow className={editing === c.id ? "opacity-50" : ""}>
+                  <TableRow
+                    className={
+                      editing === c.id || contractFor === c.id
+                        ? "opacity-50"
+                        : ""
+                    }
+                  >
                     <TableCell className="whitespace-normal">
                       <span className={c.hidden ? "text-muted-foreground" : ""}>
                         {c.name}
@@ -293,6 +324,9 @@ export function Clients() {
                           <DropdownMenuItem onClick={() => selectClient(c)}>
                             <RiEditLine /> {t.editClient}
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => startContract(c)}>
+                            <RiAddLine /> {t.addContract}
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() =>
                               void write(`/api/clients/${c.id}`, {
@@ -313,7 +347,9 @@ export function Clients() {
                                   { method: "DELETE" },
                                   t.clientInUse
                                 ).then((ok) => {
-                                  if (ok && editing === c.id) resetForm()
+                                  if (!ok) return
+                                  if (editing === c.id) resetForm()
+                                  if (contractFor === c.id) setContractFor(null)
                                 })
                             }}
                           >
@@ -379,32 +415,66 @@ export function Clients() {
         </div>
 
         <FormSidebar
-          title={editing === null ? t.addClient : t.editClient}
+          title={
+            contractForClient
+              ? t.addContractFor(contractForClient.name)
+              : editing === null
+                ? t.addClient
+                : t.editClient
+          }
           open={sidebarOpen}
           onOpenChange={setSidebarOpen}
           footer={
-            <div className="flex flex-col gap-2">
-              <Button
-                type="submit"
-                form="client-form"
-                size="lg"
-                className="h-12 text-base"
-              >
-                {editing === null ? t.addClient : t.save}
-              </Button>
-              {editing !== null && (
-                <Button type="button" variant="ghost" onClick={resetForm}>
+            contractForClient ? (
+              <div className="flex flex-col gap-2">
+                <Button
+                  type="submit"
+                  form="contract-form"
+                  size="lg"
+                  className="h-12 text-base"
+                >
+                  {t.addContract}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setContractFor(null)}
+                >
                   {t.cancel}
                 </Button>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <Button
+                  type="submit"
+                  form="client-form"
+                  size="lg"
+                  className="h-12 text-base"
+                >
+                  {editing === null ? t.addClient : t.save}
+                </Button>
+                {editing !== null && (
+                  <Button type="button" variant="ghost" onClick={resetForm}>
+                    {t.cancel}
+                  </Button>
+                )}
+              </div>
+            )
           }
         >
-          <div className="flex flex-col gap-4 md:pb-24">
+          {contractForClient ? (
+            <ContractForm
+              clientId={contractForClient.id}
+              newContract={newContract}
+              setNewContract={setNewContract}
+              contractError={contractError}
+              onSubmit={addContract}
+            />
+          ) : (
             <form
               id="client-form"
               onSubmit={submit}
-              className="flex flex-col gap-3"
+              className="flex flex-col gap-3 md:pb-24"
             >
               <Field>
                 <FieldLabel htmlFor="name">{t.clientName}</FieldLabel>
@@ -446,75 +516,91 @@ export function Clients() {
                 </Select>
               </Field>
             </form>
-
-            {editing !== null && (
-              <form
-                onSubmit={(e) => void addContract(editing, e)}
-                className="flex flex-col gap-3 border-t pt-4"
-              >
-                <h3 className="text-sm font-medium">{t.addContract}</h3>
-                <Field>
-                  <FieldLabel htmlFor="start-month">{t.startMonth}</FieldLabel>
-                  <Input
-                    id="start-month"
-                    type="month"
-                    required
-                    value={newContract.start_month}
-                    onChange={(e) =>
-                      setNewContract((d) => ({
-                        ...d,
-                        start_month: e.target.value,
-                      }))
-                    }
-                    className="h-10"
-                  />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="end-month">{t.endMonth}</FieldLabel>
-                  <Input
-                    id="end-month"
-                    type="month"
-                    required
-                    value={newContract.end_month}
-                    onChange={(e) =>
-                      setNewContract((d) => ({
-                        ...d,
-                        end_month: e.target.value,
-                      }))
-                    }
-                    className="h-10"
-                  />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="contract-total">
-                    {t.contractTotal}
-                  </FieldLabel>
-                  <Input
-                    id="contract-total"
-                    type="text"
-                    inputMode="decimal"
-                    placeholder="0,00"
-                    required
-                    value={newContract.amount}
-                    onChange={(e) =>
-                      setNewContract((d) => ({ ...d, amount: e.target.value }))
-                    }
-                    className="h-10"
-                  />
-                </Field>
-                {contractError && (
-                  <p role="alert" className="text-sm text-destructive">
-                    {contractError}
-                  </p>
-                )}
-                <Button type="submit" size="lg" className="h-12 text-base">
-                  {t.addContract}
-                </Button>
-              </form>
-            )}
-          </div>
+          )}
         </FormSidebar>
       </div>
     </div>
+  )
+}
+
+// Its own component only so it can reach useSidebar(): closing the desktop
+// panel (the page's own sidebarOpen state) says nothing about the mobile
+// Sheet, which is self-managed by the Sidebar primitive itself and only
+// reachable from inside its Provider — form-sidebar.tsx's own documented
+// escape hatch for exactly this case.
+function ContractForm({
+  clientId,
+  newContract,
+  setNewContract,
+  contractError,
+  onSubmit,
+}: {
+  clientId: number
+  newContract: { start_month: string; end_month: string; amount: string }
+  setNewContract: React.Dispatch<
+    React.SetStateAction<{ start_month: string; end_month: string; amount: string }>
+  >
+  contractError: string
+  onSubmit: (clientId: number, event: React.FormEvent) => Promise<boolean>
+}) {
+  const { setOpenMobile } = useSidebar()
+
+  async function handleSubmit(event: React.FormEvent) {
+    if (await onSubmit(clientId, event)) setOpenMobile(false)
+  }
+
+  return (
+    <form
+      id="contract-form"
+      onSubmit={(e) => void handleSubmit(e)}
+      className="flex flex-col gap-3 md:pb-24"
+    >
+      <Field>
+        <FieldLabel htmlFor="start-month">{t.startMonth}</FieldLabel>
+        <Input
+          id="start-month"
+          type="month"
+          required
+          value={newContract.start_month}
+          onChange={(e) =>
+            setNewContract((d) => ({ ...d, start_month: e.target.value }))
+          }
+          className="h-10"
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="end-month">{t.endMonth}</FieldLabel>
+        <Input
+          id="end-month"
+          type="month"
+          required
+          value={newContract.end_month}
+          onChange={(e) =>
+            setNewContract((d) => ({ ...d, end_month: e.target.value }))
+          }
+          className="h-10"
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="contract-total">{t.contractTotal}</FieldLabel>
+        <Input
+          id="contract-total"
+          type="text"
+          inputMode="decimal"
+          placeholder="0,00"
+          required
+          value={newContract.amount}
+          onChange={(e) =>
+            setNewContract((d) => ({ ...d, amount: e.target.value }))
+          }
+          className="h-10"
+        />
+      </Field>
+      {contractError && (
+        <p role="alert" className="text-sm text-destructive">
+          {contractError}
+        </p>
+      )}
+    </form>
   )
 }

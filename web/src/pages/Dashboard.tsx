@@ -520,6 +520,17 @@ function ClientsCard({
             {error}
           </p>
         )}
+        {/* Only shown once a Contract is actually active — zero here means
+            no Contract currently covers this month, not that nothing is
+            owed (Contracts and pending Incomes are unrelated numbers). */}
+        {pending.contracts_due_this_month_cents > 0 && (
+          <p className="text-sm">
+            <span className="text-muted-foreground">{t.dueThisMonth}:</span>{" "}
+            <span className="font-medium tabular-nums">
+              € {formatCents(pending.contracts_due_this_month_cents)}
+            </span>
+          </p>
+        )}
         <div className="flex flex-col gap-3 @[28rem]:flex-row @[28rem]:items-start">
           <ClientAlert
             title={t.pendingPayments}

@@ -27,6 +27,12 @@ type pendingPayments struct {
 	// Invoices that look forgotten: Clients billed inside the window with
 	// nothing recorded this month.
 	NotYetInvoiced []notYetInvoicedClient `json:"not_yet_invoiced"`
+
+	// The household's own share of every currently active Contract this
+	// month (contractsDueThisMonth) — zero when none is running, which is
+	// also the whole of what the Dashboard's Clienti card needs to decide
+	// whether to show this line at all.
+	ContractsDueThisMonthCents int64 `json:"contracts_due_this_month_cents"`
 }
 
 // One Income still waiting for its money. Client and Category travel as names
@@ -98,8 +104,14 @@ func handlePendingPayments(db *sql.DB, now func() time.Time) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
+		due, err := contractsDueThisMonth(db, now)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
 		writeJSON(w, http.StatusOK, pendingPayments{
 			Outstanding: outstanding, NotYetInvoiced: notYetInvoiced,
+			ContractsDueThisMonthCents: due,
 		})
 	}
 }

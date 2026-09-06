@@ -157,6 +157,7 @@ export const t = {
   // who look unbilled. Names as badges — the yes/no copy is only the empty
   // state. See cmd/pending.go.
   clientsThisMonth: "Clienti questo mese",
+  dueThisMonth: "Dovuto questo mese",
   invoicesSentTitle: "Fatture",
   invoicesAllSent: "Tutti i clienti abituali sono stati fatturati questo mese.",
   noPendingClients: "Nessun pagamento in attesa.",
@@ -310,6 +311,7 @@ export const t = {
   // startMonth/endMonth/save/notSet above are reused as-is, same concept.
   contracts: "Contratti",
   addContract: "Aggiungi contratto",
+  addContractFor: (name: string) => `Aggiungi contratto: ${name}`,
   noContractsYet: "Nessun contratto per questo cliente.",
   contractTotal: "Totale contratto",
   contractNotSaved:

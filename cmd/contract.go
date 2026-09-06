@@ -247,6 +247,33 @@ func scanContract(row interface{ Scan(...any) error }) (contract, error) {
 	return c, err
 }
 
+// contractsDueThisMonth sums InvoiceTargetCents across every Contract
+// currently inside its own range — start_month <= current <= end_month — for
+// the Dashboard's Clienti card. A Contract not yet begun, or already past
+// end_month (Overdue), contributes nothing here: neither is "an active one"
+// in the sense the card asks about.
+func contractsDueThisMonth(db *sql.DB, now func() time.Time) (int64, error) {
+	current := now().Format(monthLayout)
+	rows, err := db.Query(contractSelect+` WHERE start_month <= ? AND end_month >= ?`, current, current)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	var total int64
+	for rows.Next() {
+		c, err := scanContract(rows)
+		if err != nil {
+			return 0, err
+		}
+		if err := computeContractFigures(&c, current); err != nil {
+			return 0, err
+		}
+		total += c.InvoiceTargetCents
+	}
+	return total, rows.Err()
+}
+
 // computeContractFigures fills in ExpectedSoFarCents, InvoiceTargetCents and Overdue
 // from the range, the total, and whatever contractSelect already scanned into
 // ReceivedCents/AccountedCents — the whole of ADR-0012, recomputed fresh on

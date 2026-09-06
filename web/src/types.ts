@@ -388,6 +388,9 @@ export type Reminder = {
 export type Pending = {
   outstanding: OutstandingIncome[]
   not_yet_invoiced: NotYetInvoicedClient[]
+  // The household's own share of every Contract currently inside its range
+  // this month — zero when none is active.
+  contracts_due_this_month_cents: number
 }
 
 // One Income still waiting for its money, oldest first. days_waiting counts

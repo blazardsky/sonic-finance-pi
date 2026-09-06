@@ -10,6 +10,7 @@ import {
 } from "@remixicon/react"
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -355,41 +356,37 @@ export function RecurringExpenses() {
                   >
                     {nameOf(categories, r.category_id)}
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {/* Whether it is still running, said in words rather than
-                        by a colour alone, next to the window it is read
-                        from. */}
-                    {r.day_of_month} · {windowOf(r)} ·{" "}
-                    {running(r) ? t.ongoing : t.endedIn(formatMonth(r.end_month))}
+                  <TableCell>
+                    {/* The window, the day and the rest move to Dettagli
+                        below — this is just running or not. */}
+                    <Badge variant={running(r) ? "secondary" : "outline"}>
+                      {running(r) ? t.ongoing : t.endedIn(formatMonth(r.end_month))}
+                    </Badge>
                   </TableCell>
                   <TableCell className="hidden truncate text-xs text-muted-foreground md:table-cell">
                     {r.note}
                   </TableCell>
                   <TableCell className="whitespace-normal">
                     <div className="flex flex-col gap-0.5">
-                      {/* Negozio, Pagato da and Metodo di pagamento have no
-                          column of their own on any width — this is the one
-                          place to reach them. Note keeps its own column on
-                          desktop, so it only needs reaching here on a narrow
-                          screen. */}
-                      {(r.store || r.payer || r.payment_method || r.note) && (
-                        <button
-                          type="button"
-                          className="flex items-center gap-1 text-xs text-muted-foreground"
-                          onClick={() => toggleExpanded(r.id)}
-                          aria-expanded={expandedIds.has(r.id)}
-                          aria-label={t.details}
-                        >
-                          {expandedIds.has(r.id) ? (
-                            <RiArrowUpSLine className="size-3.5" />
-                          ) : (
-                            <RiArrowDownSLine className="size-3.5" />
-                          )}
-                          {t.details}
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 text-xs text-muted-foreground"
+                        onClick={() => toggleExpanded(r.id)}
+                        aria-expanded={expandedIds.has(r.id)}
+                        aria-label={t.details}
+                      >
+                        {expandedIds.has(r.id) ? (
+                          <RiArrowUpSLine className="size-3.5" />
+                        ) : (
+                          <RiArrowDownSLine className="size-3.5" />
+                        )}
+                        {t.details}
+                      </button>
                       {expandedIds.has(r.id) && (
                         <div className="flex flex-col gap-0.5">
+                          <span className="truncate text-xs text-muted-foreground">
+                            {t.dayOfMonth}: {r.day_of_month} · {windowOf(r)}
+                          </span>
                           {r.store && (
                             <span className="truncate text-xs text-muted-foreground">
                               {t.store}: {r.store}
