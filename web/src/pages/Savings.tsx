@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 
+import { RiEditLine } from "@remixicon/react"
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
@@ -35,6 +37,7 @@ export function Savings() {
 
   const [savings, setSavings] = useState<SavingsReport | null>(null)
   const [startingBalance, setStartingBalance] = useState("")
+  const [editingBalance, setEditingBalance] = useState(false)
   const [balanceError, setBalanceError] = useState("")
   const [balanceMessage, setBalanceMessage] = useState("")
 
@@ -72,10 +75,18 @@ export function Savings() {
       })
       setStartingBalance(toTyped(saved.savings_starting_balance_cents))
       setBalanceMessage(t.listsSaved)
+      setEditingBalance(false)
       await load()
     } catch {
       setBalanceError(t.startingBalanceNotSaved)
     }
+  }
+
+  function cancelEditBalance() {
+    setStartingBalance(toTyped(savings?.starting_balance_cents ?? 0))
+    setBalanceError("")
+    setBalanceMessage("")
+    setEditingBalance(false)
   }
 
   return (
@@ -100,42 +111,70 @@ export function Savings() {
           </CardContent>
         </Card>
 
-        <Card className="min-w-72 flex-1">
+        <Card className="min-w-56">
           <CardHeader>
             <CardTitle>{t.startingBalance}</CardTitle>
           </CardHeader>
           <CardContent>
-            <form
-              onSubmit={saveStartingBalance}
-              className="flex flex-col gap-1.5"
-            >
-              <div className="flex gap-2">
-                <InputGroup className="h-9">
-                  <InputGroupAddon>€</InputGroupAddon>
-                  <InputGroupInput
-                    inputMode="decimal"
-                    value={startingBalance}
-                    onChange={(e) => setStartingBalance(e.target.value)}
-                  />
-                </InputGroup>
-                <Button type="submit" variant="outline">
-                  {t.save}
+            {editingBalance ? (
+              <form
+                onSubmit={saveStartingBalance}
+                className="flex flex-col gap-1.5"
+              >
+                <div className="flex gap-2">
+                  <InputGroup className="h-9">
+                    <InputGroupAddon>€</InputGroupAddon>
+                    <InputGroupInput
+                      inputMode="decimal"
+                      value={startingBalance}
+                      onChange={(e) => setStartingBalance(e.target.value)}
+                    />
+                  </InputGroup>
+                  <Button type="submit" variant="outline">
+                    {t.save}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={cancelEditBalance}
+                  >
+                    {t.cancel}
+                  </Button>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {t.startingBalanceHint}
+                </span>
+              </form>
+            ) : (
+              <div className="flex items-center gap-2">
+                <p className="text-2xl font-medium tabular-nums">
+                  € {formatCents(savings?.starting_balance_cents ?? 0)}
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t.editStartingBalance}
+                  onClick={() => {
+                    setBalanceError("")
+                    setBalanceMessage("")
+                    setEditingBalance(true)
+                  }}
+                >
+                  <RiEditLine />
                 </Button>
               </div>
-              <span className="text-xs text-muted-foreground">
-                {t.startingBalanceHint}
-              </span>
-              {balanceError && (
-                <p role="alert" className="text-sm text-destructive">
-                  {balanceError}
-                </p>
-              )}
-              {balanceMessage && (
-                <p role="status" className="text-sm text-muted-foreground">
-                  {balanceMessage}
-                </p>
-              )}
-            </form>
+            )}
+            {balanceError && (
+              <p role="alert" className="text-sm text-destructive">
+                {balanceError}
+              </p>
+            )}
+            {balanceMessage && (
+              <p role="status" className="text-sm text-muted-foreground">
+                {balanceMessage}
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>

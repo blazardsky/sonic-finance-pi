@@ -367,6 +367,7 @@ export const t = {
   // /api/settings payload Target and Goal use.
   savings: "Risparmi",
   startingBalance: "Saldo di partenza",
+  editStartingBalance: "Modifica saldo di partenza",
   startingBalanceHint: "Il risparmio accumulato prima di usare l'app.",
   startingBalanceNotSaved: "Saldo di partenza non salvato. Riprova.",
   portfolio: "Portafoglio",
