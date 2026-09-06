@@ -134,8 +134,8 @@ export const t = {
   yearExpenses: "Spese dell'anno",
   // The fixed target each of the three cards' progress bar is read against.
   ofEstimate: (amount: string) => `di € ${amount} stimati`,
-  ofWhichTax: (amount: string) => `di cui tasse: € ${amount}`,
-  ofWhichExtra: (amount: string) => `di cui extra: € ${amount}`,
+  ofWhichTax: "di cui tasse",
+  ofWhichExtra: "di cui extra",
   // The daily/weekly trend charts, by Category — the Dashboard reads the
   // rolling window, the Month page buckets the same daily rows into weeks
   // itself (no separate weekly endpoint).
@@ -296,6 +296,7 @@ export const t = {
   clients: "Clienti",
   clientName: "Nome cliente",
   addClient: "Aggiungi cliente",
+  editClient: "Modifica cliente",
   noClientsYet: "Nessun cliente registrato.",
   clientNotSaved: "Cliente non salvato. Riprova.",
   hiddenClient: "nascosto",

@@ -40,19 +40,26 @@ import type { Category, Client, Contract } from "@/types"
 // on the way out.
 const NONE = "__none__"
 
-// The Client management screen: add, rename, hide, delete. Hidden Clients stay
+// The Client management screen: add, edit, hide, delete. Hidden Clients stay
 // on this list — it is the only place one can be brought back from — and are
 // what the Income picker filters out.
 //
-// Simpler than Categories by exactly what a Client is not: no scope to choose,
-// and nothing protected, because no report resolves a Client by identity.
+// Name and Categoria predefinita are one form in the sidebar (same
+// add/edit-in-place shape as Incomes.tsx), so editing a Client is never split
+// across a table cell and a panel. The table itself stays view-only: what it
+// shows (name, default category, contracts) it never lets you change
+// directly — everything lands in the sidebar via Azioni > Modifica cliente.
 export function Clients() {
   const [clients, setClients] = useState<Client[] | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
   const [error, setError] = useState("")
-  const [name, setName] = useState("")
-  const [editing, setEditing] = useState<number | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+
+  // The Client form: id null means "add a new Client", otherwise the id being
+  // edited — same shape Incomes.tsx uses for its own add/edit form.
+  const [editing, setEditing] = useState<number | null>(null)
+  const [name, setName] = useState("")
+  const [defaultCategoryId, setDefaultCategoryId] = useState<number | null>(null)
 
   // Contracts, per Client — loaded lazily the first time a row is expanded
   // rather than for every Client up front, since most reads of this screen
@@ -65,6 +72,23 @@ export function Clients() {
     amount: "",
   })
   const [contractError, setContractError] = useState("")
+
+  function resetForm() {
+    setEditing(null)
+    setName("")
+    setDefaultCategoryId(null)
+  }
+
+  // Loads a Client into the form and makes sure the panel holding it is
+  // actually visible, same reasoning as Incomes.tsx's selectIncome.
+  function selectClient(c: Client) {
+    setEditing(c.id)
+    setName(c.name)
+    setDefaultCategoryId(c.default_category_id)
+    setNewContract({ start_month: "", end_month: "", amount: "" })
+    setContractError("")
+    setSidebarOpen(true)
+  }
 
   const load = useCallback(
     () =>
@@ -107,26 +131,45 @@ export function Clients() {
     }
   }
 
-  async function add(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault()
+
+    if (editing === null) {
+      // The server only accepts a name on create (cmd/clients.go) — a fresh
+      // Client is never born hidden, and Categoria predefinita is a second
+      // request right after, same as picking one up in an edit.
+      setError("")
+      let created: Client
+      try {
+        created = await apiJSON<Client>("/api/clients", {
+          method: "POST",
+          body: JSON.stringify({ name }),
+        })
+      } catch {
+        setError(t.clientNotSaved)
+        return
+      }
+      if (defaultCategoryId !== null) {
+        await write(`/api/clients/${created.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ default_category_id: defaultCategoryId }),
+        })
+      } else {
+        await load()
+      }
+      resetForm()
+      toast(t.added)
+      return
+    }
+
     if (
-      await write("/api/clients", {
-        method: "POST",
-        body: JSON.stringify({ name }),
+      await write(`/api/clients/${editing}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name, default_category_id: defaultCategoryId }),
       })
     ) {
-      setName("")
-      toast(t.added)
+      resetForm()
     }
-  }
-
-  async function rename(c: Client, to: string) {
-    setEditing(null)
-    if (to.trim() === "" || to === c.name) return
-    await write(`/api/clients/${c.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ name: to }),
-    })
   }
 
   // Shared by expanding a row and saving a new Contract into it — both end
@@ -142,8 +185,6 @@ export function Clients() {
       setExpanded(null)
       return
     }
-    setContractError("")
-    setNewContract({ start_month: "", end_month: "", amount: "" })
     setExpanded(clientId)
     await refreshContracts(clientId)
   }
@@ -170,7 +211,11 @@ export function Clients() {
       return
     }
     setNewContract({ start_month: "", end_month: "", amount: "" })
-    await refreshContracts(clientId)
+    toast(t.added)
+    // `contracts` backs whichever row is expanded in the table, which may be
+    // a different Client than the one this form is for — only refresh it
+    // when the two agree.
+    if (expanded === clientId) await refreshContracts(clientId)
   }
 
   return (
@@ -195,148 +240,87 @@ export function Clients() {
                 <TableHead>{t.clientName}</TableHead>
                 <TableHead>{t.defaultCategory}</TableHead>
                 <TableHead className="text-right">{t.totalEarned}</TableHead>
-                <TableHead>{t.actions}</TableHead>
+                <TableHead>{t.contracts}</TableHead>
+                <TableHead className="w-10">{t.actions}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {clients?.map((c) => (
                 <Fragment key={c.id}>
-                  <TableRow>
+                  <TableRow className={editing === c.id ? "opacity-50" : ""}>
                     <TableCell className="whitespace-normal">
-                      {editing === c.id ? (
-                        <Input
-                          autoFocus
-                          defaultValue={c.name}
-                          className="h-9"
-                          onBlur={(e) => void rename(c, e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") e.currentTarget.blur()
-                            if (e.key === "Escape") setEditing(null)
-                          }}
-                        />
-                      ) : (
-                        <span className={c.hidden ? "text-muted-foreground" : ""}>
-                          {c.name}
-                          {c.hidden && ` · ${t.hiddenClient}`}
-                        </span>
-                      )}
+                      <span className={c.hidden ? "text-muted-foreground" : ""}>
+                        {c.name}
+                        {c.hidden && ` · ${t.hiddenClient}`}
+                      </span>
                     </TableCell>
                     <TableCell>
-                      <Select
-                        value={
-                          c.default_category_id == null
-                            ? NONE
-                            : String(c.default_category_id)
-                        }
-                        onValueChange={(v) =>
-                          void write(`/api/clients/${c.id}`, {
-                            method: "PATCH",
-                            body: JSON.stringify({
-                              default_category_id:
-                                v === NONE ? null : Number(v),
-                            }),
-                          })
-                        }
-                      >
-                        <SelectTrigger
-                          aria-label={t.defaultCategory}
-                          className="h-9 w-full"
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NONE}>{t.notSet}</SelectItem>
-                          {pickableCategories(
-                            categories,
-                            "income",
-                            categories.find(
-                              (cat) => cat.id === c.default_category_id
-                            )
-                          ).map((cat) => (
-                            <SelectItem key={cat.id} value={String(cat.id)}>
-                              {cat.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      {categories.find((cat) => cat.id === c.default_category_id)
+                        ?.name ?? t.notSet}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       € {formatCents(c.total_earned_cents)}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1">
-                        {/* Not an item in the actions menu: this toggles a
-                            disclosure right under the row, not a one-shot
-                            action, so it stays its own visible control —
-                            the expand/collapse behavior itself is unchanged. */}
-                        <Button
-                          size="xs"
-                          variant={expanded === c.id ? "secondary" : "ghost"}
-                          onClick={() => void toggleExpanded(c.id)}
-                        >
-                          {t.contracts}
-                          {expanded === c.id ? (
-                            <RiArrowUpSLine />
-                          ) : (
-                            <RiArrowDownSLine />
-                          )}
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-sm"
-                              aria-label={t.actions}
-                            >
-                              <RiMoreLine />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent
-                            align="end"
-                            // Without this, Radix returns focus to the "..."
-                            // trigger once the menu closes, racing (and
-                            // beating) the name cell's fresh autoFocus input.
-                            onCloseAutoFocus={(e) => e.preventDefault()}
+                      {/* View-only: the Client's own Contracts, read here and
+                          added from the sidebar instead. */}
+                      <Button
+                        size="xs"
+                        variant={expanded === c.id ? "secondary" : "ghost"}
+                        onClick={() => void toggleExpanded(c.id)}
+                      >
+                        {t.contracts}
+                        {expanded === c.id ? (
+                          <RiArrowUpSLine />
+                        ) : (
+                          <RiArrowDownSLine />
+                        )}
+                      </Button>
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={t.actions}
                           >
-                            <DropdownMenuItem
-                              // Deferred a tick past the click, same as
-                              // Categories.tsx's Rinomina: mounting the
-                              // autoFocus input immediately loses the race
-                              // against Radix's own close teardown.
-                              onClick={() =>
-                                setTimeout(() => setEditing(c.id), 0)
-                              }
-                            >
-                              <RiEditLine /> {t.rename}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() =>
-                                void write(`/api/clients/${c.id}`, {
-                                  method: "PATCH",
-                                  body: JSON.stringify({ hidden: !c.hidden }),
+                            <RiMoreLine />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => selectClient(c)}>
+                            <RiEditLine /> {t.editClient}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() =>
+                              void write(`/api/clients/${c.id}`, {
+                                method: "PATCH",
+                                body: JSON.stringify({ hidden: !c.hidden }),
+                              })
+                            }
+                          >
+                            {c.hidden ? <RiEyeLine /> : <RiEyeOffLine />}{" "}
+                            {c.hidden ? t.unhide : t.hide}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => {
+                              if (confirm(t.confirmDeleteClient(c.name)))
+                                void write(
+                                  `/api/clients/${c.id}`,
+                                  { method: "DELETE" },
+                                  t.clientInUse
+                                ).then((ok) => {
+                                  if (ok && editing === c.id) resetForm()
                                 })
-                              }
-                            >
-                              {c.hidden ? <RiEyeLine /> : <RiEyeOffLine />}{" "}
-                              {c.hidden ? t.unhide : t.hide}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onClick={() => {
-                                if (confirm(t.confirmDeleteClient(c.name)))
-                                  void write(
-                                    `/api/clients/${c.id}`,
-                                    { method: "DELETE" },
-                                    t.clientInUse
-                                  )
-                              }}
-                            >
-                              <RiDeleteBinLine /> {t.delete}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
+                            }}
+                          >
+                            <RiDeleteBinLine /> {t.delete}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                   {/* The expanded Client's Contracts: a nested row right under its
@@ -344,7 +328,7 @@ export function Clients() {
                     unchanged when nothing is expanded. */}
                   {expanded === c.id && (
                     <TableRow>
-                      <TableCell colSpan={4} className="bg-muted/30">
+                      <TableCell colSpan={5} className="bg-muted/30">
                         <div className="flex flex-col gap-3 py-2">
                           {contracts.length === 0 && (
                             <p className="text-sm text-muted-foreground">
@@ -384,67 +368,6 @@ export function Clients() {
                               </div>
                             </div>
                           ))}
-
-                          <form
-                            onSubmit={(e) => void addContract(expanded, e)}
-                            className="flex flex-wrap items-end gap-2"
-                          >
-                            <label className="flex flex-col gap-1 text-xs">
-                              {t.startMonth}
-                              <Input
-                                type="month"
-                                required
-                                value={newContract.start_month}
-                                onChange={(e) =>
-                                  setNewContract((d) => ({
-                                    ...d,
-                                    start_month: e.target.value,
-                                  }))
-                                }
-                                className="h-9"
-                              />
-                            </label>
-                            <label className="flex flex-col gap-1 text-xs">
-                              {t.endMonth}
-                              <Input
-                                type="month"
-                                required
-                                value={newContract.end_month}
-                                onChange={(e) =>
-                                  setNewContract((d) => ({
-                                    ...d,
-                                    end_month: e.target.value,
-                                  }))
-                                }
-                                className="h-9"
-                              />
-                            </label>
-                            <label className="flex flex-col gap-1 text-xs">
-                              {t.contractTotal}
-                              <Input
-                                type="text"
-                                inputMode="decimal"
-                                placeholder="0,00"
-                                required
-                                value={newContract.amount}
-                                onChange={(e) =>
-                                  setNewContract((d) => ({
-                                    ...d,
-                                    amount: e.target.value,
-                                  }))
-                                }
-                                className="h-9 w-28"
-                              />
-                            </label>
-                            <Button type="submit" size="sm">
-                              {t.addContract}
-                            </Button>
-                          </form>
-                          {contractError && (
-                            <p role="alert" className="text-sm text-destructive">
-                              {contractError}
-                            </p>
-                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -456,37 +379,140 @@ export function Clients() {
         </div>
 
         <FormSidebar
-          title={t.addClient}
+          title={editing === null ? t.addClient : t.editClient}
           open={sidebarOpen}
           onOpenChange={setSidebarOpen}
           footer={
-            <Button
-              type="submit"
-              form="client-form"
-              size="lg"
-              className="h-12 text-base"
-            >
-              {t.addClient}
-            </Button>
+            <div className="flex flex-col gap-2">
+              <Button
+                type="submit"
+                form="client-form"
+                size="lg"
+                className="h-12 text-base"
+              >
+                {editing === null ? t.addClient : t.save}
+              </Button>
+              {editing !== null && (
+                <Button type="button" variant="ghost" onClick={resetForm}>
+                  {t.cancel}
+                </Button>
+              )}
+            </div>
           }
         >
-          <form
-            id="client-form"
-            onSubmit={add}
-            className="flex flex-col gap-3 md:pb-24"
-          >
-            <Field>
-              <FieldLabel htmlFor="name">{t.clientName}</FieldLabel>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder={t.clientName}
-                required
-                className="h-10"
-              />
-            </Field>
-          </form>
+          <div className="flex flex-col gap-4 md:pb-24">
+            <form
+              id="client-form"
+              onSubmit={submit}
+              className="flex flex-col gap-3"
+            >
+              <Field>
+                <FieldLabel htmlFor="name">{t.clientName}</FieldLabel>
+                <Input
+                  id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={t.clientName}
+                  required
+                  className="h-10"
+                />
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="default-category">
+                  {t.defaultCategory}
+                </FieldLabel>
+                <Select
+                  value={defaultCategoryId == null ? NONE : String(defaultCategoryId)}
+                  onValueChange={(v) =>
+                    setDefaultCategoryId(v === NONE ? null : Number(v))
+                  }
+                >
+                  <SelectTrigger id="default-category" className="h-10 w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE}>{t.notSet}</SelectItem>
+                    {pickableCategories(
+                      categories,
+                      "income",
+                      categories.find((cat) => cat.id === defaultCategoryId)
+                    ).map((cat) => (
+                      <SelectItem key={cat.id} value={String(cat.id)}>
+                        {cat.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            </form>
+
+            {editing !== null && (
+              <form
+                onSubmit={(e) => void addContract(editing, e)}
+                className="flex flex-col gap-3 border-t pt-4"
+              >
+                <h3 className="text-sm font-medium">{t.addContract}</h3>
+                <Field>
+                  <FieldLabel htmlFor="start-month">{t.startMonth}</FieldLabel>
+                  <Input
+                    id="start-month"
+                    type="month"
+                    required
+                    value={newContract.start_month}
+                    onChange={(e) =>
+                      setNewContract((d) => ({
+                        ...d,
+                        start_month: e.target.value,
+                      }))
+                    }
+                    className="h-10"
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="end-month">{t.endMonth}</FieldLabel>
+                  <Input
+                    id="end-month"
+                    type="month"
+                    required
+                    value={newContract.end_month}
+                    onChange={(e) =>
+                      setNewContract((d) => ({
+                        ...d,
+                        end_month: e.target.value,
+                      }))
+                    }
+                    className="h-10"
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="contract-total">
+                    {t.contractTotal}
+                  </FieldLabel>
+                  <Input
+                    id="contract-total"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    required
+                    value={newContract.amount}
+                    onChange={(e) =>
+                      setNewContract((d) => ({ ...d, amount: e.target.value }))
+                    }
+                    className="h-10"
+                  />
+                </Field>
+                {contractError && (
+                  <p role="alert" className="text-sm text-destructive">
+                    {contractError}
+                  </p>
+                )}
+                <Button type="submit" size="lg" className="h-12 text-base">
+                  {t.addContract}
+                </Button>
+              </form>
+            )}
+          </div>
         </FormSidebar>
       </div>
     </div>

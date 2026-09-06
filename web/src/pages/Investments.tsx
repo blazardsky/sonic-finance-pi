@@ -273,38 +273,36 @@ export function Investments() {
               </InputGroup>
             </Field>
 
-            <div className="flex gap-2">
-              <Field className="flex-1">
-                <FieldLabel htmlFor="date">{t.date}</FieldLabel>
-                <DatePicker
-                  id="date"
-                  value={draft.date}
-                  onValueChange={(v) => set("date", v)}
-                  className="w-full"
-                />
-              </Field>
-              <Field className="flex-1">
-                <FieldLabel htmlFor="payer">{t.payer}</FieldLabel>
-                <Select
-                  value={draft.payer || undefined}
-                  onValueChange={(v) => set("payer", v)}
-                  required
-                >
-                  <SelectTrigger id="payer" className="h-10 w-full">
-                    <SelectValue placeholder={t.chooseCategory} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {withSaved(lists.payers, draft.payer || undefined).map(
-                      (p) => (
-                        <SelectItem key={p} value={p}>
-                          {p}
-                        </SelectItem>
-                      )
-                    )}
-                  </SelectContent>
-                </Select>
-              </Field>
-            </div>
+            <Field>
+              <FieldLabel htmlFor="date">{t.date}</FieldLabel>
+              <DatePicker
+                id="date"
+                value={draft.date}
+                onValueChange={(v) => set("date", v)}
+                className="w-full"
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="payer">{t.payer}</FieldLabel>
+              <Select
+                value={draft.payer || undefined}
+                onValueChange={(v) => set("payer", v)}
+                required
+              >
+                <SelectTrigger id="payer" className="h-10 w-full">
+                  <SelectValue placeholder={t.chooseCategory} />
+                </SelectTrigger>
+                <SelectContent>
+                  {withSaved(lists.payers, draft.payer || undefined).map(
+                    (p) => (
+                      <SelectItem key={p} value={p}>
+                        {p}
+                      </SelectItem>
+                    )
+                  )}
+                </SelectContent>
+              </Select>
+            </Field>
 
             {error && (
               <p role="alert" className="text-sm text-destructive">

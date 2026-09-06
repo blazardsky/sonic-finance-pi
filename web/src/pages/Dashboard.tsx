@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
 import {
   type ChartConfig,
   ChartContainer,
@@ -167,7 +168,10 @@ export function Dashboard({
             label={t.yearIncome}
             cents={year.income_cents}
             estimateCents={estimate?.income_estimate_cents ?? undefined}
-            footnote={t.ofWhichExtra(formatCents(year.extra_income_cents || 0))}
+            footnote={{
+              label: t.ofWhichExtra,
+              cents: year.extra_income_cents || 0,
+            }}
           />
           <TotalsCard
             icon={RiShoppingBag3Line}
@@ -175,7 +179,9 @@ export function Dashboard({
             cents={year.expense_cents}
             estimateCents={estimate?.expense_estimate_cents ?? undefined}
             footnote={
-              tax ? t.ofWhichTax(formatCents(tax.tax_paid_cents)) : undefined
+              tax
+                ? { label: t.ofWhichTax, cents: tax.tax_paid_cents }
+                : undefined
             }
           />
           <TotalsCard
@@ -253,7 +259,7 @@ function TotalsCard({
   label: string
   cents: number
   estimateCents?: number
-  footnote?: string
+  footnote?: { label: string; cents: number }
   children?: ReactNode
 }) {
   return (
@@ -283,7 +289,15 @@ function TotalsCard({
           </>
         )}
         {footnote != null && (
-          <p className="text-xs text-muted-foreground">{footnote}</p>
+          <>
+            <Separator />
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              {footnote.label}
+              <Badge variant="secondary" className="tabular-nums">
+                € {formatCents(footnote.cents)}
+              </Badge>
+            </p>
+          </>
         )}
         {children}
       </CardContent>
