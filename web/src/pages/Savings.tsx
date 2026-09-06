@@ -93,9 +93,12 @@ export function Savings() {
           <CardHeader>
             <CardTitle>{t.savings}</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-col gap-1">
             <p className="text-2xl font-medium tabular-nums">
               € {formatCents(savings?.savings_cents ?? 0)}
+            </p>
+            <p className="text-sm text-muted-foreground tabular-nums">
+              {t.savingsPlusPortfolio}: € {formatCents(savings?.combined_cents ?? 0)}
             </p>
           </CardContent>
         </Card>

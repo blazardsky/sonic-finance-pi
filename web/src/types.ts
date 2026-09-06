@@ -223,6 +223,7 @@ export type SavingsReport = {
   savings_cents: number
   starting_balance_cents: number
   holdings: HoldingBreakdown[]
+  combined_cents: number
 }
 
 // A CategoryTotal with the day it belongs to — the shape both trend charts

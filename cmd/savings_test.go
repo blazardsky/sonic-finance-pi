@@ -10,6 +10,7 @@ type savingsJSON struct {
 	SavingsCents         int64              `json:"savings_cents"`
 	StartingBalanceCents int64              `json:"starting_balance_cents"`
 	Holdings             []holdingBreakdown `json:"holdings"`
+	CombinedCents        int64              `json:"combined_cents"`
 }
 
 func (a *testApp) savings(t *testing.T) savingsJSON {
@@ -231,5 +232,39 @@ func TestAHoldingWithNoTransactionsIsNotInTheBreakdown(t *testing.T) {
 	got := a.savings(t)
 	if len(got.Holdings) != 0 {
 		t.Fatalf("holdings = %+v, want none", got.Holdings)
+	}
+}
+
+// CombinedCents is Savings plus the current portfolio value — the whole
+// household's stack, Savings and Holdings summed together (ticket 05).
+func TestCombinedCentsIsSavingsPlusPortfolio(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+	stipendio := a.category(t, "Stipendio")
+	investments := a.investments(t)
+	vwce := a.createHolding(t, "VWCE", holdingETF)
+	btc := a.createHolding(t, "BTC", holdingCrypto)
+
+	a.addIncome(t, map[string]any{"amount_cents": 100000, "category_id": stipendio.ID, "payment_date": "2026-01-01"})
+	a.addExpense(t, map[string]any{"occurred_on": "2026-01-10", "amount_cents": 20000, "category_id": alimentari.ID})
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-01-15", "amount_cents": 30000,
+		"category_id": investments.ID, "holding_id": vwce.ID,
+	})
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-01-20", "amount_cents": 15000,
+		"category_id": investments.ID, "holding_id": btc.ID,
+	})
+
+	got := a.savings(t)
+	var portfolioCents int64
+	for _, h := range got.Holdings {
+		portfolioCents += h.NetCents
+	}
+	if want := got.SavingsCents + portfolioCents; got.CombinedCents != want {
+		t.Errorf("combined_cents = %d, want %d (savings %d + portfolio %d)", got.CombinedCents, want, got.SavingsCents, portfolioCents)
+	}
+	if want := int64(100000-20000) + (30000 + 15000); got.CombinedCents != want {
+		t.Errorf("combined_cents = %d, want %d", got.CombinedCents, want)
 	}
 }
