@@ -145,7 +145,9 @@ export function App() {
               />
             )}
             {screen === "month" && <Month />}
-            {screen === "year" && <Year />}
+            {screen === "year" && (
+              <Year onOpenYearReport={() => setScreen("yearReport")} />
+            )}
             {screen === "yearReport" && <YearlyReport />}
             {screen === "expenses" && <Expenses quickAdd={expensesQuickAdd} />}
             {screen === "incomes" && <Incomes editIncomeId={incomeToEdit} />}

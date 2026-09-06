@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Bar, BarChart, XAxis } from "recharts"
+import { Bar, BarChart, XAxis, YAxis } from "recharts"
 
 import { Row } from "@/pages/Month"
 import { Button } from "@/components/ui/button"
@@ -36,7 +36,7 @@ const chartConfig = {
 // screen: the phone has a correct clock and the Pi has no RTC. Stepping
 // forward stops at the current year, because a year that has not happened has
 // no totals — its months would be twelve rows of zeros.
-export function Year() {
+export function Year({ onOpenYearReport }: { onOpenYearReport: () => void }) {
   const [year, setYear] = useState(thisYear)
   const [totals, setTotals] = useState<YearTotals | null>(null)
   const [tax, setTax] = useState<TaxSummary | null>(null)
@@ -84,28 +84,34 @@ export function Year() {
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6">
       <div className="flex items-center justify-between gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={t.previousYear}
-          onClick={() => step(-1)}
-        >
-          ‹
-        </Button>
-        {/* The year itself, as a heading rather than an input: there is no
-            native year picker, and a household comparing against 2019 taps
-            seven times rather than learning a control. */}
-        <h1 className="text-2xl font-medium tabular-nums">{year}</h1>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={t.nextYear}
-          // String comparison is a date comparison here too: four digits sort
-          // correctly, which is why a year is text everywhere but the column.
-          disabled={year >= thisYear()}
-          onClick={() => step(1)}
-        >
-          ›
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={t.previousYear}
+            onClick={() => step(-1)}
+          >
+            ‹
+          </Button>
+          {/* The year itself, as a heading rather than an input: there is no
+              native year picker, and a household comparing against 2019 taps
+              seven times rather than learning a control. */}
+          <h1 className="text-2xl font-medium tabular-nums">{year}</h1>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={t.nextYear}
+            // String comparison is a date comparison here too: four digits
+            // sort correctly, which is why a year is text everywhere but the
+            // column.
+            disabled={year >= thisYear()}
+            onClick={() => step(1)}
+          >
+            ›
+          </Button>
+        </div>
+        <Button variant="outline" size="sm" onClick={onOpenYearReport}>
+          {t.yearReport}
         </Button>
       </div>
 
@@ -115,61 +121,65 @@ export function Year() {
         </p>
       )}
 
-      {/* Free to sit next to whatever fits beside it — same reflow pattern
-          Month.tsx uses, nothing pinned to a fixed column count. */}
+      {/* The totals and tax cards stack into one column, freeing width for
+          the chart beside them — a household reads its year's shape (the
+          chart) more often than it compares income against tax paid. */}
       <div className="flex flex-wrap items-start gap-6">
-        {totals && (
-          <Card className="min-w-64 flex-1">
-            <CardContent>
-              <dl className="flex flex-col divide-y divide-border">
-                <Row label={t.incomes} cents={totals.income_cents} />
-                <Row label={t.expenses} cents={totals.expense_cents} />
-                <Row label={t.difference} cents={totals.net_cents} big />
-              </dl>
-            </CardContent>
-          </Card>
-        )}
+        <div className="flex min-w-64 flex-1 flex-col gap-6">
+          {totals && (
+            <Card>
+              <CardContent>
+                <dl className="flex flex-col divide-y divide-border">
+                  <Row label={t.incomes} cents={totals.income_cents} />
+                  <Row label={t.expenses} cents={totals.expense_cents} />
+                  <Row label={t.difference} cents={totals.net_cents} big />
+                </dl>
+              </CardContent>
+            </Card>
+          )}
 
-        {/* The figure the invoicing software cannot give: what was really
-            received and what was really paid. Freelance income only —
-            employment income arrives already taxed and a gift is not income,
-            so counting either would make the percentage meaningless. */}
-        {tax && (
-          <Card className="min-w-64 flex-1">
-            <CardHeader>
-              <CardTitle>{t.taxSummary}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {tax.received_cents === 0 && tax.tax_paid_cents === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  {t.nothingReceived(year)}
-                </p>
-              ) : (
-                <>
-                  <dl className="flex flex-col divide-y divide-border">
-                    <Row label={t.received} cents={tax.received_cents} />
-                    <Row label={t.taxPaid} cents={tax.tax_paid_cents} />
-                    <Row label={t.net} cents={tax.net_cents} big />
-                  </dl>
-                  {/* The percentage the freelancer actually keeps. Absent when
-                      nothing was received: a percentage of nothing is not 0%,
-                      and the server sends null rather than let the screen
-                      divide. */}
-                  {tax.net_percent !== null && (
-                    <p className="pt-2 text-sm">
-                      {t.netPercent(
-                        tax.net_percent.toFixed(1).replace(".", ",")
-                      )}
-                    </p>
-                  )}
-                  <p className="pt-2 text-xs text-muted-foreground">
-                    {t.taxSummaryHint}
+          {/* The figure the invoicing software cannot give: what was really
+              received and what was really paid. Freelance income only —
+              employment income arrives already taxed and a gift is not
+              income, so counting either would make the percentage
+              meaningless. */}
+          {tax && (
+            <Card>
+              <CardHeader>
+                <CardTitle>{t.taxSummary}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {tax.received_cents === 0 && tax.tax_paid_cents === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    {t.nothingReceived(year)}
                   </p>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        )}
+                ) : (
+                  <>
+                    <dl className="flex flex-col divide-y divide-border">
+                      <Row label={t.received} cents={tax.received_cents} />
+                      <Row label={t.taxPaid} cents={tax.tax_paid_cents} />
+                      <Row label={t.net} cents={tax.net_cents} big />
+                    </dl>
+                    {/* The percentage the freelancer actually keeps. Absent
+                        when nothing was received: a percentage of nothing is
+                        not 0%, and the server sends null rather than let the
+                        screen divide. */}
+                    {tax.net_percent !== null && (
+                      <p className="pt-2 text-sm">
+                        {t.netPercent(
+                          tax.net_percent.toFixed(1).replace(".", ",")
+                        )}
+                      </p>
+                    )}
+                    <p className="pt-2 text-xs text-muted-foreground">
+                      {t.taxSummaryHint}
+                    </p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
 
         {/* The shape of the year: twelve months, each with what came in and
             what went out. A real Chart in place of the old div-based bars —
@@ -192,6 +202,18 @@ export function Year() {
                     tickLine={false}
                     axisLine={false}
                     tickMargin={8}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    // No € here: twelve months of ticks are read against each
+                    // other, not as a standalone amount — the ChartTooltip
+                    // still carries the € for the value actually being read.
+                    tickFormatter={(value: number) => formatCents(value)}
+                    // Wide enough for a four-figure euro total (e.g.
+                    // "12.345,00") without the axis label being clipped.
+                    width={64}
                   />
                   <ChartTooltip
                     cursor={false}
