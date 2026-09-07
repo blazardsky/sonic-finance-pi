@@ -9,7 +9,6 @@ import {
 import { useTheme } from "@/components/theme-provider"
 import { Button } from "@/components/ui/button"
 import { SidebarTrigger } from "@/components/ui/sidebar"
-import { cn } from "@/lib/utils"
 import { t } from "@/lib/strings"
 import type { Screen } from "@/App"
 
@@ -58,18 +57,16 @@ export function SiteHeader({
       <SidebarTrigger className={headerButton} />
       <span className="font-heading text-base font-medium">{t[screen]}</span>
       <div className="ml-auto flex items-center gap-1">
-        {/* Mobile-only: on desktop, Expenses' own panel is a click away and
-            always open by default (Expenses.tsx), so this shortcut would be
-            redundant there. Homepage-only: Expenses.tsx only reads its
-            quickAdd prop once, at mount — already being on Expenses would
-            leave a second tap with nothing to remount and re-read it. */}
+        {/* Homepage-only: Expenses.tsx only reads its quickAdd prop once, at
+            mount — already being on Expenses would leave a second tap with
+            nothing to remount and re-read it. */}
         {screen === "dashboard" && (
           <Button
             variant="ghost"
             size="icon-sm"
             aria-label={t.addExpense}
             title={t.addExpense}
-            className={cn(headerButton, "md:hidden")}
+            className={headerButton}
             onClick={onQuickAddExpense}
           >
             <span className="relative inline-flex">
