@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react"
 import {
-  Label,
   Line,
   LineChart,
   Pie,
   PieChart,
-  PolarRadiusAxis,
-  RadialBar,
-  RadialBarChart,
+  PolarAngleAxis,
+  PolarGrid,
+  Radar,
+  RadarChart,
   XAxis,
 } from "recharts"
 
@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/table"
 import { apiJSON } from "@/lib/api"
 import { formatCents, thisMonth, thisYear } from "@/lib/money"
+import { categoryColor } from "@/lib/trend"
 import { t } from "@/lib/strings"
 import type { FullYearReport, MonthRow, YearTotals } from "@/types"
 
@@ -70,6 +71,7 @@ export function YearlyReport() {
 
   const grid = useMemo(() => pivotByMonth(full?.by_month ?? [], year), [full, year])
   const path = useMemo(() => cumulativePath(totals?.months ?? []), [totals])
+  const monthly = useMemo(() => monthlyTotals(totals?.months ?? []), [totals])
   const slices = useMemo(() => categorySlices(categoryShares(full?.by_month ?? [])), [full])
   const sliceConfig = useMemo(() => categorySliceConfig(slices), [slices])
   const step = (by: number) => setYear(String(Number(year) + by))
@@ -130,17 +132,29 @@ export function YearlyReport() {
         </section>
       )}
 
-      {slices.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            {t.byCategory}
-          </h2>
-          <div className="flex flex-wrap gap-6">
+      {/* The two square charts share a row while both can hold their floor
+          width, and each takes a row of its own the moment they cannot —
+          flex-wrap picks that up from the space it actually has, so there is
+          no breakpoint here to keep in step with the sidebar's width. */}
+      <div className="flex flex-wrap gap-6 empty:hidden">
+        {slices.length > 0 && (
+          <section className="flex min-w-72 flex-1 flex-col gap-2">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              {t.byCategory}
+            </h2>
             <CategoryPieChart slices={slices} config={sliceConfig} />
-            <CategoryRadialChart slices={slices} config={sliceConfig} />
-          </div>
-        </section>
-      )}
+          </section>
+        )}
+
+        {monthly.length > 0 && (
+          <section className="flex min-w-72 flex-1 flex-col gap-2">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              {t.byMonth}
+            </h2>
+            <MonthlyRadarChart months={monthly} />
+          </section>
+        )}
+      </div>
 
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-medium text-muted-foreground">
@@ -261,10 +275,13 @@ function categoryShares(byMonth: FullYearReport["by_month"]): CategoryShare[] {
     .map(([id, c]) => ({ id, name: c.name, amount: c.amount }))
 }
 
-// One slice of the pie/radial charts: a Category's share of the year, or
-// (past the 5 colors --chart-1..5 give us) the rest lumped into "Altre
-// categorie" rather than cycling colors and making two different Categories
-// look like the same one.
+// One slice of the pie chart: a Category's share of the year, with
+// the long tail lumped into "Altre categorie" so a year with thirty
+// Categories still draws a pie someone can read. Colours come from
+// categoryColor (lib/trend), keyed by Category id: --chart-1..5 are five
+// shades of the same blue, which is what made every wedge look alike, and
+// keying by id means a Category is the same colour here as it is on the
+// Dashboard's trend chart and calendar dots.
 type CategorySlice = { key: string; label: string; amount: number; fill: string }
 
 const MAX_CATEGORY_SLICES = 5
@@ -273,11 +290,11 @@ function categorySlices(shares: CategoryShare[]): CategorySlice[] {
   const top = shares.slice(0, MAX_CATEGORY_SLICES)
   const rest = shares.slice(MAX_CATEGORY_SLICES)
 
-  const slices: CategorySlice[] = top.map((c, i) => ({
+  const slices: CategorySlice[] = top.map((c) => ({
     key: `c${c.id}`,
     label: c.name,
     amount: c.amount,
-    fill: `var(--chart-${i + 1})`,
+    fill: categoryColor(c.id),
   }))
 
   if (rest.length > 0) {
@@ -306,7 +323,7 @@ function CategoryPieChart({
   config: ChartConfig
 }) {
   return (
-    <ChartContainer config={config} className="mx-auto aspect-square max-h-64 w-full max-w-64">
+    <ChartContainer config={config} className="mx-auto aspect-square max-h-80 w-full max-w-80">
       <PieChart>
         <ChartTooltip
           content={
@@ -331,70 +348,6 @@ function CategoryPieChart({
         <Pie data={slices} dataKey="amount" nameKey="key" />
         <ChartLegend content={<ChartLegendContent nameKey="key" />} />
       </PieChart>
-    </ChartContainer>
-  )
-}
-
-function CategoryRadialChart({
-  slices,
-  config,
-}: {
-  slices: CategorySlice[]
-  config: ChartConfig
-}) {
-  const total = slices.reduce((sum, s) => sum + s.amount, 0)
-  // One stacked row: every slice as a ring of the same bar, its share of the
-  // year drawn as an arc length rather than a wedge — the same breakdown as
-  // the pie chart, read a second way.
-  const row = Object.fromEntries(slices.map((s) => [s.key, s.amount]))
-
-  return (
-    <ChartContainer config={config} className="mx-auto aspect-square max-h-64 w-full max-w-64">
-      <RadialBarChart data={[row]} innerRadius={30} outerRadius={110}>
-        <ChartTooltip
-          content={
-            <ChartTooltipContent
-              hideLabel
-              nameKey="key"
-              formatter={(value, _name, item) => (
-                <div className="flex flex-1 justify-between gap-2 leading-none">
-                  <span className="text-muted-foreground">
-                    {config[String(item.dataKey)]?.label}
-                  </span>
-                  <span className="font-mono font-medium tabular-nums">
-                    € {formatCents(Number(value))}
-                  </span>
-                </div>
-              )}
-            />
-          }
-        />
-        <PolarRadiusAxis tick={false} tickLine={false} axisLine={false}>
-          <Label
-            content={({ viewBox }) => {
-              if (!viewBox || !("cx" in viewBox) || !("cy" in viewBox)) return null
-              return (
-                <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
-                  <tspan x={viewBox.cx} y={viewBox.cy} className="fill-foreground font-medium tabular-nums">
-                    € {formatCents(total)}
-                  </tspan>
-                </text>
-              )
-            }}
-          />
-        </PolarRadiusAxis>
-        {slices.map((s) => (
-          <RadialBar
-            key={s.key}
-            dataKey={s.key}
-            stackId="a"
-            cornerRadius={4}
-            fill={`var(--color-${s.key})`}
-            className="stroke-transparent stroke-2"
-          />
-        ))}
-        <ChartLegend content={<ChartLegendContent />} />
-      </RadialBarChart>
     </ChartContainer>
   )
 }
@@ -427,6 +380,88 @@ const pathChartConfig = {
   net: { label: t.difference, color: "var(--credit)" },
 } satisfies ChartConfig
 
+// The path chart draws Income as a 2px line, where --primary reads fine. A
+// filled radar in --primary is a black blob in light mode and a white one in
+// dark, so it borrows --credit — the green the app already spells received
+// money in (RecentList, Dashboard). Expense keeps the path chart's red.
+const radarChartConfig = {
+  income: { label: t.incomes, color: "var(--credit)" },
+  expense: pathChartConfig.expense,
+} satisfies ChartConfig
+
+// Both charts built on pathChartConfig name the hovered series and spell its
+// cents as money — the default tooltip row, which would otherwise print the
+// raw dataKey and a bare integer.
+const eurosTooltip = (
+  <ChartTooltipContent
+    formatter={(value, name) => (
+      <div className="flex flex-1 justify-between gap-2 leading-none">
+        <span className="text-muted-foreground">
+          {pathChartConfig[name as keyof typeof pathChartConfig]?.label ?? name}
+        </span>
+        <span className="font-mono font-medium tabular-nums">
+          € {formatCents(Number(value))}
+        </span>
+      </div>
+    )}
+  />
+)
+
+// Per-month Income and Expense, one spoke each: the months cumulativePath
+// draws, left un-accumulated. A radar compares months against each other,
+// and a running total would only ever grow clockwise.
+function monthlyTotals(months: MonthRow[]) {
+  const now = thisMonth()
+  return months
+    .filter((m) => m.month <= now)
+    .map((m) => ({
+      label: t.monthsShort[Number(m.month.slice(5, 7)) - 1],
+      income: m.income_cents,
+      expense: m.expense_cents,
+    }))
+}
+
+// The same two series the path chart runs left to right, closed into a ring:
+// a month that spent more than it earned is the red web poking outside the
+// green one, which the cumulative lines can never show — they only cross once.
+//
+// Both webs are outlined and only faintly filled. Two solid fills and no
+// outline leaves whichever recharts draws second washing the other out, so
+// the smaller month reads as an empty gap rather than as its own shape.
+function MonthlyRadarChart({
+  months,
+}: {
+  months: ReturnType<typeof monthlyTotals>
+}) {
+  return (
+    <ChartContainer
+      config={radarChartConfig}
+      className="mx-auto aspect-square max-h-80 w-full max-w-80"
+    >
+      <RadarChart data={months} margin={{ top: -40, bottom: -10 }}>
+        <ChartTooltip cursor={false} content={eurosTooltip} />
+        <PolarAngleAxis dataKey="label" />
+        <PolarGrid />
+        <Radar
+          dataKey="income"
+          fill="var(--color-income)"
+          fillOpacity={0.2}
+          stroke="var(--color-income)"
+          strokeWidth={2}
+        />
+        <Radar
+          dataKey="expense"
+          fill="var(--color-expense)"
+          fillOpacity={0.2}
+          stroke="var(--color-expense)"
+          strokeWidth={2}
+        />
+        <ChartLegend className="mt-8" content={<ChartLegendContent />} />
+      </RadarChart>
+    </ChartContainer>
+  )
+}
+
 function FinancesPathChart({ path }: { path: PathPoint[] }) {
   return (
     <ChartContainer config={pathChartConfig} className="aspect-auto h-64 w-full">
@@ -438,23 +473,7 @@ function FinancesPathChart({ path }: { path: PathPoint[] }) {
           tickMargin={8}
           interval="preserveStartEnd"
         />
-        <ChartTooltip
-          cursor={false}
-          content={
-            <ChartTooltipContent
-              formatter={(value, name) => (
-                <div className="flex flex-1 justify-between gap-2 leading-none">
-                  <span className="text-muted-foreground">
-                    {pathChartConfig[name as keyof typeof pathChartConfig]?.label ?? name}
-                  </span>
-                  <span className="font-mono font-medium tabular-nums">
-                    € {formatCents(Number(value))}
-                  </span>
-                </div>
-              )}
-            />
-          }
-        />
+        <ChartTooltip cursor={false} content={eurosTooltip} />
         <ChartLegend content={<ChartLegendContent />} />
         <Line dataKey="income" type="monotone" stroke="var(--color-income)" strokeWidth={2} dot={false} />
         <Line dataKey="expense" type="monotone" stroke="var(--color-expense)" strokeWidth={2} dot={false} />

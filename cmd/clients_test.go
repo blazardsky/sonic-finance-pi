@@ -18,6 +18,9 @@ type clientJSON struct {
 	// all-time total earned from this Client's received Incomes.
 	DefaultCategoryID *int64 `json:"default_category_id"`
 	TotalEarnedCents  int64  `json:"total_earned_cents"`
+
+	// The Payer prefill, the label-side twin of the default Category.
+	DefaultPayer string `json:"default_payer"`
 }
 
 // clientPath addresses one Client the way the API does.
@@ -274,6 +277,46 @@ func TestAClientsDefaultCategoryCanBeSetReadAndCleared(t *testing.T) {
 	a.patch(t, clientPath(c.ID), map[string]any{"default_category_id": nil}, &cleared)
 	if cleared.DefaultCategoryID != nil {
 		t.Errorf("default_category_id after clearing it = %v, want nil", cleared.DefaultCategoryID)
+	}
+}
+
+// The Payer prefill, on the same terms as the Category one above: unset on a
+// new Client, PATCH-able, trimmed so it still matches a settings-list label,
+// and clearable back to "". Never validated against that list — a Payer
+// renamed away leaves this reading as it was, exactly like income.payer.
+func TestAClientsDefaultPayerCanBeSetReadAndCleared(t *testing.T) {
+	a := newTestApp(t)
+	c := a.createClient(t, "Studio Rossi")
+
+	if c.DefaultPayer != "" {
+		t.Fatalf("a new Client's default payer = %q, want empty", c.DefaultPayer)
+	}
+
+	var set clientJSON
+	res := a.patch(t, clientPath(c.ID), map[string]any{"default_payer": "  Nicco  "}, &set)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("setting a default payer: PATCH = %d, want 200", res.StatusCode)
+	}
+	if set.DefaultPayer != "Nicco" {
+		t.Fatalf("default_payer after setting it = %q, want %q", set.DefaultPayer, "Nicco")
+	}
+
+	// A rename says nothing about the Payer: the partial PATCH must leave it.
+	var renamed clientJSON
+	a.patch(t, clientPath(c.ID), map[string]any{"name": "Studio Rossi srl"}, &renamed)
+	if renamed.DefaultPayer != "Nicco" {
+		t.Errorf("default_payer after a rename = %q, want it left alone", renamed.DefaultPayer)
+	}
+
+	list := a.clients(t)
+	if len(list) != 1 || list[0].DefaultPayer != "Nicco" {
+		t.Fatalf("the list is %v, want the default payer to stick", list)
+	}
+
+	var cleared clientJSON
+	a.patch(t, clientPath(c.ID), map[string]any{"default_payer": ""}, &cleared)
+	if cleared.DefaultPayer != "" {
+		t.Errorf("default_payer after clearing it = %q, want empty", cleared.DefaultPayer)
 	}
 }
 

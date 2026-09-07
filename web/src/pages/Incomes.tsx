@@ -133,6 +133,7 @@ export function Incomes({
     target_cents: 0,
     goal_cents: 0,
     savings_starting_balance_cents: 0,
+    net_worth_target_cents: 0,
   })
   const [error, setError] = useState("")
 
@@ -373,12 +374,13 @@ export function Incomes({
     // picked would otherwise dangle: unlinked is the only safe carry-over,
     // never a guess at the new Client's own.
     set("contract_id", "")
-    // A one-time prefill, not a lock (ticket 04): picking a Client with a
-    // default Income Category loads it into the reason picker, which stays
-    // freely editable from here.
-    const defaultCategoryId = clients.find((c) => c.id === clientId)
-      ?.default_category_id
-    if (defaultCategoryId != null) set("category_id", defaultCategoryId)
+    // A one-time prefill, not a lock (ticket 04): picking a Client with
+    // defaults set loads them into the reason and Payer pickers, both of
+    // which stay freely editable from here.
+    const client = clients.find((c) => c.id === clientId)
+    if (client?.default_category_id != null)
+      set("category_id", client.default_category_id)
+    if (client?.default_payer) set("payer", client.default_payer)
   }
 
   return (

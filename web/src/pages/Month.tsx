@@ -153,16 +153,19 @@ export function Month() {
       <div className="flex flex-wrap items-start gap-6">
         {totals && (
           <Card className="min-w-72 flex-1">
-            <CardContent>
+            <CardContent className="@container">
               {/* Three small boxes, the same reading YearlyReport's own
                   figures use, rather than the plain label/value rows every
                   other card here still is — the totals get to look like the
                   answer the screen opens on. */}
-              {/* auto-fit rather than a fixed 3 columns: the card shares its
-                  flex row, so between roughly 900 and 1100px three columns
-                  are narrower than a negative thousands amount needs and the
-                  figures overflow. Below 9rem a column they reflow instead. */}
-              <dl className="grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-3">
+              {/* Column count follows the card's own width, not the
+                  viewport's: this card shares a flex row, so how much room it
+                  gets depends on which sibling cards a month has. A figure
+                  needs 9rem or a negative thousands amount overflows it,
+                  hence 19rem for two columns and 29rem for three (plus the
+                  0.75rem gaps). Difference, last and alone on its row at two
+                  columns, spans both rather than leaving a hole. */}
+              <dl className="grid grid-cols-1 gap-3 @min-[19rem]:grid-cols-2 @min-[19rem]:[&>:last-child]:col-span-2 @min-[29rem]:grid-cols-3 @min-[29rem]:[&>:last-child]:col-span-1">
                 <Figure label={t.incomes} cents={totals.income_cents} />
                 <Figure label={t.expenses} cents={totals.expense_cents} />
                 <Figure label={t.difference} cents={totals.net_cents} />

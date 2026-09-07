@@ -90,8 +90,9 @@ func handleCreateReminder(db *sql.DB) http.HandlerFunc {
 // handlePatchReminder is the only way a Reminder's state moves: enabling
 // stamps the current month, disabling is a plain flip that leaves
 // set_for_month alone (there's nothing to stamp when turning something off).
-// Label is not editable here — ticket 06 gives a Reminder create and delete,
-// not rename.
+// A rename travels the same way, which is why both fields are pointers —
+// omitting one has to leave it alone, or renaming would read as "and disable
+// it" and a toggle would read as "and blank the label".
 func handlePatchReminder(db *sql.DB, now func() time.Time) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rem, ok := findReminder(w, db, r.PathValue("id"))
@@ -100,24 +101,38 @@ func handlePatchReminder(db *sql.DB, now func() time.Time) http.HandlerFunc {
 		}
 
 		var body struct {
-			Enabled bool `json:"enabled"`
+			Enabled *bool   `json:"enabled"`
+			Label   *string `json:"label"`
 		}
 		if err := decodeJSON(w, r, &body); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
 
-		rem.Enabled = body.Enabled
-		if rem.Enabled {
-			month := now().Format(monthLayout)
-			rem.SetForMonth = &month
+		if body.Label != nil {
+			rem.Label = strings.TrimSpace(*body.Label)
+			if rem.Label == "" {
+				writeInvalid(w, errors.New("a reminder needs a label"))
+				return
+			}
+		}
+		if body.Enabled != nil {
+			rem.Enabled = *body.Enabled
+			if rem.Enabled {
+				month := now().Format(monthLayout)
+				rem.SetForMonth = &month
+			}
 		}
 
-		if _, err := db.Exec(`UPDATE reminder SET enabled = ?, set_for_month = ? WHERE id = ?`,
-			rem.Enabled, rem.SetForMonth, rem.ID); err != nil {
+		if _, err := db.Exec(`UPDATE reminder SET label = ?, enabled = ?, set_for_month = ? WHERE id = ?`,
+			rem.Label, rem.Enabled, rem.SetForMonth, rem.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
+		// A rename leaves set_for_month untouched, so the stored bit can still
+		// be a stale true from an earlier month — answer what the list would
+		// answer, not the raw row.
+		rem.collapse(now().Format(monthLayout))
 		writeJSON(w, http.StatusOK, rem)
 	}
 }

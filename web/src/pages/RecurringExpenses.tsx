@@ -130,6 +130,7 @@ export function RecurringExpenses() {
     target_cents: 0,
     goal_cents: 0,
     savings_starting_balance_cents: 0,
+    net_worth_target_cents: 0,
   })
   const [error, setError] = useState("")
 

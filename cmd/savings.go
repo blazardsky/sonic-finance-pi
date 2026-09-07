@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"net/http"
+	"time"
 )
 
 // savingsPath is ticket 07's report: the computed, ledger-free Savings
@@ -16,6 +17,12 @@ const savingsPath = "/api/reports/savings"
 // (cmd/setting.go) — a single stored value, round-tripped through the
 // existing PUT /api/settings, no new endpoint.
 const savingsStartingBalanceCentsKey = "savings_starting_balance_cents"
+
+// netWorthTargetCentsKey is the total the household wants Savings plus its
+// portfolio to reach — another cents-shaped setting on the same lists payload
+// (cmd/setting.go), with no default-then-sticky behaviour of its own: 0 means
+// nothing has been set, and the page then has no target to project toward.
+const netWorthTargetCentsKey = "net_worth_target_cents"
 
 // holdingBreakdown is one Holding's share of the portfolio: what was put in
 // net of what was taken out, as a percentage of the total across every other
@@ -40,9 +47,16 @@ type savingsReport struct {
 	StartingBalanceCents int64              `json:"starting_balance_cents"`
 	Holdings             []holdingBreakdown `json:"holdings"`
 	CombinedCents        int64              `json:"combined_cents"`
+
+	// The household's net worth target and the pace it is being approached
+	// at, so the page can say when CombinedCents would reach it. The target
+	// is a plain setting; the pace is computed — see
+	// computeYearlySavingsCents.
+	NetWorthTargetCents int64 `json:"net_worth_target_cents"`
+	YearlySavingsCents  int64 `json:"yearly_savings_cents"`
 }
 
-func handleSavingsReport(db *sql.DB) http.HandlerFunc {
+func handleSavingsReport(db *sql.DB, now func() time.Time) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		savingsCents, startingBalanceCents, err := computeSavingsCents(db, "")
 		if err != nil {
@@ -54,13 +68,65 @@ func handleSavingsReport(db *sql.DB) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
+		targetCents, err := getSettingCents(db, netWorthTargetCentsKey)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		yearlySavingsCents, err := computeYearlySavingsCents(db, now)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
 		writeJSON(w, http.StatusOK, savingsReport{
 			SavingsCents:         savingsCents,
 			StartingBalanceCents: startingBalanceCents,
 			Holdings:             holdings,
 			CombinedCents:        savingsCents + portfolioCents,
+			NetWorthTargetCents:  targetCents,
+			YearlySavingsCents:   yearlySavingsCents,
 		})
 	}
+}
+
+// computeYearlySavingsCents is how fast Savings is actually growing: twelve
+// times the median month's saving over Budget's own trailing window, with
+// Investments excluded on both sides for the same reason Budget excludes
+// them (ADR-0009) — a lumpy stock buy is no more a normal month's saving
+// than it is a normal month's spend, and Savings itself is defined without
+// them anyway (CONTEXT.md).
+//
+// Below Budget's minimum history a median is one or two months pretending to
+// be a pattern, so the household's Goal — the monthly saving it chose by hand
+// — stands in for it instead. Same window, same minimum and the same median
+// primitive as computeBudgetCents, on the Income-minus-Expense side rather
+// than the Expense one.
+func computeYearlySavingsCents(db *sql.DB, now func() time.Time) (int64, error) {
+	firstMonth, err := firstExpenseMonth(db)
+	if err != nil {
+		return 0, err
+	}
+
+	var nets []int64
+	for _, month := range trailingCompletedMonths(now, budgetTrailingMonths) {
+		if firstMonth == "" || month < firstMonth {
+			continue
+		}
+		incomeCents, err := readIncomeCentsExcludingInvestments(db, now, month)
+		if err != nil {
+			return 0, err
+		}
+		expenseCents, err := readExpenseCentsExcludingInvestments(db, now, month)
+		if err != nil {
+			return 0, err
+		}
+		nets = append(nets, incomeCents-expenseCents)
+	}
+	if len(nets) < budgetMinHistoryMonths {
+		goalCents, err := getSettingCents(db, goalCentsKey)
+		return goalCents * 12, err
+	}
+	return medianCents(nets) * 12, nil
 }
 
 // computeSavingsCents is Savings itself (CONTEXT.md): cumulative received

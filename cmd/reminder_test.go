@@ -132,3 +132,33 @@ func TestToggleReminderOff(t *testing.T) {
 		t.Error("enabled = true right after toggling off")
 	}
 }
+
+// TestRenameReminderLeavesTheToggleAlone is why the PATCH body is pointers: a
+// rename carries no enabled field, and must not read as "and turn it off".
+func TestRenameReminderLeavesTheToggleAlone(t *testing.T) {
+	a := newTestApp(t)
+	rem := a.addReminder(t, "Paid the rent transfer")
+	a.patch(t, reminderPath(rem.ID), map[string]bool{"enabled": true}, nil)
+
+	var renamed reminderJSON
+	res := a.patch(t, reminderPath(rem.ID), map[string]string{"label": "  Rent transfer  "}, &renamed)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH %s = %d, want 200", reminderPath(rem.ID), res.StatusCode)
+	}
+	if renamed.Label != "Rent transfer" {
+		t.Errorf("label = %q, want %q trimmed", renamed.Label, "Rent transfer")
+	}
+	if !renamed.Enabled {
+		t.Error("enabled = false after a rename that never mentioned it")
+	}
+
+	list := a.reminders(t)
+	if list[0].Label != "Rent transfer" || !list[0].Enabled {
+		t.Errorf("list reads %+v after the rename, want the new label still enabled", list[0])
+	}
+
+	// And a blank rename is refused the same way a blank create is.
+	if res := a.patch(t, reminderPath(rem.ID), map[string]string{"label": " "}, nil); res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("PATCH %s with a blank label = %d, want 400", reminderPath(rem.ID), res.StatusCode)
+	}
+}

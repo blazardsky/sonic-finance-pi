@@ -137,6 +137,7 @@ export const t = {
   ofWhichTax: "di cui tasse",
   ofWhichInvestments: "di cui investimenti",
   ofWhichExtra: "di cui extra",
+  ofWhichGross: "di cui lordo",
   // The daily/weekly trend charts, by Category — the Dashboard reads the
   // rolling window, the Month page buckets the same daily rows into weeks
   // itself (no separate weekly endpoint).
@@ -184,10 +185,10 @@ export const t = {
   budgetTargetGoal: "Budget, target e obiettivo",
   budget: "Budget",
   target: "Target",
-  savingsGoal: "Obiettivo di risparmio",
+  savingsGoal: "Obiettivo di risparmio mensile",
   budgetUnavailable:
     "Servono almeno 3 mesi di storico per calcolare il budget.",
-  targetHint: "Parte uguale al budget calcolato, poi resta quello che scegli.",
+  targetHint: "Obiettivo di spesa per ogni mese",
 
   // Year — the shape of a whole year, and the year in tax terms
   year: "Anno",
@@ -310,6 +311,7 @@ export const t = {
   clientInUse:
     "Questo cliente è usato da entrate registrate. Nascondilo invece di eliminarlo.",
   defaultCategory: "Categoria predefinita",
+  defaultPayer: "Ricevuto da predefinito",
   totalEarned: "Totale incassato",
 
   // Contracts — an agreed total from a Client over a date range (ticket 05).
@@ -380,6 +382,25 @@ export const t = {
   estimatedIn20Years: (amount: string) =>
     `Stima tra 20 anni al 5%/anno: € ${amount}`,
 
+  // Obiettivo patrimonio — the household's own net worth target, and when
+  // Risparmi + investimenti would reach it at the pace it is actually saving
+  // (the median month's saving over the trailing year, or Goal until there is
+  // enough history for one — cmd/savings.go). A projection like the two
+  // above, so the pace it assumes is named next to the number.
+  netWorthTarget: "Obiettivo patrimonio",
+  editNetWorthTarget: "Modifica obiettivo patrimonio",
+  netWorthTargetHint: "Il patrimonio complessivo a cui vuoi arrivare.",
+  netWorthTargetNotSaved: "Obiettivo patrimonio non salvato. Riprova.",
+  noNetWorthTarget: "Imposta un obiettivo per vedere quando ci arrivi.",
+  netWorthTargetReached: "Obiettivo raggiunto.",
+  // Nothing is being set aside, so there is no year it would be reached in —
+  // said plainly rather than shown as an enormous number of years.
+  netWorthTargetNoPace: "Senza risparmio mensile non c'è una stima.",
+  willGetThereIn: (years: number) =>
+    years === 1 ? "Ci arrivi in 1 anno" : `Ci arrivi in ${years} anni`,
+  yearlySavingsPace: (amount: string) => `Al ritmo di € ${amount} all'anno`,
+  netWorthMilestone: (year: number, amount: string) => `${year}: € ${amount}`,
+
   // Settings — the two configured lists, and the password
   settings: "Impostazioni",
   // The Payer list is one list read in both directions, so it is named after
@@ -413,6 +434,10 @@ export const t = {
   // notifications or tasks: a Reminder never fires anything on its own.
   reminders: "Promemoria pagamenti di questo mese",
   addReminder: "Aggiungi promemoria",
+  // The badge naming whichever management mode is active. Only the add one
+  // needs its own wording — Rinomina and Elimina are already short enough to
+  // sit beside a title this long, "Aggiungi promemoria" is not.
+  reminderModeAdd: "Aggiungi",
   reminderLabel: "Es. Bonifico affitto",
   noRemindersYet: "Nessun promemoria.",
   reminderNotSaved: "Promemoria non salvato. Riprova.",

@@ -288,7 +288,10 @@ function ChartLegendContent({
   return (
     <div
       className={cn(
-        "flex items-center justify-center gap-4",
+        // flex-wrap: recharts sizes the legend box to the chart's own width,
+        // so a legend with more entries than fit across it spills out of the
+        // chart on both sides rather than taking a second row.
+        "flex flex-wrap items-center justify-center gap-4",
         verticalAlign === "top" ? "pb-3" : "pt-3",
         className
       )}

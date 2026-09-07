@@ -31,6 +31,9 @@ export type Client = {
   // is chosen — a suggestion only, never enforced: the picker stays freely
   // editable. Null when this Client has none set.
   default_category_id: number | null
+  // The Payer the Income form's picker prefills alongside the Category, on
+  // the same terms — label text from the settings list, "" when unset.
+  default_payer: string
   // The sum of this Client's received Incomes (payment_date set, ADR-0003),
   // computed at read time and never stored.
   total_earned_cents: number
@@ -95,6 +98,9 @@ export type Lists = {
   // Savings' one-time starting balance (ticket 07), for pre-app savings —
   // rides the same payload as Target and Goal.
   savings_starting_balance_cents: number
+  // The total the household wants Savings plus its portfolio to reach, on
+  // the same terms as the starting balance above.
+  net_worth_target_cents: number
 }
 
 // Budget (computed), Target and Goal (household-set) — cmd/budget.go's
@@ -224,6 +230,14 @@ export type SavingsReport = {
   starting_balance_cents: number
   holdings: HoldingBreakdown[]
   combined_cents: number
+  // The household-set net worth target, 0 when it has never set one, and the
+  // pace combined_cents is closing on it at: twelve times the median month's
+  // saving over the trailing completed months, or twelve times Goal when
+  // there is not yet enough history to median (cmd/savings.go). Can be zero
+  // or negative — a household spending everything it earns is not on its way
+  // anywhere, and the page has to say so rather than divide by it.
+  net_worth_target_cents: number
+  yearly_savings_cents: number
 }
 
 // A CategoryTotal with the day it belongs to — the shape both trend charts

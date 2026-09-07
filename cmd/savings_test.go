@@ -11,6 +11,8 @@ type savingsJSON struct {
 	StartingBalanceCents int64              `json:"starting_balance_cents"`
 	Holdings             []holdingBreakdown `json:"holdings"`
 	CombinedCents        int64              `json:"combined_cents"`
+	NetWorthTargetCents  int64              `json:"net_worth_target_cents"`
+	YearlySavingsCents   int64              `json:"yearly_savings_cents"`
 }
 
 func (a *testApp) savings(t *testing.T) savingsJSON {
@@ -266,5 +268,83 @@ func TestCombinedCentsIsSavingsPlusPortfolio(t *testing.T) {
 	}
 	if want := int64(100000-20000) + (30000 + 15000); got.CombinedCents != want {
 		t.Errorf("combined_cents = %d, want %d", got.CombinedCents, want)
+	}
+}
+
+// The pace the net worth target is projected at: twelve times the median
+// month's saving over the trailing completed months, with an Investments buy
+// left out of it (ADR-0009) and the current month — still being spent into —
+// never one of them. Goal is set to something else entirely to prove real
+// history wins over it once there is enough of it.
+func TestYearlySavingsIsTwelveTimesTheMedianMonthsSaving(t *testing.T) {
+	a := newTestApp(t)
+	stipendio := a.category(t, "Stipendio")
+	alimentari := a.category(t, "Alimentari")
+	investments := a.investments(t)
+	vwce := a.createHolding(t, "VWCE", holdingETF)
+
+	// Three completed months before March 2026, saving 60000, 50000 and
+	// 40000 — the median is the middle one, and a mean would answer the same
+	// here, so the amounts differ enough that the sort is what is tested.
+	for _, m := range []struct {
+		month   string
+		expense int64
+	}{{"2025-12", 40000}, {"2026-01", 50000}, {"2026-02", 60000}} {
+		a.addIncome(t, map[string]any{"amount_cents": 100000, "category_id": stipendio.ID, "payment_date": m.month + "-05"})
+		a.addExpense(t, map[string]any{"occurred_on": m.month + "-10", "amount_cents": m.expense, "category_id": alimentari.ID})
+	}
+	// Neither of these may move the pace: a stock buy is not a month's
+	// normal spend, and March is the month in progress.
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-01-20", "amount_cents": 500000,
+		"category_id": investments.ID, "holding_id": vwce.ID,
+	})
+	a.addExpense(t, map[string]any{"occurred_on": "2026-03-01", "amount_cents": 999999, "category_id": alimentari.ID})
+
+	if res := a.put(t, settingsPath, map[string]any{"goal_cents": int64(1)}, nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("PUT %s = %d, want 200", settingsPath, res.StatusCode)
+	}
+
+	got := a.savings(t)
+	if want := int64(50000 * 12); got.YearlySavingsCents != want {
+		t.Errorf("yearly_savings_cents = %d, want %d (12 × the median of 60000, 50000, 40000)",
+			got.YearlySavingsCents, want)
+	}
+}
+
+// Below Budget's own minimum history there is no median worth trusting, so
+// the pace falls back to Goal — the monthly saving the household chose by
+// hand — annualised. Two completed months of history is one month short.
+func TestYearlySavingsFallsBackToGoalWithoutEnoughHistory(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+
+	a.addExpense(t, map[string]any{"occurred_on": "2026-01-10", "amount_cents": 1000, "category_id": alimentari.ID})
+	a.addExpense(t, map[string]any{"occurred_on": "2026-02-10", "amount_cents": 1000, "category_id": alimentari.ID})
+
+	if res := a.put(t, settingsPath, map[string]any{"goal_cents": int64(30000)}, nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("PUT %s = %d, want 200", settingsPath, res.StatusCode)
+	}
+
+	got := a.savings(t)
+	if want := int64(30000 * 12); got.YearlySavingsCents != want {
+		t.Errorf("yearly_savings_cents = %d, want %d (12 × Goal)", got.YearlySavingsCents, want)
+	}
+}
+
+// The target itself is a plain setting, round-tripped through the same
+// /api/settings payload the starting balance uses and read back on the
+// report the page projects from.
+func TestNetWorthTargetRoundTripsThroughSettings(t *testing.T) {
+	a := newTestApp(t)
+
+	if got := a.savings(t); got.NetWorthTargetCents != 0 {
+		t.Fatalf("net_worth_target_cents = %d on a fresh database, want 0", got.NetWorthTargetCents)
+	}
+	if res := a.put(t, settingsPath, map[string]any{"net_worth_target_cents": int64(50000000)}, nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("PUT %s = %d, want 200", settingsPath, res.StatusCode)
+	}
+	if got := a.savings(t); got.NetWorthTargetCents != 50000000 {
+		t.Errorf("net_worth_target_cents = %d, want 50000000", got.NetWorthTargetCents)
 	}
 }

@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import {
+  RiAddLine,
   RiCheckboxBlankCircleLine,
   RiCheckboxCircleFill,
   RiCheckboxCircleLine,
   RiCheckLine,
+  RiDeleteBinLine,
+  RiEditLine,
   RiErrorWarningLine,
+  RiMoreLine,
   RiScales3Line,
   RiShoppingBag3Line,
   RiWallet3Line,
@@ -16,8 +20,20 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   type ChartConfig,
   ChartContainer,
@@ -168,7 +184,15 @@ export function Dashboard({
             label={t.yearIncome}
             cents={year.income_cents}
             estimateCents={estimate?.income_estimate_cents ?? undefined}
-            footnotes={[{ label: t.ofWhichExtra, cents: year.extra_income_cents || 0 }]}
+            footnotes={[
+              { label: t.ofWhichExtra, cents: year.extra_income_cents || 0 },
+              // "Lordo" is the freelance slice of the same total: invoiced
+              // work arrives before tax, and tax leaves again as an Expense
+              // (ADR-0004). received_cents is already that sum — freelance
+              // only, cash-basis — so this reads the tax summary the card
+              // below it reads rather than asking for a second year total.
+              ...(tax ? [{ label: t.ofWhichGross, cents: tax.received_cents }] : []),
+            ]}
           />
           <TotalsCard
             icon={RiShoppingBag3Line}
@@ -677,13 +701,35 @@ function ClientBadge({ name, children }: { name: string; children: ReactNode }) 
   )
 }
 
+// The card's three management actions, each a mode rather than a command:
+// picking one reveals what it needs (the create form, or a control on every
+// row), picking it again puts it away. Only one at a time — renaming and
+// deleting the same row in one gesture is not a thing to offer.
+type ReminderMode = "add" | "rename" | "delete"
+
+const reminderModes = [
+  { mode: "add", icon: RiAddLine, label: t.addReminder, badge: t.reminderModeAdd },
+  { mode: "rename", icon: RiEditLine, label: t.rename, badge: t.rename },
+  { mode: "delete", icon: RiDeleteBinLine, label: t.delete, badge: t.delete },
+] as const satisfies {
+  mode: ReminderMode
+  icon: typeof RiAddLine
+  label: string
+  badge: string
+}[]
+
 // A household-managed list of on/off toggles for a manual action the app
-// doesn't automate (ticket 06) — created, toggled and deleted right here.
-// Nothing else in the app references a Reminder, so there is no separate
+// doesn't automate (ticket 06) — created, toggled, renamed and deleted right
+// here. Nothing else in the app references a Reminder, so there is no separate
 // management screen behind this card, and enabled already comes back
 // collapsed from the server: this component never compares months itself.
+//
+// By default the card is only the list: the toggles are what gets read every
+// day, and the managing controls hide behind the header menu so they are not
+// three chances to mistap next to them.
 function RemindersCard() {
   const [reminders, setReminders] = useState<Reminder[]>([])
+  const [mode, setMode] = useState<ReminderMode | null>(null)
   const [label, setLabel] = useState("")
   const [error, setError] = useState("")
 
@@ -719,10 +765,62 @@ function RemindersCard() {
     setLabel("")
   }
 
+  // Sends only the label, so the toggle the row is currently in keeps
+  // whatever state it had — the PATCH treats an absent field as untouched.
+  async function rename(reminder: Reminder, to: string) {
+    if (to.trim() === "" || to.trim() === reminder.label) return
+    await write(`/api/reminders/${reminder.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ label: to }),
+    })
+  }
+
+  const active = reminderModes.find((m) => m.mode === mode)
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>{t.reminders}</CardTitle>
+        {/* The checkmark inside the menu is only visible once it is open, so
+            the active mode says so out here too — otherwise the row inputs
+            (or the Elimina buttons) are the only clue anything is on. */}
+        <CardAction className="flex items-center gap-1.5">
+          {active && (
+            <Badge variant="secondary">
+              <active.icon />
+              {active.badge}
+            </Badge>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t.actions}
+              >
+                <RiMoreLine />
+              </Button>
+            </DropdownMenuTrigger>
+            {/* Same reason Categories.tsx prevents it: Radix hands focus back
+                to the "..." trigger as it closes, which would pull it straight
+                off the row inputs Rinomina just rendered. */}
+            <DropdownMenuContent
+              align="end"
+              onCloseAutoFocus={(event) => event.preventDefault()}
+            >
+              {reminderModes.map(({ mode: item, icon: Icon, label: text }) => (
+                <DropdownMenuCheckboxItem
+                  key={item}
+                  checked={mode === item}
+                  onCheckedChange={(on) => setMode(on ? item : null)}
+                >
+                  <Icon /> {text}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </CardAction>
       </CardHeader>
       <CardContent
         elevated={reminders.length === 0}
@@ -742,56 +840,84 @@ function RemindersCard() {
                 key={r.id}
                 className="flex items-center justify-between gap-3 py-2"
               >
-                {/* A single independent on/off per row, not a segmented
-                    set — any number of Reminders can be enabled at once —
-                    so Toggle, not ToggleGroup (ticket 14). */}
-                <Toggle
-                  size="sm"
-                  className="min-w-0 flex-1 justify-start gap-2 px-2.5 data-[state=on]:bg-credit/10 data-[state=on]:text-credit dark:data-[state=on]:bg-credit/20"
-                  pressed={r.enabled}
-                  onPressedChange={(pressed) =>
-                    void write(`/api/reminders/${r.id}`, {
-                      method: "PATCH",
-                      body: JSON.stringify({ enabled: pressed }),
-                    })
-                  }
-                  aria-label={t.reminderToggleLabel(r.label, r.enabled)}
-                >
-                  {r.enabled ? <RiCheckboxCircleFill /> : <RiCheckboxBlankCircleLine />}
-                  <span className="truncate text-sm font-normal">
-                    {r.label}
-                  </span>
-                </Toggle>
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="ghost"
-                  onClick={() => {
-                    if (confirm(t.confirmDeleteReminder(r.label)))
+                {mode === "rename" ? (
+                  // Keyed on the stored label so a rename the server trimmed
+                  // or refused remounts the field on what is actually saved,
+                  // rather than leaving it showing what was typed.
+                  <Input
+                    key={r.label}
+                    defaultValue={r.label}
+                    className="min-w-0 flex-1"
+                    aria-label={t.rename}
+                    onBlur={(event) => void rename(r, event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") event.currentTarget.blur()
+                      if (event.key === "Escape") {
+                        event.currentTarget.value = r.label
+                        event.currentTarget.blur()
+                      }
+                    }}
+                  />
+                ) : (
+                  /* A single independent on/off per row, not a segmented
+                     set — any number of Reminders can be enabled at once —
+                     so Toggle, not ToggleGroup (ticket 14). Frozen while
+                     Elimina is showing: reaching for a row that is about to
+                     be deleted should not also flip it. */
+                  <Toggle
+                    size="sm"
+                    className="min-w-0 flex-1 justify-start gap-2 px-2.5 data-[state=on]:bg-credit/10 data-[state=on]:text-credit dark:data-[state=on]:bg-credit/20"
+                    pressed={r.enabled}
+                    disabled={mode === "delete"}
+                    onPressedChange={(pressed) =>
                       void write(`/api/reminders/${r.id}`, {
-                        method: "DELETE",
+                        method: "PATCH",
+                        body: JSON.stringify({ enabled: pressed }),
                       })
-                  }}
-                >
-                  {t.delete}
-                </Button>
+                    }
+                    aria-label={t.reminderToggleLabel(r.label, r.enabled)}
+                  >
+                    {r.enabled ? <RiCheckboxCircleFill /> : <RiCheckboxBlankCircleLine />}
+                    <span className="truncate text-sm font-normal">
+                      {r.label}
+                    </span>
+                  </Toggle>
+                )}
+                {mode === "delete" && (
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => {
+                      if (confirm(t.confirmDeleteReminder(r.label)))
+                        void write(`/api/reminders/${r.id}`, {
+                          method: "DELETE",
+                        })
+                    }}
+                  >
+                    {t.delete}
+                  </Button>
+                )}
               </li>
             ))}
           </ul>
         )}
-        <form
-          onSubmit={(event) => void add(event)}
-          className="flex flex-col gap-2"
-        >
-          <Input
-            value={label}
-            onChange={(event) => setLabel(event.target.value)}
-            placeholder={t.reminderLabel}
-          />
-          <Button type="submit" size="sm">
-            {t.addReminder}
-          </Button>
-        </form>
+        {mode === "add" && (
+          <form
+            onSubmit={(event) => void add(event)}
+            className="flex flex-col gap-2"
+          >
+            <Input
+              autoFocus
+              value={label}
+              onChange={(event) => setLabel(event.target.value)}
+              placeholder={t.reminderLabel}
+            />
+            <Button type="submit" size="sm">
+              {t.addReminder}
+            </Button>
+          </form>
+        )}
       </CardContent>
     </Card>
   )

@@ -33,9 +33,9 @@ import { api, apiJSON } from "@/lib/api"
 import { FormSidebar } from "@/components/form-sidebar"
 import { toast } from "@/lib/toast"
 import { formatCents, formatMonth, toCents } from "@/lib/money"
-import { pickableCategories } from "@/lib/pickers"
+import { pickableCategories, withSaved } from "@/lib/pickers"
 import { t } from "@/lib/strings"
-import type { Category, Client, Contract } from "@/types"
+import type { Category, Client, Contract, Lists } from "@/types"
 
 // The Default-category picker's unset state — Radix Select refuses an
 // empty-string item value, so "not set" gets a sentinel, mapped back to null
@@ -57,6 +57,9 @@ const NONE = "__none__"
 export function Clients() {
   const [clients, setClients] = useState<Client[] | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
+  // Only for the Payer picker's options — everything else /api/settings
+  // carries is another screen's business.
+  const [payers, setPayers] = useState<string[]>([])
   const [error, setError] = useState("")
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
@@ -66,6 +69,7 @@ export function Clients() {
   const [editing, setEditing] = useState<number | null>(null)
   const [name, setName] = useState("")
   const [defaultCategoryId, setDefaultCategoryId] = useState<number | null>(null)
+  const [defaultPayer, setDefaultPayer] = useState("")
 
   // The Client currently getting a new Contract in the sidebar — its own
   // mode, entirely separate from the Client form above.
@@ -87,6 +91,7 @@ export function Clients() {
     setEditing(null)
     setName("")
     setDefaultCategoryId(null)
+    setDefaultPayer("")
   }
 
   // Loads a Client into the form and makes sure the panel holding it is
@@ -96,6 +101,7 @@ export function Clients() {
     setEditing(c.id)
     setName(c.name)
     setDefaultCategoryId(c.default_category_id)
+    setDefaultPayer(c.default_payer)
     setSidebarOpen(true)
   }
 
@@ -112,10 +118,12 @@ export function Clients() {
       Promise.all([
         apiJSON<Client[]>("/api/clients"),
         apiJSON<Category[]>("/api/categories"),
+        apiJSON<Lists>("/api/settings"),
       ])
-        .then(([cl, c]) => {
+        .then(([cl, c, l]) => {
           setClients(cl)
           setCategories(c)
+          setPayers(l.payers)
         })
         .catch(() => setError(t.serverUnreachable)),
     []
@@ -153,8 +161,8 @@ export function Clients() {
 
     if (editing === null) {
       // The server only accepts a name on create (cmd/clients.go) — a fresh
-      // Client is never born hidden, and Categoria predefinita is a second
-      // request right after, same as picking one up in an edit.
+      // Client is never born hidden, and either default is a second request
+      // right after, same as picking one up in an edit.
       setError("")
       let created: Client
       try {
@@ -166,10 +174,13 @@ export function Clients() {
         setError(t.clientNotSaved)
         return
       }
-      if (defaultCategoryId !== null) {
+      if (defaultCategoryId !== null || defaultPayer !== "") {
         await write(`/api/clients/${created.id}`, {
           method: "PATCH",
-          body: JSON.stringify({ default_category_id: defaultCategoryId }),
+          body: JSON.stringify({
+            default_category_id: defaultCategoryId,
+            default_payer: defaultPayer,
+          }),
         })
       } else {
         await load()
@@ -182,7 +193,11 @@ export function Clients() {
     if (
       await write(`/api/clients/${editing}`, {
         method: "PATCH",
-        body: JSON.stringify({ name, default_category_id: defaultCategoryId }),
+        body: JSON.stringify({
+          name,
+          default_category_id: defaultCategoryId,
+          default_payer: defaultPayer,
+        }),
       })
     ) {
       resetForm()
@@ -510,6 +525,26 @@ export function Clients() {
                     ).map((cat) => (
                       <SelectItem key={cat.id} value={String(cat.id)}>
                         {cat.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="default-payer">{t.defaultPayer}</FieldLabel>
+                <Select
+                  value={defaultPayer === "" ? NONE : defaultPayer}
+                  onValueChange={(v) => setDefaultPayer(v === NONE ? "" : v)}
+                >
+                  <SelectTrigger id="default-payer" className="h-10 w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE}>{t.notSet}</SelectItem>
+                    {withSaved(payers, defaultPayer || undefined).map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {p}
                       </SelectItem>
                     ))}
                   </SelectContent>

@@ -24,6 +24,13 @@ export function toCents(typed: string): number | null {
 const euroGroups = new Intl.NumberFormat("it-IT", { useGrouping: "always" })
 
 export function formatCents(cents: number): string {
+  // Only reachable from a bug — a response missing the field the caller read,
+  // most often a server that predates it. Named in the console rather than
+  // swallowed into a 0, which would read as a real amount of nothing; the
+  // "NaN,NaN" below is left visible on purpose as the matching signal.
+  if (!Number.isFinite(cents)) {
+    console.error("formatCents: not a finite number:", cents)
+  }
   // The sign is taken off first and put back by hand. Left on, it would be
   // formatted into both halves and print -65,43 as "-65,-43" — the euros and
   // the cents are two integers here, and only one of them wants a sign.

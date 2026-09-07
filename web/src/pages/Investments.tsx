@@ -65,6 +65,7 @@ export function Investments() {
     target_cents: 0,
     goal_cents: 0,
     savings_starting_balance_cents: 0,
+    net_worth_target_cents: 0,
   })
   const [records, setRecords] = useState<Transaction[]>([])
   const [error, setError] = useState("")

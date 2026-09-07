@@ -90,6 +90,9 @@ type lists struct {
 	// the same bargain as Target/Goal: no default-then-sticky behaviour of
 	// its own, just whatever the household last typed on the Savings page.
 	StartingBalanceCents int64 `json:"savings_starting_balance_cents"`
+
+	// The net worth target, on the same bargain again (cmd/savings.go).
+	NetWorthTargetCents int64 `json:"net_worth_target_cents"`
 }
 
 // migrateLists is schema step 3: the seed values for both lists. Seeding
@@ -146,7 +149,10 @@ func readLists(db *sql.DB) (lists, error) {
 	if l.GoalCents, err = getSettingCents(db, goalCentsKey); err != nil {
 		return l, err
 	}
-	l.StartingBalanceCents, err = getSettingCents(db, savingsStartingBalanceCentsKey)
+	if l.StartingBalanceCents, err = getSettingCents(db, savingsStartingBalanceCentsKey); err != nil {
+		return l, err
+	}
+	l.NetWorthTargetCents, err = getSettingCents(db, netWorthTargetCentsKey)
 	return l, err
 }
 
@@ -201,6 +207,10 @@ func handlePutLists(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		if err := putSettingCents(db, savingsStartingBalanceCentsKey, l.StartingBalanceCents); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if err := putSettingCents(db, netWorthTargetCentsKey, l.NetWorthTargetCents); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}

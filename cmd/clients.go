@@ -31,6 +31,13 @@ type client struct {
 	// it is, and nothing here requires it to still accept Income.
 	DefaultCategoryID *int64 `json:"default_category_id"`
 
+	// The Payer the Income form's picker prefills once this Client is chosen,
+	// on the same suggestion-never-enforced terms as DefaultCategoryID. Label
+	// text from the settings list rather than a reference, the same bargain
+	// income.payer makes: renaming the list leaves this reading as it was.
+	// "" when the Client has none set.
+	DefaultPayer string `json:"default_payer"`
+
 	// The sum of this Client's received Incomes — payment_date set,
 	// ADR-0003 — computed at read time and never stored (ticket 04). Every
 	// read goes through clientSelect, so this is never stale; a PATCH must
@@ -142,8 +149,8 @@ func handlePatchClient(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		if _, err := db.Exec(`UPDATE client SET name = ?, hidden = ?, default_category_id = ? WHERE id = ?`,
-			c.Name, c.Hidden, c.DefaultCategoryID, c.ID); err != nil {
+		if _, err := db.Exec(`UPDATE client SET name = ?, hidden = ?, default_category_id = ?, default_payer = ? WHERE id = ?`,
+			c.Name, c.Hidden, c.DefaultCategoryID, c.DefaultPayer, c.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -208,14 +215,14 @@ func clientExists(db *sql.DB, id int64) (bool, error) {
 // scoped to this Client and to received Incomes only (ADR-0003), run at read
 // time rather than kept as a column that could drift from what income.go
 // actually stores.
-const clientSelect = `SELECT id, name, hidden, default_category_id,
+const clientSelect = `SELECT id, name, hidden, default_category_id, default_payer,
 	(SELECT COALESCE(SUM(amount_cents), 0) FROM income
 		WHERE income.client_id = client.id AND income.payment_date IS NOT NULL)
 	FROM client`
 
 func scanClient(row interface{ Scan(...any) error }) (client, error) {
 	var c client
-	err := row.Scan(&c.ID, &c.Name, &c.Hidden, &c.DefaultCategoryID, &c.TotalEarnedCents)
+	err := row.Scan(&c.ID, &c.Name, &c.Hidden, &c.DefaultCategoryID, &c.DefaultPayer, &c.TotalEarnedCents)
 	return c, err
 }
 
@@ -227,5 +234,8 @@ func (c *client) validate() error {
 	if c.Name = strings.TrimSpace(c.Name); c.Name == "" {
 		return errors.New("a client needs a name")
 	}
+	// Trimmed for the same reason the name is: the prefill has to match a
+	// label in the settings list exactly, or the picker offers it twice.
+	c.DefaultPayer = strings.TrimSpace(c.DefaultPayer)
 	return nil
 }

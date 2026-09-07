@@ -80,6 +80,10 @@ _Avoid_: budget, limit, cap
 How much the household wants to save each month, chosen by hand rather than computed. Distinct from Budget and Target, which are about Expenses, not savings.
 _Avoid_: target, budget
 
+**Net worth target**:
+The total the household wants Savings plus its portfolio to reach, chosen by hand. Unlike Goal it names a destination rather than a monthly rate, and the years between here and it are projected from the median month's saving over the trailing year — or from Goal, until there is enough history to median. A projection, never a promise, on the same terms as Estimate.
+_Avoid_: goal, savings goal, milestone
+
 **Estimate**:
 A projected figure for Income, Expenses, or tax for the rest of the year — this year's year-to-date growth against last year's at the same point (by whole completed months), applied to last year's full-year totals. The only number in the app that is not a cash-basis fact, and always labeled as a projection rather than shown alongside actuals unmarked.
 _Avoid_: projection, forecast, prediction
