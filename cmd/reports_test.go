@@ -547,6 +547,7 @@ type yearJSON struct {
 	ExpenseCents     int64       `json:"expense_cents"`
 	NetCents         int64       `json:"net_cents"`
 	ExtraIncomeCents int64       `json:"extra_income_cents"`
+	InvestmentsCents int64       `json:"investments_cents"`
 	Months           []monthJSON `json:"months"`
 }
 
@@ -631,6 +632,32 @@ func TestAYearCountsOnlyNonWorkIncomeAsExtra(t *testing.T) {
 	if got.ExtraIncomeCents != 8000 {
 		t.Errorf("extra = %d, want 8000 — work was counted as extra, or a gift was missed",
 			got.ExtraIncomeCents)
+	}
+}
+
+// InvestmentsCents is the Investments slice of ExpenseCents, not a separate
+// pool — it stays inside the year's ordinary total (ADR-0009) while also
+// being named on its own, the same relationship Tax has to ExpenseCents.
+func TestAYearNamesInvestmentsSeparatelyFromOrdinaryExpense(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+	investments := a.investments(t)
+	vwce := a.createHolding(t, "VWCE", holdingETF)
+
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-02-10", "amount_cents": 4000, "category_id": alimentari.ID,
+	})
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-05", "amount_cents": 90000,
+		"category_id": investments.ID, "holding_id": vwce.ID,
+	})
+
+	got := a.year(t, "2026")
+	if got.InvestmentsCents != 90000 {
+		t.Errorf("investments = %d, want 90000", got.InvestmentsCents)
+	}
+	if got.ExpenseCents != 94000 {
+		t.Errorf("expense = %d, want 94000 (investments still counted as ordinary spend)", got.ExpenseCents)
 	}
 }
 

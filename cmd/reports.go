@@ -454,6 +454,12 @@ type yearTotals struct {
 	// (ADR-0003), same as IncomeCents itself.
 	ExtraIncomeCents int64 `json:"extra_income_cents"`
 
+	// The Investments slice of ExpenseCents — still ordinary spending
+	// (ADR-0009), just named separately so the Dashboard can show it next to
+	// ExpenseCents the same way it already shows tax paid, instead of a stock
+	// buy reading as an unexplained jump in "Spese dell'anno".
+	InvestmentsCents int64 `json:"investments_cents"`
+
 	// Always twelve, January first, whether or not anything happened in any
 	// of them: a year view is a shape, and a missing month would be a gap in
 	// it rather than an empty one.
@@ -501,6 +507,14 @@ func handleYearReport(db *sql.DB, now func() time.Time) http.HandlerFunc {
 			AND IFNULL(c.code, '') <> ?
 			AND c.name <> ?`,
 			year, codeFreelance, seedStipendioName).Scan(&totals.ExtraIncomeCents); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+
+		if err := db.QueryRow(`SELECT COALESCE(SUM(e.amount_cents), 0) FROM expense e
+			JOIN category c ON c.id = e.category_id
+			WHERE substr(e.occurred_on, 1, 4) = ? AND c.code = ?`,
+			year, codeInvestments).Scan(&totals.InvestmentsCents); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}

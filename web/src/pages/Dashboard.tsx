@@ -168,21 +168,17 @@ export function Dashboard({
             label={t.yearIncome}
             cents={year.income_cents}
             estimateCents={estimate?.income_estimate_cents ?? undefined}
-            footnote={{
-              label: t.ofWhichExtra,
-              cents: year.extra_income_cents || 0,
-            }}
+            footnotes={[{ label: t.ofWhichExtra, cents: year.extra_income_cents || 0 }]}
           />
           <TotalsCard
             icon={RiShoppingBag3Line}
             label={t.yearExpenses}
             cents={year.expense_cents}
             estimateCents={estimate?.expense_estimate_cents ?? undefined}
-            footnote={
-              tax
-                ? { label: t.ofWhichTax, cents: tax.tax_paid_cents }
-                : undefined
-            }
+            footnotes={[
+              ...(tax ? [{ label: t.ofWhichTax, cents: tax.tax_paid_cents }] : []),
+              { label: t.ofWhichInvestments, cents: year.investments_cents },
+            ]}
           />
           <TotalsCard
             icon={RiScales3Line}
@@ -252,14 +248,14 @@ function TotalsCard({
   label,
   cents,
   estimateCents,
-  footnote,
+  footnotes,
   children,
 }: {
   icon: typeof RiWallet3Line
   label: string
   cents: number
   estimateCents?: number
-  footnote?: { label: string; cents: number }
+  footnotes?: { label: string; cents: number }[]
   children?: ReactNode
 }) {
   return (
@@ -288,15 +284,25 @@ function TotalsCard({
             </p>
           </>
         )}
-        {footnote != null && (
+        {footnotes != null && footnotes.length > 0 && (
           <>
             <Separator />
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              {footnote.label}
-              <Badge variant="secondary" className="tabular-nums">
-                € {formatCents(footnote.cents)}
-              </Badge>
-            </p>
+            {/* flex-wrap: side by side when the card is wide enough for
+                both, each its own row (stacked) the moment it is not —
+                no breakpoint to pick, the row just wraps like text does. */}
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+              {footnotes.map((footnote) => (
+                <p
+                  key={footnote.label}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                >
+                  {footnote.label}
+                  <Badge variant="secondary" className="tabular-nums">
+                    € {formatCents(footnote.cents)}
+                  </Badge>
+                </p>
+              ))}
+            </div>
           </>
         )}
         {children}

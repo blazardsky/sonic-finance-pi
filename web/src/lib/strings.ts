@@ -135,6 +135,7 @@ export const t = {
   // The fixed target each of the three cards' progress bar is read against.
   ofEstimate: (amount: string) => `di € ${amount} stimati`,
   ofWhichTax: "di cui tasse",
+  ofWhichInvestments: "di cui investimenti",
   ofWhichExtra: "di cui extra",
   // The daily/weekly trend charts, by Category — the Dashboard reads the
   // rolling window, the Month page buckets the same daily rows into weeks
@@ -373,6 +374,11 @@ export const t = {
   startingBalanceNotSaved: "Saldo di partenza non salvato. Riprova.",
   portfolio: "Portafoglio",
   noHoldingsInPortfolio: "Nessun investimento in portafoglio.",
+  // A projection, not a promise (same spirit as the yearly Estimate,
+  // ADR-0010) — a flat 5%/year compounded on today's portfolio value, so the
+  // rate is named right where the number is, not buried in a tooltip.
+  estimatedIn20Years: (amount: string) =>
+    `Stima tra 20 anni al 5%/anno: € ${amount}`,
 
   // Settings — the two configured lists, and the password
   settings: "Impostazioni",

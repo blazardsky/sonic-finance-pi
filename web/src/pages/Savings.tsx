@@ -89,6 +89,19 @@ export function Savings() {
     setEditingBalance(false)
   }
 
+  // Today's portfolio value and a flat-5%/year projection of it — a
+  // projection, not a promise, same spirit as the yearly Estimate
+  // (ADR-0010). Derived from the holdings breakdown already on hand, not a
+  // second endpoint: the figure is a sum recharted client-side, nothing this
+  // page needs the server's help to compute.
+  const investmentsTotalCents = (savings?.holdings ?? []).reduce(
+    (sum, h) => sum + h.net_cents,
+    0
+  )
+  const estimatedIn20YearsCents = Math.round(
+    investmentsTotalCents * Math.pow(1.05, 20)
+  )
+
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6">
       <h1 className="font-medium">{t.savings}</h1>
@@ -110,6 +123,20 @@ export function Savings() {
             </p>
             <p className="text-sm text-muted-foreground tabular-nums">
               {t.savingsPlusPortfolio}: € {formatCents(savings?.combined_cents ?? 0)}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="min-w-56">
+          <CardHeader>
+            <CardTitle>{t.investments}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-1">
+            <p className="text-2xl font-medium tabular-nums">
+              € {formatCents(investmentsTotalCents)}
+            </p>
+            <p className="text-sm text-muted-foreground tabular-nums">
+              {t.estimatedIn20Years(formatCents(estimatedIn20YearsCents))}
             </p>
           </CardContent>
         </Card>

@@ -158,7 +158,11 @@ export function Month() {
                   figures use, rather than the plain label/value rows every
                   other card here still is — the totals get to look like the
                   answer the screen opens on. */}
-              <dl className="grid grid-cols-3 gap-3">
+              {/* auto-fit rather than a fixed 3 columns: the card shares its
+                  flex row, so between roughly 900 and 1100px three columns
+                  are narrower than a negative thousands amount needs and the
+                  figures overflow. Below 9rem a column they reflow instead. */}
+              <dl className="grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-3">
                 <Figure label={t.incomes} cents={totals.income_cents} />
                 <Figure label={t.expenses} cents={totals.expense_cents} />
                 <Figure label={t.difference} cents={totals.net_cents} />

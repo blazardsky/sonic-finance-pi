@@ -250,6 +250,9 @@ export type YearTotals = {
   net_cents: number
   // Received Income that is not work (neither Freelance nor Stipendio).
   extra_income_cents: number
+  // The Investments slice of expense_cents — still ordinary spend, just
+  // named separately (same relationship tax_paid_cents has to it).
+  investments_cents: number
   months: MonthRow[]
 }
 
