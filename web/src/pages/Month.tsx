@@ -165,7 +165,7 @@ export function Month() {
                   hence 19rem for two columns and 29rem for three (plus the
                   0.75rem gaps). Difference, last and alone on its row at two
                   columns, spans both rather than leaving a hole. */}
-              <dl className="grid grid-cols-1 gap-3 @min-[19rem]:grid-cols-2 @min-[19rem]:[&>:last-child]:col-span-2 @min-[29rem]:grid-cols-3 @min-[29rem]:[&>:last-child]:col-span-1">
+              <dl className="grid grid-cols-1 gap-3 @min-[19rem]:grid-cols-2 @min-[19rem]:*:last:col-span-2 @min-[29rem]:grid-cols-3 @min-[29rem]:*:last:col-span-1">
                 <Figure label={t.incomes} cents={totals.income_cents} />
                 <Figure label={t.expenses} cents={totals.expense_cents} />
                 <Figure label={t.difference} cents={totals.net_cents} />
@@ -249,7 +249,7 @@ export function Month() {
             most screen sizes — a bar chart wants the room a stat card doesn't
             need. */}
         {daily.length > 0 && (
-          <Card className="min-w-full flex-[2] lg:min-w-[32rem]">
+          <Card className="min-w-full flex-2 lg:min-w-lg">
             <CardHeader>
               <CardTitle>{t.weeklyTrend}</CardTitle>
             </CardHeader>

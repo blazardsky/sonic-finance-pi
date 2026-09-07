@@ -466,7 +466,7 @@ function UpcomingCard({
                 <span className="flex min-w-0 items-baseline gap-1.5">
                   <span
                     aria-hidden
-                    className="size-1.5 shrink-0 translate-y-[-1px] rounded-full"
+                    className="size-1.5 shrink-0 -translate-y-px rounded-full"
                     style={{ backgroundColor: categoryColor(r.category_id) }}
                   />
                   <span className="min-w-0">
