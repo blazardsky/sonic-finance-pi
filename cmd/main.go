@@ -37,6 +37,13 @@ func main() {
 		logClockUnset(time.Now)
 	}
 
-	log.Printf("listening on :8080 (schema version %d)", schemaVersion)
-	log.Fatal(http.ListenAndServe(":8080", newApp(db, time.Now)))
+	handler := newApp(db, time.Now)
+	certFile, keyFile := os.Getenv("TLS_CERT_FILE"), os.Getenv("TLS_KEY_FILE")
+	if certFile != "" && keyFile != "" {
+		log.Printf("listening on :8443 with TLS (schema version %d)", schemaVersion)
+		log.Fatal(http.ListenAndServeTLS(":8443", certFile, keyFile, handler))
+	} else {
+		log.Printf("listening on :8080 (schema version %d)", schemaVersion)
+		log.Fatal(http.ListenAndServe(":8080", handler))
+	}
 }
