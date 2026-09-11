@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -1030,5 +1031,109 @@ func TestItemDiscountedFlagRoundTripsAndDefaultsFalse(t *testing.T) {
 	}
 	if created.Items[0].PricePerUnit == nil || *created.Items[0].PricePerUnit != 250 {
 		t.Errorf("discounted must not change the derived price: got %v, want 250", created.Items[0].PricePerUnit)
+	}
+}
+
+// A bare GET must keep returning every Expense unfiltered — Investments.tsx
+// reads its whole buy/sell history off this same endpoint with no query
+// params at all, and a default that quietly capped or filtered it would
+// break that page without ever touching its own code.
+func TestListingExpensesWithNoParamsIsUnfiltered(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	a.addExpense(t, map[string]any{"occurred_on": "2020-01-01", "amount_cents": 100, "category_id": alimentari})
+	a.addExpense(t, map[string]any{"occurred_on": "2026-01-01", "amount_cents": 200, "category_id": alimentari})
+
+	got := a.expenses(t)
+	if len(got) != 2 {
+		t.Fatalf("len(expenses) = %d, want 2 — no params must mean no filtering", len(got))
+	}
+}
+
+func TestYearFiltersExpensesToThatYearOnly(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	a.addExpense(t, map[string]any{"occurred_on": "2025-06-01", "amount_cents": 100, "category_id": alimentari})
+	a.addExpense(t, map[string]any{"occurred_on": "2026-01-01", "amount_cents": 200, "category_id": alimentari})
+	a.addExpense(t, map[string]any{"occurred_on": "2026-12-31", "amount_cents": 300, "category_id": alimentari})
+
+	var got []expenseJSON
+	if res := a.get(t, "/api/expenses?year=2026", &got); res.StatusCode != http.StatusOK {
+		t.Fatalf("GET ?year=2026 = %d, want 200", res.StatusCode)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len(expenses) = %d, want 2 (only 2026)", len(got))
+	}
+	for _, e := range got {
+		if e.OccurredOn[:4] != "2026" {
+			t.Errorf("occurred_on = %q, want a 2026 date", e.OccurredOn)
+		}
+	}
+}
+
+func TestLimitCapsHowManyExpensesComeBack(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	for i := 1; i <= 5; i++ {
+		a.addExpense(t, map[string]any{
+			"occurred_on": fmt.Sprintf("2026-01-0%d", i), "amount_cents": 100, "category_id": alimentari,
+		})
+	}
+
+	var got []expenseJSON
+	if res := a.get(t, "/api/expenses?limit=3", &got); res.StatusCode != http.StatusOK {
+		t.Fatalf("GET ?limit=3 = %d, want 200", res.StatusCode)
+	}
+	if len(got) != 3 {
+		t.Fatalf("len(expenses) = %d, want 3", len(got))
+	}
+	// Newest first, same ordering the unfiltered list already uses.
+	if got[0].OccurredOn != "2026-01-05" {
+		t.Errorf("first row = %q, want the newest (2026-01-05)", got[0].OccurredOn)
+	}
+}
+
+func TestOffsetPagesPastAlreadySeenExpenses(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	for i := 1; i <= 5; i++ {
+		a.addExpense(t, map[string]any{
+			"occurred_on": fmt.Sprintf("2026-01-0%d", i), "amount_cents": 100, "category_id": alimentari,
+		})
+	}
+
+	var page1, page2 []expenseJSON
+	a.get(t, "/api/expenses?limit=2&offset=0", &page1)
+	a.get(t, "/api/expenses?limit=2&offset=2", &page2)
+
+	if len(page1) != 2 || len(page2) != 2 {
+		t.Fatalf("page1 = %d, page2 = %d, want 2 and 2", len(page1), len(page2))
+	}
+	for _, p1 := range page1 {
+		for _, p2 := range page2 {
+			if p1.ID == p2.ID {
+				t.Errorf("expense %d appears on both pages", p1.ID)
+			}
+		}
+	}
+}
+
+func TestAMalformedYearIsRefused(t *testing.T) {
+	a := newTestApp(t)
+	for _, year := range []string{"26", "20266", "abcd"} {
+		res := a.get(t, "/api/expenses?year="+year, nil)
+		if res.StatusCode != http.StatusBadRequest {
+			t.Errorf("year=%q: status = %d, want 400", year, res.StatusCode)
+		}
+	}
+}
+
+func TestAMalformedLimitOrOffsetIsRefused(t *testing.T) {
+	a := newTestApp(t)
+	for _, qs := range []string{"limit=0", "limit=-1", "limit=abc", "limit=5&offset=-1", "limit=5&offset=abc"} {
+		res := a.get(t, "/api/expenses?"+qs, nil)
+		if res.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400", qs, res.StatusCode)
+		}
 	}
 }

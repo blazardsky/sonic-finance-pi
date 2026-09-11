@@ -185,8 +185,14 @@ func migrateItems(tx *sql.Tx) error {
 // the add form, so what was just logged has to be the first thing on it. Ties
 // on the date fall back to the id, which is insertion order.
 //
-// ponytail: unpaginated. A household logs a few thousand a year and the
-// frontend has one screen; add a month filter when a report needs one.
+// Optional query params, all off by default (a bare GET still returns every
+// Expense unfiltered — Investments' own history read depends on that):
+// `year` (YYYY) scopes to one year, and `limit`/`offset` page through
+// whatever `year` (or the absence of it) already selected. The frontend uses
+// `limit` alone for its default "last 50" view and adds `year`+`offset` only
+// once a household actually pages into an older year — the ponytail this
+// replaces ("unpaginated... add a filter when a report needs one") named this
+// exact need.
 func handleListExpenses(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		items, err := itemsByExpense(db)
@@ -195,7 +201,41 @@ func handleListExpenses(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		rows, err := db.Query(expenseSelect + ` ORDER BY occurred_on DESC, id DESC`)
+		query := expenseSelect
+		var args []any
+		if year := r.URL.Query().Get("year"); year != "" {
+			if len(year) != 4 {
+				writeError(w, http.StatusBadRequest, fmt.Errorf("year must be 4 digits"))
+				return
+			}
+			if _, err := strconv.Atoi(year); err != nil {
+				writeError(w, http.StatusBadRequest, fmt.Errorf("year must be numeric"))
+				return
+			}
+			query += ` WHERE occurred_on LIKE ?`
+			args = append(args, year+"-%")
+		}
+		query += ` ORDER BY occurred_on DESC, id DESC`
+		if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+			limit, err := strconv.Atoi(limitStr)
+			if err != nil || limit <= 0 {
+				writeError(w, http.StatusBadRequest, fmt.Errorf("limit must be a positive integer"))
+				return
+			}
+			query += ` LIMIT ?`
+			args = append(args, limit)
+			if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+				offset, err := strconv.Atoi(offsetStr)
+				if err != nil || offset < 0 {
+					writeError(w, http.StatusBadRequest, fmt.Errorf("offset must be a non-negative integer"))
+					return
+				}
+				query += ` OFFSET ?`
+				args = append(args, offset)
+			}
+		}
+
+		rows, err := db.Query(query, args...)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
