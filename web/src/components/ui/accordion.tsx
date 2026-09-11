@@ -63,9 +63,20 @@ function AccordionContent({
       className="overflow-hidden text-sm data-open:animate-accordion-down data-closed:animate-accordion-up"
       {...props}
     >
+      {/* No height binding here: the open/close animation is entirely the
+          outer element's own doing (its data-open/data-closed keyframes
+          animate *its* height to the same CSS var, per Radix, with
+          fill-mode:none so it reverts to auto once settled). Binding this
+          inner div to the same var too — Radix's JS-measured snapshot,
+          taken when the accordion opens — used to also clamp it
+          permanently: correct for content that never changes size after
+          that, but a real Expense's Item list can grow while already open,
+          and the stale snapshot then clipped it against the outer's
+          overflow-hidden with no way to scroll to what got cut. Auto avoids
+          that entirely; the animation itself doesn't depend on it. */}
       <div
         className={cn(
-          "h-(--radix-accordion-content-height) pt-0 pb-2.5 [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground [&_p:not(:last-child)]:mb-4",
+          "pt-0 pb-2.5 [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground [&_p:not(:last-child)]:mb-4",
           className
         )}
       >
