@@ -89,6 +89,13 @@ type category struct {
 	// Freelance as before.
 	Freelance bool `json:"freelance"`
 
+	// Investments is Base narrowed the same way Gift and Freelance are, for
+	// the PAC badge (ticket 02, `PAC` in CONTEXT.md): a Recurring expense is a
+	// PAC only when its Category is specifically Investments, not any Base
+	// category with the same applies_to, and a renamed "Investimenti" is
+	// still exactly as much Investments as before.
+	Investments bool `json:"investments"`
+
 	code string
 }
 
@@ -277,17 +284,18 @@ func findCategory(w http.ResponseWriter, db *sql.DB, rawID string) (category, bo
 }
 
 // The one projection every read of a Category uses, and the scan that matches
-// it. `code` is reduced to the three booleans the API publishes — Base
-// (protected at all), Gift (protected as specifically the spoiler's Category)
-// and Freelance (the Income form's Fattura inviata field) — the code itself
-// stays an implementation detail of the reports that resolve by it.
+// it. `code` is reduced to the four booleans the API publishes — Base
+// (protected at all), Gift (protected as specifically the spoiler's Category),
+// Freelance (the Income form's Fattura inviata field), and Investments (the
+// PAC badge) — the code itself stays an implementation detail of the reports
+// that resolve by it.
 var categorySelect = fmt.Sprintf(
-	`SELECT id, name, applies_to, hidden, code IS NOT NULL, IFNULL(code, '') = '%s', IFNULL(code, '') = '%s' FROM category`,
-	codeGift, codeFreelance)
+	`SELECT id, name, applies_to, hidden, code IS NOT NULL, IFNULL(code, '') = '%s', IFNULL(code, '') = '%s', IFNULL(code, '') = '%s' FROM category`,
+	codeGift, codeFreelance, codeInvestments)
 
 func scanCategory(row interface{ Scan(...any) error }) (category, error) {
 	var c category
-	err := row.Scan(&c.ID, &c.Name, &c.AppliesTo, &c.Hidden, &c.Base, &c.Gift, &c.Freelance)
+	err := row.Scan(&c.ID, &c.Name, &c.AppliesTo, &c.Hidden, &c.Base, &c.Gift, &c.Freelance, &c.Investments)
 	return c, err
 }
 

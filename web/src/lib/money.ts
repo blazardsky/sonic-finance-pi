@@ -45,6 +45,32 @@ export function toTyped(cents: number): string {
   return `${Math.trunc(cents / 100)},${String(cents % 100).padStart(2, "0")}`
 }
 
+// toQuantity reads what was typed for an Item's Quantity (ticket 01) — the
+// same comma an Italian keypad offers, accepted the way toCents accepts it,
+// but with no cents-style scaling or digit cap: "0,5" is half a kilo. ""
+// (and anything not a positive number) is "no quantity", which is a valid
+// answer since the field is optional — that is why this returns null rather
+// than refusing, the way toCents does for an amount that must exist.
+export function toQuantity(typed: string): number | null {
+  const n = Number(typed.trim().replace(",", "."))
+  return typed.trim() !== "" && Number.isFinite(n) && n > 0 ? n : null
+}
+
+// quantityTyped is toQuantity backwards, for an Item being edited: null (no
+// quantity) becomes "", and a number becomes what the field would have been
+// typed as, comma decimal.
+export function quantityTyped(quantity: number | null): string {
+  return quantity == null ? "" : String(quantity).replace(".", ",")
+}
+
+// formatPricePerUnit renders an Item's server-computed price_per_unit — cents
+// per unit, ADR-0014 — as euros, comma decimal: the one place amount_cents
+// and Quantity meet is the server, so this only ever formats what it already
+// divided, never re-derives it from a draft still mid-typing.
+export function formatPricePerUnit(pricePerUnitCents: number): string {
+  return (pricePerUnitCents / 100).toFixed(2).replace(".", ",")
+}
+
 // formatDate turns the API's YYYY-MM-DD into the 01/09/2026 the household
 // reads. The parts are swapped rather than parsed into a Date, which would
 // drag a timezone into a value that has none.

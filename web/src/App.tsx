@@ -12,6 +12,7 @@ import { Month } from "@/pages/Month"
 import { RecurringExpenses } from "@/pages/RecurringExpenses"
 import { Savings } from "@/pages/Savings"
 import { Settings } from "@/pages/Settings"
+import { Tracker } from "@/pages/Tracker"
 import { Year } from "@/pages/Year"
 import { YearlyReport } from "@/pages/YearlyReport"
 import { AppSidebar } from "@/components/app-sidebar"
@@ -43,6 +44,7 @@ export type Screen =
   | "categories"
   | "clients"
   | "holdings"
+  | "tracker"
   | "settings"
 
 export function App() {
@@ -157,6 +159,7 @@ export function App() {
             {screen === "categories" && <Categories />}
             {screen === "clients" && <Clients />}
             {screen === "holdings" && <Holdings />}
+            {screen === "tracker" && <Tracker />}
             {screen === "settings" && <Settings />}
           </main>
         </div>

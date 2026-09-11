@@ -18,6 +18,9 @@ export type Category = {
   // Income form reads to decide whether Fattura inviata belongs on screen,
   // without matching on its (renameable) name.
   freelance: boolean
+  // Base narrowed the same way, to the Investments category — the one the
+  // PAC badge reads, without matching on its (renameable) name.
+  investments: boolean
 }
 
 // Who money comes from, as one row rather than three spellings. Not a
@@ -85,6 +88,17 @@ export type Item = {
   name: string
   amount_cents: number
   category_id: number
+  // Ticket 01: how much was bought and the unit it was bought in, both null/""
+  // together or neither (server-enforced) — "" is Unit's absence, since it is
+  // picked from a fixed list (kg/lt/piece) rather than free text.
+  quantity: number | null
+  unit: string
+  // Purely informational (ADR-0014): never affects amount_cents or
+  // price_per_unit.
+  discounted: boolean
+  // Derived server-side from amount_cents and quantity (ADR-0014), in cents
+  // per unit — never sent back on write, and null whenever quantity is.
+  price_per_unit: number | null
 }
 
 // The two short configured lists the Expense form picks from, plus Target and
@@ -445,4 +459,35 @@ export type OutstandingIncome = {
 export type NotYetInvoicedClient = {
   client_id: number
   client: string
+}
+
+// One Store's figures for one (name, category) group in the Tracker
+// (cmd/tracker.go): last price is the most recently occurred Expense's, plus
+// the min/max ever seen there. Cents, but not always whole — an Item bought
+// with a quantity is priced per unit (amount_cents ÷ quantity), so this can
+// carry a fraction of a cent.
+export type TrackerStorePrice = {
+  store: string
+  last_price: number
+  last_occurred_on: string
+  min_price: number
+  max_price: number
+}
+
+// One calendar year's average price for a Tracker group, across every Store
+// folded together — unlike TrackerStorePrice, which is scoped to one.
+export type TrackerYearlyPrice = {
+  year: number
+  average_price: number
+}
+
+// One (normalized name, Category) group GET /api/tracker answers with: how
+// much the same Item has cost over time and where it was cheaper. name is
+// already normalized (trimmed/lowercased) server-side for this endpoint only
+// — never re-normalize it here.
+export type TrackerItem = {
+  name: string
+  category_id: number
+  stores: TrackerStorePrice[]
+  yearly_average: TrackerYearlyPrice[]
 }

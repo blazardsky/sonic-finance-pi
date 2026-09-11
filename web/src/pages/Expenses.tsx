@@ -9,6 +9,14 @@ import {
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,15 +41,106 @@ import { DatePicker } from "@/components/date-picker"
 import { FormSidebar } from "@/components/form-sidebar"
 import { SpoilerAmount } from "@/components/SpoilerAmount"
 import { toast } from "@/lib/toast"
-import { formatCents, formatDate, toCents, today, toTyped } from "@/lib/money"
+import { useDebouncedValue } from "@/hooks/use-debounce"
+import {
+  formatCents,
+  formatPricePerUnit,
+  formatDate,
+  quantityTyped,
+  toCents,
+  toQuantity,
+  today,
+  toTyped,
+} from "@/lib/money"
 import { isGiftCategory, nameOf, pickableCategories, withSaved } from "@/lib/pickers"
 import { t } from "@/lib/strings"
 import type { Category, Expense, Lists } from "@/types"
+
+// A free-text field that suggests from the household's own history as it
+// types (ticket 03's /api/items/suggest and /api/stores/suggest) — a
+// Combobox with no fixed list of its own: `items` is whatever the last
+// request answered, `inputValue` is the field's own typed text rather than a
+// selected option, so picking a suggestion or typing past it are the same
+// kind of edit. `filter={() => true}` turns off the primitive's own
+// client-side filtering, because the server already ranked what it returned.
+function SuggestField({
+  id,
+  value,
+  onValueChange,
+  suggestPath,
+  placeholder,
+  className,
+}: {
+  id?: string
+  value: string
+  onValueChange: (v: string) => void
+  suggestPath: string
+  placeholder?: string
+  className?: string
+}) {
+  const debounced = useDebouncedValue(value, 250)
+  const [suggestions, setSuggestions] = useState<string[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    const q = debounced.trim()
+    // Empty stays a resolved [] rather than an early return, so every branch
+    // here sets state from a .then rather than synchronously in the effect
+    // body.
+    const suggested =
+      q === ""
+        ? Promise.resolve<string[]>([])
+        : apiJSON<string[]>(`${suggestPath}?q=${encodeURIComponent(q)}`).catch(
+            () => []
+          )
+    suggested.then((names) => {
+      if (!cancelled) setSuggestions(names)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [debounced, suggestPath])
+
+  return (
+    <Combobox
+      items={suggestions}
+      inputValue={value}
+      onInputValueChange={onValueChange}
+      filter={() => true}
+    >
+      <ComboboxInput
+        id={id}
+        placeholder={placeholder}
+        showTrigger={false}
+        className={className}
+      />
+      <ComboboxContent>
+        <ComboboxList>
+          {(name: string) => (
+            <ComboboxItem key={name} value={name}>
+              {name}
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
+  )
+}
+
+// The label an Item's unit picks from renders as — Select needs the fixed
+// list's own words, kept together with the rest of this vocabulary in
+// lib/strings rather than spelled out again here.
+const unitLabel = (unit: string) =>
+  unit === "kg" ? t.itemUnitKg : unit === "lt" ? t.itemUnitLt : unit === "piece" ? t.itemUnitPiece : ""
 
 // What the payment-method Select needs that a plain string can't say: "no
 // method chosen" — Radix Select refuses an empty-string item value, so the
 // unset state gets its own sentinel, mapped back to "" on the way out.
 const NO_PAYMENT_METHOD = "__none__"
+
+// Same bargain, for an Item's unit Select: "no unit chosen" needs a value
+// Radix Select will accept, since "" is reserved for a real item.
+const NO_UNIT = "__none__"
 
 // What the form holds: the amount as it was typed, and everything else as the
 // API's own field names, so submitting is one spread rather than a mapping.
@@ -67,9 +166,21 @@ type ItemDraft = {
   name: string
   amount: string
   category_id: number | ""
+  // Ticket 01: as typed, like amount — "" is "not set" for all three, since
+  // quantity and unit are optional and discounted defaults to false.
+  quantity: string
+  unit: string
+  discounted: boolean
 }
 
-const blankItem = (): ItemDraft => ({ name: "", amount: "", category_id: "" })
+const blankItem = (): ItemDraft => ({
+  name: "",
+  amount: "",
+  category_id: "",
+  quantity: "",
+  unit: "",
+  discounted: false,
+})
 
 const blankDraft = (): Draft => ({
   amount: "",
@@ -99,6 +210,9 @@ const draftOf = (e: Expense): Draft => ({
     name: it.name,
     amount: toTyped(it.amount_cents),
     category_id: it.category_id,
+    quantity: quantityTyped(it.quantity),
+    unit: it.unit,
+    discounted: it.discounted,
   })),
 })
 
@@ -210,17 +324,32 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
     const filled = draft.items.filter(
       (it) => it.name.trim() !== "" || it.amount !== "" || it.category_id !== ""
     )
-    const items = filled.map((it) => ({
-      name: it.name.trim(),
-      amount_cents: toCents(it.amount) ?? 0,
-      category_id: it.category_id,
-    }))
+    const items = filled.map((it) => {
+      const quantity = toQuantity(it.quantity)
+      return {
+        name: it.name.trim(),
+        amount_cents: toCents(it.amount) ?? 0,
+        category_id: it.category_id,
+        // A unit typed against a quantity that failed to parse is not a real
+        // pair either, so it is dropped along with it rather than sent alone.
+        quantity,
+        unit: quantity === null ? "" : it.unit,
+        discounted: it.discounted,
+      }
+    })
     if (
       items.some(
         (it) => !it.name || it.amount_cents <= 0 || it.category_id === ""
       )
     ) {
       setError(t.invalidItem)
+      return
+    }
+    // Ticket 01: quantity and unit are a pair, the same rule the server
+    // enforces — checked here too so the household gets it in Italian rather
+    // than as a bare failed save.
+    if (items.some((it) => (it.quantity === null) !== (it.unit === ""))) {
+      setError(t.invalidItemQuantityUnit)
       return
     }
     // The server refuses this too, and in English: checking here is what gets
@@ -316,13 +445,6 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
   // claim. Shown rather than enforced-by-arithmetic, because the total is the
   // authoritative number and this is derived from it — never the reverse.
   const remainder = (toCents(draft.amount) ?? 0) - itemsCents(draft.items)
-
-  // The Store suggestions are the Stores already used, which the list on this
-  // screen already carries — no endpoint and no list to maintain, which is the
-  // whole point of Store being free text.
-  const stores = [
-    ...new Set(expenses?.map((e) => e.store).filter(Boolean)),
-  ].sort()
 
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
@@ -589,20 +711,13 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                 <AccordionContent className="flex flex-col gap-3">
                   <Field>
                     <FieldLabel htmlFor="store">{t.store}</FieldLabel>
-                    {/* A native datalist: free text that suggests what has been
-                        typed before, without becoming a list to maintain. */}
-                    <Input
+                    <SuggestField
                       id="store"
-                      list="stores"
                       value={draft.store}
-                      onChange={(e) => set("store", e.target.value)}
+                      onValueChange={(v) => set("store", v)}
+                      suggestPath="/api/stores/suggest"
                       className="h-10"
                     />
-                    <datalist id="stores">
-                      {stores.map((s) => (
-                        <option key={s} value={s} />
-                      ))}
-                    </datalist>
                   </Field>
 
                   <div className="flex gap-2">
@@ -674,56 +789,120 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                       still keeps. */}
                   <div className="flex flex-col gap-2">
                     <span className="text-sm">{t.items}</span>
-                    {draft.items.map((it, i) => (
-                      <div key={i} className="flex items-end gap-2">
-                        <Input
-                          value={it.name}
-                          onChange={(e) => setItem(i, { name: e.target.value })}
-                          placeholder={t.itemName}
-                          aria-label={t.itemName}
-                          className="h-10 flex-1"
-                        />
-                        <Input
-                          type="text"
-                          inputMode="decimal"
-                          value={it.amount}
-                          onChange={(e) => setItem(i, { amount: e.target.value })}
-                          placeholder="0,00"
-                          aria-label={t.amount}
-                          className="h-10 w-20"
-                        />
-                        <Select
-                          value={it.category_id === "" ? undefined : String(it.category_id)}
-                          onValueChange={(v) => setItem(i, { category_id: Number(v) })}
+                    {draft.items.map((it, i) => {
+                      // Live, client-side only: the same division the server
+                      // does (ADR-0014), read back off the draft as it is
+                      // typed, purely for feedback — quantity/unit are all
+                      // that is ever sent back.
+                      const quantity = toQuantity(it.quantity)
+                      const cents = toCents(it.amount)
+                      const pricePerUnit =
+                        quantity !== null && cents !== null && cents > 0
+                          ? cents / quantity
+                          : null
+                      return (
+                        <div
+                          key={i}
+                          className="flex flex-col gap-2 rounded-lg border border-input/50 p-2"
                         >
-                          <SelectTrigger aria-label={t.category} className="h-10 flex-1">
-                            <SelectValue placeholder={t.chooseCategory} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {pickable(it.category_id).map((c) => (
-                              <SelectItem key={c.id} value={String(c.id)}>
-                                {c.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          aria-label={t.removeItem}
-                          className="size-10 shrink-0 text-lg"
-                          onClick={() =>
-                            set(
-                              "items",
-                              draft.items.filter((_, j) => j !== i)
-                            )
-                          }
-                        >
-                          ×
-                        </Button>
-                      </div>
-                    ))}
+                          <div className="flex items-end gap-2">
+                            <SuggestField
+                              value={it.name}
+                              onValueChange={(v) => setItem(i, { name: v })}
+                              suggestPath="/api/items/suggest"
+                              placeholder={t.itemName}
+                              className="h-10 flex-1"
+                            />
+                            <Input
+                              type="text"
+                              inputMode="decimal"
+                              value={it.amount}
+                              onChange={(e) => setItem(i, { amount: e.target.value })}
+                              placeholder="0,00"
+                              aria-label={t.amount}
+                              className="h-10 w-20"
+                            />
+                            <Select
+                              value={it.category_id === "" ? undefined : String(it.category_id)}
+                              onValueChange={(v) => setItem(i, { category_id: Number(v) })}
+                            >
+                              <SelectTrigger aria-label={t.category} className="h-10 flex-1">
+                                <SelectValue placeholder={t.chooseCategory} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {pickable(it.category_id).map((c) => (
+                                  <SelectItem key={c.id} value={String(c.id)}>
+                                    {c.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              aria-label={t.removeItem}
+                              className="size-10 shrink-0 text-lg"
+                              onClick={() =>
+                                set(
+                                  "items",
+                                  draft.items.filter((_, j) => j !== i)
+                                )
+                              }
+                            >
+                              ×
+                            </Button>
+                          </div>
+                          {/* Ticket 01: optional quantity/unit, discounted, and
+                              the price per unit they imply — read-only,
+                              recomputed above as either changes. */}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Input
+                              type="text"
+                              inputMode="decimal"
+                              value={it.quantity}
+                              onChange={(e) => setItem(i, { quantity: e.target.value })}
+                              placeholder={t.itemQuantity}
+                              aria-label={t.itemQuantity}
+                              className="h-9 w-20"
+                            />
+                            <Select
+                              value={it.unit || NO_UNIT}
+                              onValueChange={(v) =>
+                                setItem(i, { unit: v === NO_UNIT ? "" : v })
+                              }
+                            >
+                              <SelectTrigger aria-label={t.itemUnit} className="h-9 w-24">
+                                <SelectValue placeholder={t.itemUnit} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={NO_UNIT}>{t.notSet}</SelectItem>
+                                <SelectItem value="kg">{t.itemUnitKg}</SelectItem>
+                                <SelectItem value="lt">{t.itemUnitLt}</SelectItem>
+                                <SelectItem value="piece">{t.itemUnitPiece}</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FieldLabel className="flex w-fit items-center gap-1.5 text-xs font-normal">
+                              <Checkbox
+                                checked={it.discounted}
+                                onCheckedChange={(v) =>
+                                  setItem(i, { discounted: v === true })
+                                }
+                              />
+                              {t.itemDiscounted}
+                            </FieldLabel>
+                            {pricePerUnit !== null && (
+                              <span className="text-xs text-muted-foreground">
+                                {t.pricePerUnit(
+                                  formatPricePerUnit(pricePerUnit),
+                                  unitLabel(it.unit)
+                                )}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
                     <Button
                       type="button"
                       variant="outline"

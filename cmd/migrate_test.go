@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"path/filepath"
 	"testing"
 )
@@ -169,6 +170,59 @@ func TestGiftContractsRemindersMigrationAddsTablesAndColumns(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO contract (client_id, start_month, end_month, total_cents)
 		VALUES (?, '2026-12', '2026-01', 120000)`, clientID); err == nil {
 		t.Error("a contract with end_month before start_month was accepted, want the CHECK constraint to refuse it")
+	}
+}
+
+// Schema step 12 (ticket 01): item gains quantity/unit/discounted. An
+// existing Item — meaning any row saved before this ran, which on a fresh
+// database is any row inserted without the three new columns — reads back
+// with quantity/unit NULL and discounted false, and the unit CHECK refuses
+// anything outside the fixed list.
+func TestItemPricingMigrationAddsColumnsWithSafeDefaults(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "item-pricing.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	var categoryID int64
+	if err := db.QueryRow(`SELECT id FROM category LIMIT 1`).Scan(&categoryID); err != nil {
+		t.Fatal(err)
+	}
+	res, err := db.Exec(`INSERT INTO expense (occurred_on, amount_cents, category_id, created_at)
+		VALUES ('2026-03-15', 1000, ?, '2026-03-15T00:00:00Z')`, categoryID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expenseID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// An Item written the old way, naming none of the three new columns.
+	if _, err := db.Exec(`INSERT INTO item (expense_id, name, amount_cents, category_id)
+		VALUES (?, 'Pane', 200, ?)`, expenseID, categoryID); err != nil {
+		t.Fatalf("item insert without the new columns failed: %v", err)
+	}
+
+	var quantity sql.NullFloat64
+	var unit sql.NullString
+	var discounted int
+	if err := db.QueryRow(`SELECT quantity, unit, discounted FROM item WHERE expense_id = ?`, expenseID).
+		Scan(&quantity, &unit, &discounted); err != nil {
+		t.Fatalf("item.quantity/unit/discounted missing or wrong shape: %v", err)
+	}
+	if quantity.Valid || unit.Valid || discounted != 0 {
+		t.Errorf("existing item read as quantity=%v unit=%v discounted=%d, want NULL, NULL, 0", quantity, unit, discounted)
+	}
+
+	if _, err := db.Exec(`INSERT INTO item (expense_id, name, amount_cents, category_id, quantity, unit)
+		VALUES (?, 'Bad', 100, ?, 1, 'grams')`, expenseID, categoryID); err == nil {
+		t.Error("an out-of-list unit was accepted, want the CHECK constraint to refuse it")
+	}
+	if _, err := db.Exec(`INSERT INTO item (expense_id, name, amount_cents, category_id, quantity, unit)
+		VALUES (?, 'Bad', 100, ?, -1, 'kg')`, expenseID, categoryID); err == nil {
+		t.Error("a non-positive quantity was accepted, want the CHECK constraint to refuse it")
 	}
 }
 

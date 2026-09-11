@@ -32,10 +32,19 @@ type expenseJSON struct {
 
 // An Item as the API hands it out. It carries no id: nothing addresses an Item
 // on its own, so what a request sends is exactly what a later one reads back.
+//
+// Ticket 01: Quantity/Unit are the optional pair, PricePerUnit is the derived,
+// read-only figure computed from them (ADR-0014), and Discounted is the
+// purely informational flag.
 type itemJSON struct {
-	Name        string `json:"name"`
-	AmountCents int64  `json:"amount_cents"`
-	CategoryID  int64  `json:"category_id"`
+	Name        string   `json:"name"`
+	AmountCents int64    `json:"amount_cents"`
+	CategoryID  int64    `json:"category_id"`
+	Quantity    *float64 `json:"quantity"`
+	Unit        string   `json:"unit"`
+	Discounted  bool     `json:"discounted"`
+
+	PricePerUnit *float64 `json:"price_per_unit"`
 }
 
 // expensePath addresses one Expense the way the API does.
@@ -897,5 +906,129 @@ func TestAHoldingIDCanBeSetChangedAndClearedByPatch(t *testing.T) {
 	a.patch(t, expensePath(logged.ID), map[string]any{"holding_id": nil}, &got)
 	if got.HoldingID != nil {
 		t.Errorf("holding_id after clearing it = %v, want nil", got.HoldingID)
+	}
+}
+
+// ptr is a float64 literal address, for building an itemJSON's optional
+// Quantity in table-driven cases without a named variable per case.
+func ptr(f float64) *float64 { return &f }
+
+// Ticket 01: quantity and unit are a pair. Either alone is meaningless — a
+// quantity with no unit does not say what it counts, and a unit with no
+// quantity has nothing to divide by — so both present or both absent is the
+// only shape accepted.
+func TestItemQuantityAndUnitMustBothBePresentOrBothAbsent(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	svago := a.category(t, "Svago").ID
+
+	item := func(over map[string]any) map[string]any {
+		it := map[string]any{"name": "Mele", "amount_cents": 500, "category_id": svago}
+		for k, v := range over {
+			it[k] = v
+		}
+		return map[string]any{
+			"occurred_on": "2026-03-15", "amount_cents": 6200, "category_id": alimentari,
+			"items": []map[string]any{it},
+		}
+	}
+
+	cases := map[string]any{
+		"a quantity with no unit": item(map[string]any{"quantity": 1.5}),
+		"a unit with no quantity": item(map[string]any{"unit": "kg"}),
+		"an invalid unit":         item(map[string]any{"quantity": 1.5, "unit": "grams"}),
+		"a zero quantity":         item(map[string]any{"quantity": 0, "unit": "kg"}),
+		"a negative quantity":     item(map[string]any{"quantity": -1, "unit": "kg"}),
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			if res := a.post(t, "/api/expenses", body, nil); res.StatusCode != http.StatusBadRequest {
+				t.Errorf("posting an item with %s = %d, want 400", name, res.StatusCode)
+			}
+		})
+	}
+
+	if got := a.expenses(t); len(got) != 0 {
+		t.Errorf("%d refused Expenses were saved anyway: %+v", len(got), got)
+	}
+}
+
+// The whole ticket: a price per unit is derived from what was actually paid,
+// never stored, and never trusted from a request — ADR-0014. A request that
+// tries to set price_per_unit directly has it silently overwritten with the
+// real computation instead of being saved as sent.
+func TestItemPricePerUnitIsComputedAndReadOnly(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	svago := a.category(t, "Svago").ID
+
+	created := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 6200, "category_id": alimentari,
+		"items": []map[string]any{{
+			"name": "Mele", "amount_cents": 500, "category_id": svago,
+			"quantity": 2.0, "unit": "kg",
+			"price_per_unit": 999999, // a lie the server must not repeat back
+		}},
+	})
+
+	if len(created.Items) != 1 {
+		t.Fatalf("items = %+v, want 1", created.Items)
+	}
+	it := created.Items[0]
+	if it.Quantity == nil || *it.Quantity != 2.0 || it.Unit != "kg" {
+		t.Fatalf("item = %+v, want quantity 2.0 kg", it)
+	}
+	if it.PricePerUnit == nil || *it.PricePerUnit != 250 {
+		t.Fatalf("price_per_unit = %v, want 250 (500 cents / 2kg)", it.PricePerUnit)
+	}
+
+	got := a.expenses(t)
+	if len(got) != 1 || len(got[0].Items) != 1 {
+		t.Fatalf("listed = %+v, want the one Item back", got)
+	}
+	if listed := got[0].Items[0]; listed.PricePerUnit == nil || *listed.PricePerUnit != 250 {
+		t.Errorf("listed price_per_unit = %v, want 250", listed.PricePerUnit)
+	}
+}
+
+// An Item without a quantity has nothing to divide by, so it carries no
+// price_per_unit at all — nil, not zero.
+func TestItemPricePerUnitIsNilWithoutAQuantity(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	svago := a.category(t, "Svago").ID
+
+	created := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 6200, "category_id": alimentari,
+		"items": []map[string]any{{"name": "Libro", "amount_cents": 1400, "category_id": svago}},
+	})
+	if created.Items[0].PricePerUnit != nil {
+		t.Errorf("price_per_unit = %v, want nil without a quantity", *created.Items[0].PricePerUnit)
+	}
+}
+
+// Discounted is purely informational (ADR-0014): it defaults to false, and
+// round-trips as sent without touching amount, quantity, or the derived price.
+func TestItemDiscountedFlagRoundTripsAndDefaultsFalse(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	svago := a.category(t, "Svago").ID
+
+	created := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 6200, "category_id": alimentari,
+		"items": []map[string]any{
+			{"name": "Mele", "amount_cents": 500, "category_id": svago, "quantity": 2.0, "unit": "kg", "discounted": true},
+			{"name": "Libro", "amount_cents": 1400, "category_id": svago},
+		},
+	})
+
+	if !created.Items[0].Discounted {
+		t.Errorf("discounted = %v, want true — it was sent that way", created.Items[0].Discounted)
+	}
+	if created.Items[1].Discounted {
+		t.Errorf("discounted = %v, want false by default", created.Items[1].Discounted)
+	}
+	if created.Items[0].PricePerUnit == nil || *created.Items[0].PricePerUnit != 250 {
+		t.Errorf("discounted must not change the derived price: got %v, want 250", created.Items[0].PricePerUnit)
 	}
 }

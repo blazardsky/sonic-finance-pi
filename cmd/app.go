@@ -43,6 +43,9 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 	mux.HandleFunc("PATCH /api/expenses/{id}", handlePatchExpense(db))
 	mux.HandleFunc("DELETE /api/expenses/{id}", handleDeleteExpense(db))
 
+	mux.HandleFunc("GET /api/items/suggest", handleSuggestItemNames(db))
+	mux.HandleFunc("GET /api/stores/suggest", handleSuggestStores(db))
+
 	mux.HandleFunc("GET /api/incomes", handleListIncomes(db))
 	mux.HandleFunc("POST /api/incomes", handleCreateIncome(db, now))
 	mux.HandleFunc("PATCH /api/incomes/{id}", handlePatchIncome(db))
@@ -68,6 +71,7 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 	mux.HandleFunc("GET "+budgetPath, handleBudgetReport(db, now))
 	mux.HandleFunc("GET "+savingsPath, handleSavingsReport(db, now))
 	mux.HandleFunc("GET /api/pending-payments", handlePendingPayments(db, now))
+	mux.HandleFunc("GET /api/tracker", handleTracker(db))
 
 	mux.HandleFunc("GET /api/reminders", handleListReminders(db, now))
 	mux.HandleFunc("POST /api/reminders", handleCreateReminder(db))

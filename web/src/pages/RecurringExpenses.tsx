@@ -304,14 +304,22 @@ export function RecurringExpenses() {
     categories.find((c) => c.id === draft.category_id)
   )
 
+  // Whether a category_id names the Investments Base category specifically —
+  // Gift is also a Base category with applies_to "both", so that pair alone
+  // can't tell them apart; `investments` is published by the API for exactly
+  // this, the same way `gift`/`freelance` are (categories.go).
+  const categoryIsInvestments = (categoryId: number | "") =>
+    categories.some((c) => c.id === categoryId && c.investments)
+
   // Whether the Holding picker belongs on screen: only for a recurring
   // investment (PAC), the same way Expenses.tsx gates the Tax year field on
-  // isTaxExpense. Investments is the only Base category applying to both
-  // sides — Savings.tsx resolves it the same way, since `code` itself is not
-  // published.
-  const isInvestmentRecurring = categories.some(
-    (c) => c.id === draft.category_id && c.base && c.applies_to === "both"
-  )
+  // isTaxExpense.
+  const isInvestmentRecurring = categoryIsInvestments(draft.category_id)
+
+  // A PAC (CONTEXT.md glossary): Investments category AND a Holding, both
+  // required — read off the row itself rather than the open form's draft.
+  const isPAC = (r: Recurring) =>
+    r.holding_id !== null && categoryIsInvestments(r.category_id)
 
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
@@ -360,9 +368,20 @@ export function RecurringExpenses() {
                   <TableCell>
                     {/* The window, the day and the rest move to Dettagli
                         below — this is just running or not. */}
-                    <Badge variant={running(r) ? "secondary" : "outline"}>
-                      {running(r) ? t.ongoing : t.endedIn(formatMonth(r.end_month))}
-                    </Badge>
+                    <div className="flex flex-wrap gap-1">
+                      <Badge variant={running(r) ? "secondary" : "outline"}>
+                        {running(r) ? t.ongoing : t.endedIn(formatMonth(r.end_month))}
+                      </Badge>
+                      <Badge
+                        className={
+                          isPAC(r)
+                            ? "bg-green-500/10 text-green-600 dark:text-green-400"
+                            : "bg-orange-500/10 text-orange-600 dark:text-orange-400"
+                        }
+                      >
+                        {isPAC(r) ? t.pacBadge : t.expenseBadge}
+                      </Badge>
+                    </div>
                   </TableCell>
                   <TableCell className="hidden truncate text-xs text-muted-foreground md:table-cell">
                     {r.note}

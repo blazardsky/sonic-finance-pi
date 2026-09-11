@@ -7,6 +7,7 @@ import {
   RiFileList3Line,
   RiPieChartLine,
   RiPriceTag3Line,
+  RiLineChartLine,
   RiRepeatLine,
   RiSettings3Line,
   RiShoppingBag3Line,
@@ -46,13 +47,16 @@ const icons: Record<Screen, typeof RiDashboardLine> = {
   categories: RiPriceTag3Line,
   clients: RiTeamLine,
   holdings: RiFileList3Line,
+  tracker: RiLineChartLine,
   settings: RiSettings3Line,
 }
 
-// Three groups, the same altitude the screens are already ordered at: where
-// things stand, what gets typed, what gets managed. Risparmi is a read-only
-// recap (no entries besides the starting balance), so it sits with Overview
-// rather than Entries.
+// The first three groups sit at the same altitude the screens are already
+// ordered at: where things stand, what gets typed, what gets managed.
+// Risparmi is a read-only recap (no entries besides the starting balance), so
+// it sits with Overview rather than Entries. Tracker is its own fourth group
+// of one screen — a cross-cutting view over Items, not a fit for any of the
+// three (ticket 06).
 const groups: { label: string; screens: Screen[] }[] = [
   {
     label: t.navOverview,
@@ -65,6 +69,10 @@ const groups: { label: string; screens: Screen[] }[] = [
   {
     label: t.navManagement,
     screens: ["categories", "clients", "holdings", "settings"],
+  },
+  {
+    label: t.tracker,
+    screens: ["tracker"],
   },
 ]
 

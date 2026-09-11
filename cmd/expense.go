@@ -59,6 +59,14 @@ type expense struct {
 	HoldingID *int64 `json:"holding_id"`
 }
 
+// The fixed list a quantity's unit is picked from, the same one-of-a-fixed-
+// list bargain a Holding's type makes (ticket 01).
+const (
+	itemUnitKg    = "kg"
+	itemUnitLt    = "lt"
+	itemUnitPiece = "piece"
+)
+
 // An item is a part of an Expense that belongs under a different Category — a
 // book bought during the grocery shop. Items are optional and partial: they
 // never have to account for the whole Expense, and whatever they do not cover
@@ -72,6 +80,60 @@ type item struct {
 	Name        string `json:"name"`
 	AmountCents int64  `json:"amount_cents"`
 	CategoryID  int64  `json:"category_id"`
+
+	// Ticket 01: how much of the Item was bought, and the unit it was bought
+	// in — both present or both absent, refused otherwise (validate). Quantity
+	// is a pointer because 0 is not "no quantity", the same reason HoldingID
+	// is one; Unit is a plain string with "" as its absence, since it is
+	// picked from a fixed list rather than a foreign key. Nil/"" is what every
+	// Item saved before this ticket now reads as.
+	Quantity *float64 `json:"quantity"`
+	Unit     string   `json:"unit"`
+
+	// Purely informational — ADR-0014. Defaults to false and never affects
+	// AmountCents or PricePerUnit.
+	Discounted bool `json:"discounted"`
+
+	// The derived price per unit (ADR-0014): computed from AmountCents and
+	// Quantity wherever an Item is read, nil whenever Quantity is nil, and
+	// never stored. A request's own price_per_unit is never trusted —
+	// computePricePerUnit overwrites it unconditionally, the same bargain
+	// TotalEarnedCents makes on a Client.
+	PricePerUnit *float64 `json:"price_per_unit"`
+}
+
+// computePricePerUnit fills PricePerUnit from AmountCents and Quantity. It is
+// called after validate has already refused a Quantity/Unit mismatch, so it
+// never has to guess what an inconsistent pair means — and it is called on
+// every read, so what a request sent for price_per_unit never matters.
+func (it *item) computePricePerUnit() {
+	if it.Quantity == nil {
+		it.PricePerUnit = nil
+		return
+	}
+	ppu := float64(it.AmountCents) / *it.Quantity
+	it.PricePerUnit = &ppu
+}
+
+// migrateItemPricing is schema step 12 (ticket 01): item gains an optional
+// quantity/unit pair and a purely informational discounted flag. No column
+// gets a value that invents information nobody typed — quantity and unit stay
+// NULL and discounted defaults to false, so every Item saved before this ran
+// reads exactly as an ordinary one still does.
+//
+// No CHECK ties quantity to unit, the same reason migrateItems has no CHECK
+// against the Expense's total: a row constraint cannot see its own pair
+// meaningfully either way round, so that rule is enforced on the way in, in
+// validate, where a refusal can say what was wrong.
+func migrateItemPricing(tx *sql.Tx) error {
+	if _, err := tx.Exec(`ALTER TABLE item ADD COLUMN quantity REAL CHECK (quantity IS NULL OR quantity > 0)`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`ALTER TABLE item ADD COLUMN unit TEXT CHECK (unit IS NULL OR unit IN ('kg', 'lt', 'piece'))`); err != nil {
+		return err
+	}
+	_, err := tx.Exec(`ALTER TABLE item ADD COLUMN discounted INTEGER NOT NULL DEFAULT 0 CHECK (discounted IN (0, 1))`)
+	return err
 }
 
 // migrateExpenses is schema step 2. It created more columns than ticket 05
@@ -197,6 +259,10 @@ func handleCreateExpense(db *sql.DB, now func() time.Time) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
+		if err := syncStoreFTS(tx, e.Store); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
 		if err := insertItems(tx, e.ID, e.Items); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -277,6 +343,27 @@ func (e *expense) validate() error {
 		if it.AmountCents <= 0 {
 			return fmt.Errorf("the item %q needs an amount above zero", it.Name)
 		}
+		// Ticket 01: quantity and unit are a pair — a quantity with no unit
+		// does not say what it counts, and a unit with no quantity has
+		// nothing to divide by — so both present or both absent is the only
+		// shape accepted.
+		if (it.Quantity == nil) != (it.Unit == "") {
+			return fmt.Errorf("the item %q needs both a quantity and a unit, or neither", it.Name)
+		}
+		if it.Quantity != nil {
+			if *it.Quantity <= 0 {
+				return fmt.Errorf("the item %q needs a quantity above zero", it.Name)
+			}
+			switch it.Unit {
+			case itemUnitKg, itemUnitLt, itemUnitPiece:
+			default:
+				return fmt.Errorf("the item %q has a unit that must be kg, lt or piece", it.Name)
+			}
+		}
+		// Computed here, after the pair above is known consistent, and
+		// unconditionally: whatever a request sent for price_per_unit is
+		// replaced rather than trusted.
+		it.computePricePerUnit()
 		// Compared inside the loop, so covered never runs past one item's
 		// amount above the total and an int64 has no chance to overflow.
 		if covered += it.AmountCents; covered > e.AmountCents {
@@ -344,6 +431,10 @@ func handlePatchExpense(db *sql.DB) http.HandlerFunc {
 			store = ?, payer = ?, payment_method = ?, note = ?, tax_year = ?, holding_id = ? WHERE id = ?`,
 			e.OccurredOn, e.AmountCents, e.CategoryID, e.Store, e.Payer, e.PaymentMethod,
 			e.Note, nullYear(e.TaxYear), e.HoldingID, e.ID); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if err := syncStoreFTS(tx, e.Store); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -443,7 +534,7 @@ func findExpense(w http.ResponseWriter, db *sql.DB, rawID string) (expense, bool
 // history of Items is a few hundred rows, which is cheaper to read whole than
 // to filter twice.
 func itemsByExpense(db *sql.DB) (map[int64][]item, error) {
-	rows, err := db.Query(`SELECT expense_id, name, amount_cents, category_id
+	rows, err := db.Query(`SELECT expense_id, name, amount_cents, category_id, quantity, unit, discounted
 		FROM item ORDER BY expense_id, id`)
 	if err != nil {
 		return nil, err
@@ -454,9 +545,13 @@ func itemsByExpense(db *sql.DB) (map[int64][]item, error) {
 	for rows.Next() {
 		var id int64
 		var it item
-		if err := rows.Scan(&id, &it.Name, &it.AmountCents, &it.CategoryID); err != nil {
+		var unit sql.NullString
+		if err := rows.Scan(&id, &it.Name, &it.AmountCents, &it.CategoryID,
+			&it.Quantity, &unit, &it.Discounted); err != nil {
 			return nil, err
 		}
+		it.Unit = unit.String
+		it.computePricePerUnit()
 		out[id] = append(out[id], it)
 	}
 	return out, rows.Err()
@@ -466,12 +561,29 @@ func itemsByExpense(db *sql.DB) (map[int64][]item, error) {
 // whole set — that is what lets one carry no id of its own.
 func insertItems(tx *sql.Tx, expenseID int64, items []item) error {
 	for _, it := range items {
-		if _, err := tx.Exec(`INSERT INTO item (expense_id, name, amount_cents, category_id)
-			VALUES (?, ?, ?, ?)`, expenseID, it.Name, it.AmountCents, it.CategoryID); err != nil {
+		if _, err := tx.Exec(`INSERT INTO item (expense_id, name, amount_cents, category_id, quantity, unit, discounted)
+			VALUES (?, ?, ?, ?, ?, ?, ?)`, expenseID, it.Name, it.AmountCents, it.CategoryID,
+			it.Quantity, nullString(it.Unit), it.Discounted); err != nil {
+			return err
+		}
+		// Ticket 03: item_name_fts is an append-only vocabulary of every name
+		// ever typed, kept in step with a plain INSERT beside the item's own
+		// — see migrateItemStoreFTS.
+		if _, err := tx.Exec(`INSERT INTO item_name_fts(name) VALUES (?)`, it.Name); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// nullString is nullYear for Unit: "" (no quantity/unit pair) has to store
+// NULL, not the empty string, since the CHECK constraint only allows the
+// fixed list or NULL.
+func nullString(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 // nullYear is nullDate for a Tax year: an Expense that has none stores NULL

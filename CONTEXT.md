@@ -21,7 +21,7 @@ Who an Income comes from — a freelance customer, an employer, or the relative 
 _Avoid_: customer, source, payer, counterparty
 
 **Item**:
-Part of an Expense that belongs under a different Category than the Expense as a whole — a book bought during the grocery shop. Items are exceptions, always optional, and never have to account for the whole Expense: whatever they don't cover stays under the Expense's own Category.
+Part of an Expense that belongs under a different Category than the Expense as a whole — a book bought during the grocery shop. Items are exceptions, always optional, and never have to account for the whole Expense: whatever they don't cover stays under the Expense's own Category. An Item may also record a quantity and a kg/lt/piece unit, and whether it was discounted — a passing markdown rather than its usual price. The Tracker derives a price per unit from these (amount ÷ quantity); it is never stored, so it can never drift from what was actually paid.
 _Avoid_: line, line item, detail, product, row
 
 **Recurring expense**:
@@ -44,6 +44,14 @@ _Avoid_: present
 A specific stock, ETF, crypto asset, bond, or other investment vehicle the household buys and sells, named and typed from a short fixed list rather than free text — unlike Store, it must match exactly, because the portfolio percentage breakdown groups by it. Money moving in or out of one is recorded as an ordinary Expense or Income under the Investments base category; a Holding is never priced or revalued by the app.
 _Avoid_: asset, position, security, ticker, investment
 
+**PAC**:
+A Recurring expense whose Category is Investments and which also names a Holding — a fixed amount moved into the same investment on the same schedule every month. Both are required: naming Investments without a Holding, or a Holding without Investments, is not a PAC. It does not track how many units or shares that money bought, consistent with a Holding never being priced or revalued — a PAC is a cash-flow habit, not a position size.
+_Avoid_: recurring investment, DCA, dollar-cost averaging, subscription
+
+**Tracker**:
+A view over Items across every Expense, grouping by Store and Category to show how much the same Item has cost over time and where it was cheaper. Never a record of its own — always computed from ordinary Expenses and Items, the same way Pending payment is a view over Incomes.
+_Avoid_: price tracker, history, analytics
+
 **Pending payment**:
 Money the household is waiting for: an Income with no payment date, or a freelance Client who is usually billed by now and has not been. It is a view over Incomes, never a record of its own.
 _Avoid_: receivable, debtor, outstanding invoice, arrears
@@ -53,7 +61,7 @@ The year a tax payment relates to, which is usually not the year it was paid —
 _Avoid_: fiscal year, accounting period
 
 **Store**:
-Where an Expense happened, remembered as free text rather than chosen from a fixed list.
+Where an Expense happened, remembered as free text rather than chosen from a fixed list. The Tracker normalizes it (trimmed, lowercased) only when grouping for its own view — the stored value is untouched, and two spellings of the same shop can still end up as separate rows if they differ enough.
 _Avoid_: shop, merchant, vendor, place
 
 **Payer**:

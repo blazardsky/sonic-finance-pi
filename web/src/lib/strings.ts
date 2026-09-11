@@ -71,9 +71,21 @@ export const t = {
   addItem: "Aggiungi voce",
   removeItem: "Rimuovi voce",
   invalidItem: "Ogni voce vuole nome, importo e categoria.",
+  invalidItemQuantityUnit:
+    "Se indichi la quantità, scegli anche l'unità, e viceversa.",
   itemsOverTotal: "Le voci superano il totale della spesa.",
   remainderIn: (category: string, amount: string) =>
     `Resto in ${category}: € ${amount}`,
+
+  // Ticket 01: quantity/unit/discounted per Item, plus the read-only
+  // computed price per unit shown inline.
+  itemQuantity: "Quantità",
+  itemUnit: "Unità",
+  itemUnitKg: "kg",
+  itemUnitLt: "lt",
+  itemUnitPiece: "pezzo",
+  itemDiscounted: "Scontato",
+  pricePerUnit: (amount: string, unit: string) => `€ ${amount}/${unit}`,
 
   // Categories
   categories: "Categorie",
@@ -277,6 +289,10 @@ export const t = {
   endMonth: "Fino al mese",
   ongoing: "in corso",
   endedIn: (month: string) => `terminata a ${month}`,
+  // Whether this row is a PAC (Investments category + a Holding, both
+  // required — CONTEXT.md) or an ordinary recurring expense.
+  pacBadge: "PAC",
+  expenseBadge: "Spesa",
   // Ending is all that deactivating is: the window is the record, so the
   // months it did cover stay exactly as they were.
   end: "Termina",
@@ -447,6 +463,16 @@ export const t = {
   // beside it already names the reminder, so this names the action instead.
   reminderToggleLabel: (label: string, enabled: boolean) =>
     enabled ? `Disattiva ${label}` : `Attiva ${label}`,
+
+  // Tracker (ticket 06) — how the same Item's price has moved over time and
+  // across Stores, read entirely from GET /api/tracker.
+  tracker: "Tracker",
+  noTrackerYet: "Nessun dato di tracciamento ancora.",
+  trackerLastPrice: "Ultimo prezzo",
+  trackerMinPrice: "Minimo",
+  trackerMaxPrice: "Massimo",
+  trackerYearlyAverage: "Media annua",
+  trackerChooseItem: "Scegli una voce",
 
   // Backup — a button, then the copying is yours. The spreadsheet had no
   // way out; a .db and two CSVs are the way out of this app.

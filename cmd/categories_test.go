@@ -10,13 +10,14 @@ import (
 // true for the Categories the code resolves by identity, and those are the
 // ones rename and delete refuse.
 type categoryJSON struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	AppliesTo string `json:"applies_to"`
-	Hidden    bool   `json:"hidden"`
-	Base      bool   `json:"base"`
-	Gift      bool   `json:"gift"`
-	Freelance bool   `json:"freelance"`
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	AppliesTo   string `json:"applies_to"`
+	Hidden      bool   `json:"hidden"`
+	Base        bool   `json:"base"`
+	Gift        bool   `json:"gift"`
+	Freelance   bool   `json:"freelance"`
+	Investments bool   `json:"investments"`
 }
 
 // categoryPath addresses one Category the way the API does.
@@ -162,6 +163,24 @@ func TestGiftIsExposedForTheGiftCategoryOnly(t *testing.T) {
 	for _, name := range []string{seedFreelanceName, seedTaxesName, seedInvestmentiName, "Alimentari"} {
 		if c := a.category(t, name); c.Gift {
 			t.Errorf("%s.gift = true, want false", name)
+		}
+	}
+}
+
+// The PAC badge (ticket 02) resolves the Investments Category by identity the
+// same way the spoiler blur resolves Gift — both are Base categories with
+// applies_to "both", so a check that stopped at Base and applies_to alone
+// could not tell them apart. It is true for Investimenti and nothing else,
+// including Regali (Gift), the other Base category sharing applies_to "both".
+func TestInvestmentsIsExposedForTheInvestmentsCategoryOnly(t *testing.T) {
+	a := newTestApp(t)
+
+	if inv := a.category(t, seedInvestmentiName); !inv.Investments {
+		t.Errorf("%s.investments = false, want true", seedInvestmentiName)
+	}
+	for _, name := range []string{seedFreelanceName, seedTaxesName, seedRegaliName, "Alimentari"} {
+		if c := a.category(t, name); c.Investments {
+			t.Errorf("%s.investments = true, want false", name)
 		}
 	}
 }
