@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from "react"
 import {
-  RiArrowDownSLine,
-  RiArrowUpSLine,
   RiDeleteBinLine,
   RiEditLine,
+  RiEyeLine,
   RiMoreLine,
 } from "@remixicon/react"
 
@@ -17,6 +16,12 @@ import {
 } from "@/components/ui/autocomplete"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,6 +57,7 @@ import {
   formatPricePerUnit,
   formatDate,
   quantityTyped,
+  thisYear,
   toCents,
   toQuantity,
   today,
@@ -59,7 +65,7 @@ import {
 } from "@/lib/money"
 import { isGiftCategory, nameOf, pickableCategories, withSaved } from "@/lib/pickers"
 import { t } from "@/lib/strings"
-import type { Category, Expense, Lists } from "@/types"
+import type { Category, Expense, Holding, Lists } from "@/types"
 
 // A free-text field that suggests from the household's own history as it
 // types (ticket 03's /api/items/suggest and /api/stores/suggest) — built on
@@ -229,6 +235,23 @@ const draftOf = (e: Expense): Draft => ({
 const itemsCents = (items: ItemDraft[]) =>
   items.reduce((sum, it) => sum + (toCents(it.amount) ?? 0), 0)
 
+// One label/value row in the view dialog — plain text, not an input: this
+// dialog only ever reads an Expense, editing is still "Modifica" and its own
+// form.
+function ViewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 py-2">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="truncate text-right">{value}</dd>
+    </div>
+  )
+}
+
+// How many Expenses a page (the default recent view, or one page of a
+// selected year) holds — see the backend's own `limit` ceiling on
+// GET /api/expenses.
+const PAGE_SIZE = 50
+
 // The main screen: log what was just spent in about three taps, and see it
 // land. The form lives in the right-side panel — first and biggest on a
 // narrow screen, where it opens full-width, because it is what the app is
@@ -239,6 +262,11 @@ const itemsCents = (items: ItemDraft[]) =>
 export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
   const [expenses, setExpenses] = useState<Expense[] | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
+  // Only ever read for the view dialog's Holding name — a buy Expense on
+  // this page is rare (Investments' own form is the usual way one gets a
+  // holding_id), but "all info about the Expense" means naming it, not just
+  // the id.
+  const [holdings, setHoldings] = useState<Holding[]>([])
   const [lists, setLists] = useState<Lists>({
     payers: [],
     payment_methods: [],
@@ -251,17 +279,18 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
   const [editing, setEditing] = useState<number | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  // Which rows have their Dettagli disclosure open — Negozio, Pagato da and
-  // Metodo di pagamento have no column of their own on any width, and Note's
-  // column is hidden below md, so this is what expands to show them.
-  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
-  const toggleExpanded = (id: number) =>
-    setExpandedIds((s) => {
-      const next = new Set(s)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+  // The Expense the "Visualizza" action opened, or null when the dialog is
+  // closed — Negozio, Pagato da, Metodo di pagamento, Note and the Item
+  // breakdown all live only here now, not in the table itself.
+  const [viewing, setViewing] = useState<Expense | null>(null)
+  // null is the default view: the most recent PAGE_SIZE Expenses, unfiltered,
+  // no page controls shown — a household with a year or two of history never
+  // needs to think about paging at all. Picking a year switches to that
+  // year's own Expenses, paged PAGE_SIZE at a time, so viewing years of
+  // history never means flipping through however many pages the *whole*
+  // table would take.
+  const [year, setYear] = useState<string | null>(null)
+  const [page, setPage] = useState(0)
   // Captured once at mount, not read live — a mobile quick-add shortcut is
   // meant to open the panel on arrival, not force it back open every time
   // App re-renders with the flag still set (see App.tsx's reset-on-navigate-
@@ -281,20 +310,30 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
     setSidebarOpen(true)
   }
 
+  // No year selected: the recent view, `limit` alone. A year selected: that
+  // year's own Expenses, one PAGE_SIZE page at a time — the ponytail on the
+  // backend's own handler named exactly this need.
+  const expensesPath =
+    year === null
+      ? `/api/expenses?limit=${PAGE_SIZE}`
+      : `/api/expenses?year=${year}&limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}`
+
   const load = useCallback(
     () =>
       Promise.all([
-        apiJSON<Expense[]>("/api/expenses"),
+        apiJSON<Expense[]>(expensesPath),
         apiJSON<Category[]>("/api/categories"),
         apiJSON<Lists>("/api/settings"),
+        apiJSON<Holding[]>("/api/holdings"),
       ])
-        .then(([e, c, l]) => {
+        .then(([e, c, l, h]) => {
           setExpenses(e)
           setCategories(c)
           setLists(l)
+          setHoldings(h)
         })
         .catch(() => toast(t.serverUnreachable)),
-    []
+    [expensesPath]
   )
 
   useEffect(() => {
@@ -448,20 +487,83 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
   // authoritative number and this is derived from it — never the reverse.
   const remainder = (toCents(draft.amount) ?? 0) - itemsCents(draft.items)
 
+  // -1: further back is always available, arbitrarily. +1: a step past the
+  // current year is what returns to the recent (unfiltered) view — there is
+  // no "current year + 1" to step into instead, since a year that has not
+  // happened has no Expenses (Year.tsx's own stepper stops there the same
+  // way). Either direction resets to the new selection's own first page.
+  const stepYear = (delta: number) => {
+    setPage(0)
+    setYear((y) => {
+      if (delta < 0) return y === null ? thisYear() : String(Number(y) - 1)
+      return y !== null && y < thisYear() ? String(Number(y) + 1) : null
+    })
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
       <div className="flex flex-1 flex-wrap gap-6">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={t.previousYear}
+                onClick={() => stepYear(-1)}
+              >
+                ‹
+              </Button>
+              <span className="min-w-16 text-center text-sm font-medium tabular-nums">
+                {year ?? t.recentExpenses}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={t.nextYear}
+                disabled={year === null}
+                onClick={() => stepYear(1)}
+              >
+                ›
+              </Button>
+            </div>
+            {/* Paging only exists once a year is picked — the recent view is
+                always exactly one page (PAGE_SIZE), by design, so there is
+                never a second page of it to flip to. */}
+            {year !== null && (
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page === 0}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  {t.previousPage}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  // A full page might not be the last one — cheaper than a
+                  // separate count query, at the cost of one possible extra
+                  // (empty) page click at the true end.
+                  disabled={(expenses?.length ?? 0) < PAGE_SIZE}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  {t.nextPage}
+                </Button>
+              </div>
+            )}
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>{t.date}</TableHead>
                 <TableHead className="text-right">{t.amount}</TableHead>
                 <TableHead>{t.category}</TableHead>
-                <TableHead className="hidden md:table-cell">
-                  {t.note}
-                </TableHead>
-                <TableHead>{t.details}</TableHead>
                 <TableHead className="w-10">{t.actions}</TableHead>
               </TableRow>
             </TableHeader>
@@ -481,75 +583,6 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                     />
                   </TableCell>
                   <TableCell>{nameOf(categories, e.category_id)}</TableCell>
-                  <TableCell className="hidden truncate text-xs text-muted-foreground md:table-cell">
-                    {e.note}
-                  </TableCell>
-                  <TableCell className="whitespace-normal">
-                    <div className="flex w-48 flex-col gap-0.5">
-                      {/* Negozio, Pagato da and Metodo di pagamento have no
-                          column of their own on any width — this is the one
-                          place to reach them. Note keeps its own column on
-                          desktop, so it only needs reaching here on a narrow
-                          screen. */}
-                      {(e.store || e.payer || e.payment_method || e.note) && (
-                        <button
-                          type="button"
-                          className="flex items-center gap-1 text-xs text-muted-foreground"
-                          onClick={() => toggleExpanded(e.id)}
-                          aria-expanded={expandedIds.has(e.id)}
-                          aria-label={t.details}
-                        >
-                          {expandedIds.has(e.id) ? (
-                            <RiArrowUpSLine className="size-3.5" />
-                          ) : (
-                            <RiArrowDownSLine className="size-3.5" />
-                          )}
-                          {t.details}
-                        </button>
-                      )}
-                      {expandedIds.has(e.id) && (
-                        <div className="flex flex-col gap-0.5">
-                          {e.store && (
-                            <span className="truncate text-xs text-muted-foreground">
-                              {t.store}: {e.store}
-                            </span>
-                          )}
-                          {e.payer && (
-                            <span className="truncate text-xs text-muted-foreground">
-                              {t.payer}: {e.payer}
-                            </span>
-                          )}
-                          {e.payment_method && (
-                            <span className="truncate text-xs text-muted-foreground">
-                              {t.paymentMethod}: {e.payment_method}
-                            </span>
-                          )}
-                          {e.note && (
-                            <span className="truncate text-xs text-muted-foreground md:hidden">
-                              {t.note}: {e.note}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      {/* Each Item on its own line, indented under the Expense it
-                          was broken out of: the point of an Item is that this
-                          part of the €62 shop counts as something else, so the
-                          row has to say so and name the Category it went to. */}
-                      {e.items.map((it, i) => (
-                        <span
-                          key={i}
-                          className="flex items-baseline justify-between gap-2 pl-3 text-xs text-muted-foreground"
-                        >
-                          <span className="truncate">
-                            ↳ {it.name} · {nameOf(categories, it.category_id)}
-                          </span>
-                          <span className="tabular-nums">
-                            € {formatCents(it.amount_cents)}
-                          </span>
-                        </span>
-                      ))}
-                    </div>
-                  </TableCell>
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -563,6 +596,9 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setViewing(e)}>
+                          <RiEyeLine /> {t.viewExpense}
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => selectExpense(e)}>
                           <RiEditLine /> {t.editExpense}
                         </DropdownMenuItem>
@@ -988,6 +1024,88 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
           </form>
         </FormSidebar>
       </div>
+
+      {/* Everything the table's own columns used to show inline (Dettagli's
+          disclosure, Note's column) plus everything neither ever did (Tax
+          year, the Holding, quantity/unit/discounted per Item) — one place
+          for the whole Expense now that the table itself only carries what
+          most rows actually need at a glance. */}
+      <Dialog
+        open={viewing !== null}
+        onOpenChange={(open) => !open && setViewing(null)}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+          {viewing && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{t.expenseDetails}</DialogTitle>
+              </DialogHeader>
+              <dl className="flex flex-col divide-y divide-border text-sm">
+                <ViewRow label={t.date} value={formatDate(viewing.occurred_on)} />
+                <ViewRow
+                  label={t.amount}
+                  value={`€ ${formatCents(viewing.amount_cents)}`}
+                />
+                <ViewRow
+                  label={t.category}
+                  value={nameOf(categories, viewing.category_id)}
+                />
+                {viewing.store && <ViewRow label={t.store} value={viewing.store} />}
+                {viewing.payer && <ViewRow label={t.payer} value={viewing.payer} />}
+                {viewing.payment_method && (
+                  <ViewRow
+                    label={t.paymentMethod}
+                    value={viewing.payment_method}
+                  />
+                )}
+                {viewing.tax_year > 0 && (
+                  <ViewRow label={t.taxYear} value={String(viewing.tax_year)} />
+                )}
+                {viewing.holding_id !== null && (
+                  <ViewRow
+                    label={t.holding}
+                    value={nameOf(holdings, viewing.holding_id)}
+                  />
+                )}
+                {viewing.note && <ViewRow label={t.note} value={viewing.note} />}
+              </dl>
+              {viewing.items.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <span className="text-sm font-medium">{t.items}</span>
+                  <ul className="flex flex-col gap-2">
+                    {viewing.items.map((it, i) => (
+                      <li
+                        key={i}
+                        className="flex flex-col gap-0.5 rounded-lg border border-input/50 p-2 text-sm"
+                      >
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="truncate">
+                            {it.name} · {nameOf(categories, it.category_id)}
+                          </span>
+                          <span className="tabular-nums">
+                            € {formatCents(it.amount_cents)}
+                          </span>
+                        </div>
+                        {it.quantity !== null && (
+                          <span className="text-xs text-muted-foreground">
+                            {it.quantity} {unitLabel(it.unit)}
+                            {it.price_per_unit !== null &&
+                              ` · ${t.pricePerUnit(
+                                formatPricePerUnit(it.price_per_unit),
+                                unitLabel(it.unit)
+                              )}`}
+                            {it.discounted && ` · ${t.itemDiscounted}`}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

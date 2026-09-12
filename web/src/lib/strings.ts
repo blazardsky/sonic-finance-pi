@@ -62,10 +62,18 @@ export const t = {
   note: "Note",
   notSet: "—",
   editExpense: "Modifica spesa",
+  viewExpense: "Visualizza spesa",
+  expenseDetails: "Dettagli spesa",
   save: "Salva",
   cancel: "Annulla",
   confirmDeleteExpense: (amount: string) =>
     `Eliminare la spesa di € ${amount}?`,
+
+  // The Expenses table's year picker (default: the most recent PAGE_SIZE,
+  // unfiltered) and, once a year is picked, its page stepper.
+  recentExpenses: "Recenti",
+  previousPage: "Pagina precedente",
+  nextPage: "Pagina successiva",
 
   // Items — the part of an Expense that belongs under another Category
   items: "Voci in altre categorie",
