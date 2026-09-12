@@ -247,8 +247,6 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
     savings_starting_balance_cents: 0,
     net_worth_target_cents: 0,
   })
-  const [error, setError] = useState("")
-
   const [draft, setDraft] = useState<Draft>(blankDraft)
   const [editing, setEditing] = useState<number | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(true)
@@ -295,7 +293,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
           setCategories(c)
           setLists(l)
         })
-        .catch(() => setError(t.serverUnreachable)),
+        .catch(() => toast(t.serverUnreachable)),
     []
   )
 
@@ -305,14 +303,12 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
-    setError("")
-
     // Cents are computed here and sent as an integer: the API refuses a
     // fractional amount_cents outright, so a bad parse cannot become a
     // silently rounded Expense.
     const cents = toCents(draft.amount)
     if (cents === null || cents <= 0) {
-      setError(t.invalidAmount)
+      toast(t.invalidAmount)
       return
     }
 
@@ -321,7 +317,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
     // required check on it never runs. Checked here instead, opening the
     // disclosure so the field the error is about is what the household sees.
     if (draft.payer.trim() === "") {
-      setError(t.invalidPayer)
+      toast(t.invalidPayer)
       setDetailsOpen(true)
       return
     }
@@ -349,20 +345,20 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
         (it) => !it.name || it.amount_cents <= 0 || it.category_id === ""
       )
     ) {
-      setError(t.invalidItem)
+      toast(t.invalidItem)
       return
     }
     // Ticket 01: quantity and unit are a pair, the same rule the server
     // enforces — checked here too so the household gets it in Italian rather
     // than as a bare failed save.
     if (items.some((it) => (it.quantity === null) !== (it.unit === ""))) {
-      setError(t.invalidItemQuantityUnit)
+      toast(t.invalidItemQuantityUnit)
       return
     }
     // The server refuses this too, and in English: checking here is what gets
     // the household an Italian sentence rather than a bare failed save.
     if (itemsCents(filled) > cents) {
-      setError(t.itemsOverTotal)
+      toast(t.itemsOverTotal)
       return
     }
 
@@ -383,7 +379,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
         }
       )
     } catch {
-      setError(t.expenseNotSaved)
+      toast(t.expenseNotSaved)
       return
     }
     // A correction is finished; a new Expense is often one of several from the
@@ -400,11 +396,10 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
 
   async function removeExpense(e: Expense) {
     if (!confirm(t.confirmDeleteExpense(formatCents(e.amount_cents)))) return
-    setError("")
     try {
       await api(`/api/expenses/${e.id}`, { method: "DELETE" })
     } catch {
-      setError(t.expenseNotDeleted)
+      toast(t.expenseNotDeleted)
       return
     }
     if (editing === e.id) {
@@ -990,12 +985,6 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
-
-            {error && (
-              <p role="alert" className="text-sm text-destructive">
-                {error}
-              </p>
-            )}
           </form>
         </FormSidebar>
       </div>
