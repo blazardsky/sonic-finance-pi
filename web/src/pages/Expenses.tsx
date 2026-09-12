@@ -23,7 +23,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -805,44 +810,16 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                           key={i}
                           className="flex flex-col gap-2 rounded-lg border border-input/50 p-2"
                         >
-                          <div className="flex items-end gap-2">
-                            <SuggestField
-                              value={it.name}
-                              onValueChange={(v) => setItem(i, { name: v })}
-                              suggestPath="/api/items/suggest"
-                              placeholder={t.itemName}
-                              className="h-10 flex-1"
-                            />
-                            <Input
-                              type="text"
-                              inputMode="decimal"
-                              value={it.amount}
-                              onChange={(e) => setItem(i, { amount: e.target.value })}
-                              placeholder="0,00"
-                              aria-label={t.amount}
-                              className="h-10 w-20"
-                            />
-                            <Select
-                              value={it.category_id === "" ? undefined : String(it.category_id)}
-                              onValueChange={(v) => setItem(i, { category_id: Number(v) })}
-                            >
-                              <SelectTrigger aria-label={t.category} className="h-10 flex-1">
-                                <SelectValue placeholder={t.chooseCategory} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {pickable(it.category_id).map((c) => (
-                                  <SelectItem key={c.id} value={String(c.id)}>
-                                    {c.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">
+                              {t.itemName} {i + 1}
+                            </span>
                             <Button
                               type="button"
                               variant="ghost"
-                              size="icon"
+                              size="icon-sm"
                               aria-label={t.removeItem}
-                              className="size-10 shrink-0 text-lg"
+                              className="text-lg"
                               onClick={() =>
                                 set(
                                   "items",
@@ -853,35 +830,113 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                               ×
                             </Button>
                           </div>
-                          {/* Ticket 01: optional quantity/unit, discounted, and
-                              the price per unit they imply — read-only,
-                              recomputed above as either changes. */}
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Input
-                              type="text"
-                              inputMode="decimal"
-                              value={it.quantity}
-                              onChange={(e) => setItem(i, { quantity: e.target.value })}
-                              placeholder={t.itemQuantity}
-                              aria-label={t.itemQuantity}
-                              className="h-9 w-20"
-                            />
-                            <Select
-                              value={it.unit || NO_UNIT}
-                              onValueChange={(v) =>
-                                setItem(i, { unit: v === NO_UNIT ? "" : v })
-                              }
-                            >
-                              <SelectTrigger aria-label={t.itemUnit} className="h-9 w-24">
-                                <SelectValue placeholder={t.itemUnit} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value={NO_UNIT}>{t.notSet}</SelectItem>
-                                <SelectItem value="kg">{t.itemUnitKg}</SelectItem>
-                                <SelectItem value="lt">{t.itemUnitLt}</SelectItem>
-                                <SelectItem value="piece">{t.itemUnitPiece}</SelectItem>
-                              </SelectContent>
-                            </Select>
+                          {/* Ticket 01's quantity/unit/discounted widened what
+                              an Item holds past what a single dense row can
+                              lay out — each field gets its own responsive
+                              Field row instead: stacked (label above control)
+                              in the panel's normal 20rem, a label-left row
+                              again once the panel is wide enough to offer one
+                              (its own @md/field-group container query, not
+                              the viewport's — FormSidebar's expand toggle). */}
+                          <FieldGroup className="gap-2">
+                            <Field orientation="responsive">
+                              <FieldLabel htmlFor={`item-name-${i}`}>
+                                {t.itemName}
+                              </FieldLabel>
+                              <SuggestField
+                                id={`item-name-${i}`}
+                                value={it.name}
+                                onValueChange={(v) => setItem(i, { name: v })}
+                                suggestPath="/api/items/suggest"
+                                className="h-9"
+                              />
+                            </Field>
+                            <Field orientation="responsive">
+                              <FieldLabel htmlFor={`item-amount-${i}`}>
+                                {t.amount}
+                              </FieldLabel>
+                              <Input
+                                id={`item-amount-${i}`}
+                                type="text"
+                                inputMode="decimal"
+                                value={it.amount}
+                                onChange={(e) =>
+                                  setItem(i, { amount: e.target.value })
+                                }
+                                placeholder="0,00"
+                                className="h-9"
+                              />
+                            </Field>
+                            <Field orientation="responsive">
+                              <FieldLabel htmlFor={`item-category-${i}`}>
+                                {t.category}
+                              </FieldLabel>
+                              <Select
+                                value={
+                                  it.category_id === ""
+                                    ? undefined
+                                    : String(it.category_id)
+                                }
+                                onValueChange={(v) =>
+                                  setItem(i, { category_id: Number(v) })
+                                }
+                              >
+                                <SelectTrigger
+                                  id={`item-category-${i}`}
+                                  className="h-9"
+                                >
+                                  <SelectValue placeholder={t.chooseCategory} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {pickable(it.category_id).map((c) => (
+                                    <SelectItem key={c.id} value={String(c.id)}>
+                                      {c.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </Field>
+                            <Field orientation="responsive">
+                              <FieldLabel htmlFor={`item-quantity-${i}`}>
+                                {t.itemQuantity}
+                              </FieldLabel>
+                              <Input
+                                id={`item-quantity-${i}`}
+                                type="text"
+                                inputMode="decimal"
+                                value={it.quantity}
+                                onChange={(e) =>
+                                  setItem(i, { quantity: e.target.value })
+                                }
+                                className="h-9"
+                              />
+                            </Field>
+                            <Field orientation="responsive">
+                              <FieldLabel htmlFor={`item-unit-${i}`}>
+                                {t.itemUnit}
+                              </FieldLabel>
+                              <Select
+                                value={it.unit || NO_UNIT}
+                                onValueChange={(v) =>
+                                  setItem(i, { unit: v === NO_UNIT ? "" : v })
+                                }
+                              >
+                                <SelectTrigger
+                                  id={`item-unit-${i}`}
+                                  className="h-9"
+                                >
+                                  <SelectValue placeholder={t.itemUnit} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value={NO_UNIT}>{t.notSet}</SelectItem>
+                                  <SelectItem value="kg">{t.itemUnitKg}</SelectItem>
+                                  <SelectItem value="lt">{t.itemUnitLt}</SelectItem>
+                                  <SelectItem value="piece">
+                                    {t.itemUnitPiece}
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </Field>
                             <FieldLabel className="flex w-fit items-center gap-1.5 text-xs font-normal">
                               <Checkbox
                                 checked={it.discounted}
@@ -892,14 +947,14 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                               {t.itemDiscounted}
                             </FieldLabel>
                             {pricePerUnit !== null && (
-                              <span className="text-xs text-muted-foreground">
+                              <FieldDescription>
                                 {t.pricePerUnit(
                                   formatPricePerUnit(pricePerUnit),
                                   unitLabel(it.unit)
                                 )}
-                              </span>
+                              </FieldDescription>
                             )}
-                          </div>
+                          </FieldGroup>
                         </div>
                       )
                     })}
