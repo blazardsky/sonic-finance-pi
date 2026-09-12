@@ -575,25 +575,6 @@ export function Incomes({
 
             <div className="flex gap-2">
               <Field className="flex-1">
-                <FieldLabel htmlFor="reason">{t.incomeReason}</FieldLabel>
-                <Select
-                  value={draft.category_id === "" ? undefined : String(draft.category_id)}
-                  onValueChange={(v) => set("category_id", Number(v))}
-                  required
-                >
-                  <SelectTrigger id="reason" className="h-10 w-full">
-                    <SelectValue placeholder={t.chooseCategory} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {pickable.map((c) => (
-                      <SelectItem key={c.id} value={String(c.id)}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field className="flex-1">
                 <FieldLabel htmlFor="client">{t.client}</FieldLabel>
                 <Combobox
                   items={clientOptions}
@@ -617,6 +598,25 @@ export function Incomes({
                     </ComboboxList>
                   </ComboboxContent>
                 </Combobox>
+              </Field>
+              <Field className="flex-1">
+                <FieldLabel htmlFor="reason">{t.incomeReason}</FieldLabel>
+                <Select
+                  value={draft.category_id === "" ? undefined : String(draft.category_id)}
+                  onValueChange={(v) => set("category_id", Number(v))}
+                  required
+                >
+                  <SelectTrigger id="reason" className="h-10 w-full">
+                    <SelectValue placeholder={t.chooseCategory} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pickable.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </Field>
             </div>
 
