@@ -241,10 +241,14 @@ function Sidebar({
 
   // Tracks the panel's edge and bottom (viewport px). Read only by the
   // `contained` branch below; called unconditionally so hook order never
-  // depends on the `contained` prop.
+  // depends on the `contained` prop. `isMobile`/`overlay` must also gate this
+  // (and sit in the deps array) because both switch the branch below away
+  // from `contained` — unmounting this ref's div without them here would
+  // leave the observer/listeners attached to a now-detached node instead of
+  // being cleaned up, and a detached node's rect is all zeros.
   const containedGapRef = React.useRef<HTMLDivElement>(null)
   React.useLayoutEffect(() => {
-    if (!contained) return
+    if (!contained || isMobile || overlay) return
     const el = containedGapRef.current
     if (!el) return
     const measure = () => {
@@ -266,7 +270,7 @@ function Sidebar({
       window.removeEventListener("resize", measure)
       window.removeEventListener("scroll", measure)
     }
-  }, [contained, side, onContainedRectChange])
+  }, [contained, isMobile, overlay, side, onContainedRectChange])
 
   if (collapsible === "none") {
     return (

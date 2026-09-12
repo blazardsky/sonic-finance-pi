@@ -351,10 +351,14 @@ function FormSidebarTrigger({
   const label = isOpen ? t.hideForm : t.showForm
   const Icon = isOpen ? RiCloseLine : RiAddLine
 
-  // Expanded, the panel is the same kind of Sheet overlay mobile's `isOpen`
-  // check just below already accounts for — FormSidebarClose (rendered
-  // inside it) is what closes it, so this has nothing left to do either.
-  if (!isMobile && expanded) return null
+  // Expanded *and open*, the panel is the same kind of Sheet overlay
+  // mobile's `isOpen` check just below already accounts for — FormSidebarClose
+  // (rendered inside it) is what closes it, so this has nothing left to do
+  // either. `expanded` alone isn't enough: it's a separate, unpersisted
+  // "more room" toggle that outlives the panel being closed, so closing an
+  // expanded panel (via that same FormSidebarClose) must still leave this as
+  // the way back in — otherwise nothing on screen can reopen it at all.
+  if (!isMobile && expanded && isOpen) return null
 
   if (isMobile) {
     // Open-only here — FormSidebarClose (rendered inside the Sheet) is what
