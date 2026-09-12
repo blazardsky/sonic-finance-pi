@@ -166,6 +166,8 @@ function Sidebar({
   themed = true,
   contained = false,
   onContainedRectChange,
+  overlay = false,
+  overlayWidth = "24rem",
   className,
   children,
   dir,
@@ -179,6 +181,20 @@ function Sidebar({
   // viewport width, so this is a prop rather than the constant every caller
   // shares.
   mobileWidth?: string
+  // Renders the exact same Sheet this component already uses on mobile —
+  // its own backdrop, its own z-index above everything else on the page,
+  // its own scroll region (`SidebarContent`'s `overflow-auto`, unaffected by
+  // whatever the page under it is doing) — on desktop too. FormSidebar's
+  // expand toggle uses this instead of widening the `contained` in-flow
+  // panel: a household asking for "more room" wants the form to cover more
+  // of the screen without shoving the list out of the way or fighting it
+  // for space, which is exactly what an overlay already does and a wider
+  // flex item does not.
+  overlay?: boolean
+  // The overlay's width when driven by `overlay` rather than `isMobile` —
+  // deliberately not full-width like `mobileWidth`, since unlike a phone
+  // screen there's a table worth leaving a sliver of visible underneath.
+  overlayWidth?: string
   // bg-sidebar/text-sidebar-foreground are the main nav's own blue branding,
   // baked into this component's own classes (not reachable through
   // `className` — mobile's copy lives on a Radix Portal-rendered element,
@@ -219,7 +235,7 @@ function Sidebar({
     viewportHeight: number
   }) => void
 }) {
-  const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+  const { isMobile, state, open, setOpen, openMobile, setOpenMobile } = useSidebar()
   const bg = themed ? "bg-sidebar" : "bg-background"
   const fg = themed ? "text-sidebar-foreground" : "text-foreground"
 
@@ -264,21 +280,27 @@ function Sidebar({
     )
   }
 
-  if (isMobile) {
+  if (isMobile || overlay) {
+    // Desktop's `overlay` reuses mobile's own open state only when it's
+    // actually mobile — `overlay` is FormSidebar's separate expand toggle,
+    // orthogonal to open/closed, and the panel is already known open
+    // whenever this renders (an overlay only ever shows while open).
+    const overlayOpen = isMobile ? openMobile : open
+    const setOverlayOpen = isMobile ? setOpenMobile : setOpen
     return (
-      <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
+      <Sheet open={overlayOpen} onOpenChange={setOverlayOpen} {...props}>
         <SheetContent
           dir={dir}
           data-sidebar="sidebar"
           data-slot="sidebar"
-          data-mobile="true"
+          data-mobile={isMobile ? "true" : undefined}
           // SheetContent's own data-[side=*]:w-3/4 is a higher-specificity
           // selector than a plain w-(--sidebar-width) override, so matching
           // its selector shape here is what actually lets mobileWidth win.
           className={`data-[side=left]:w-(--sidebar-width) data-[side=right]:w-(--sidebar-width) data-[side=left]:sm:max-w-none data-[side=right]:sm:max-w-none ${bg} p-0 ${fg} [&>button]:hidden`}
           style={
             {
-              "--sidebar-width": mobileWidth,
+              "--sidebar-width": isMobile ? mobileWidth : overlayWidth,
             } as React.CSSProperties
           }
           side={side}

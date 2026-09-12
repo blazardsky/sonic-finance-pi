@@ -1,5 +1,10 @@
 import * as React from "react"
-import { RiAddLine, RiCloseLine } from "@remixicon/react"
+import {
+  RiAddLine,
+  RiCloseLine,
+  RiContractLeftRightLine,
+  RiExpandLeftRightLine,
+} from "@remixicon/react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -16,6 +21,21 @@ import { t } from "@/lib/strings"
 // so opening/closing a page's form panel never touches the nav's remembered
 // state.
 const FORM_SIDEBAR_COOKIE_NAME = "form_sidebar_state"
+
+// The panel's normal width.
+const DEFAULT_SIDEBAR_WIDTH = "20rem"
+
+// Expanded, the panel isn't wider *in place* — it becomes the same kind of
+// overlay this component already uses on mobile: its own backdrop, its own
+// z-index above the list and everything else on the page, its own scroll
+// region, laid overtop rather than beside or instead of the list. A
+// household asking for "more room" wants the form to cover more of the
+// screen, not shove the list out of the way or fight it for space in a
+// flex row. Not full-width like mobile's takeover — there's a table worth
+// leaving a sliver of visible underneath — but comfortably past Field's own
+// "responsive" orientation breakpoint (its @md/field-group container query,
+// 28rem) so a stacked Item's fields can return to a labelled row.
+const EXPANDED_OVERLAY_WIDTH = "32rem"
 
 // The right-side "add new" panel shared by every form+list page (Spese,
 // Entrate, Ricorrenti, Risparmi, Categorie, Clienti, Investimenti). Wraps the
@@ -67,6 +87,17 @@ function FormSidebar({
   // FormSidebarFooter (which eases its own `fixed` bottom inset as this
   // bottom nears the viewport's, ticket 07).
   const [rect, setRect] = React.useState({ edge: 0, bottom: 0, viewportHeight: 0 })
+  // Desktop-only: mobile's Sheet is already full-width, so there is nothing
+  // for this to expand there. Local and unpersisted — it's a working-room
+  // toggle for the session, not a layout choice worth remembering across
+  // visits the way open/closed already is (its own cookie, above).
+  const [expanded, setExpanded] = React.useState(false)
+  // The footer's own measured height, live — an edit's Salva/Annulla pair is
+  // taller than a plain Aggiungi button, and the desktop `fixed` footer
+  // below floats over content rather than reserving its own space, so
+  // FormSidebarContentEnd needs to know exactly how much room to reserve at
+  // the end of the scrollable content instead.
+  const [footerHeight, setFooterHeight] = React.useState(0)
 
   return (
     <SidebarProvider
@@ -75,9 +106,12 @@ function FormSidebar({
       open={open}
       onOpenChange={onOpenChange}
       defaultOpenMobile={openMobile}
-      // 20rem, wider than the main nav's 16rem (SIDEBAR_WIDTH) — this panel
-      // carries a whole form, the nav just carries labels (ticket 07).
-      style={{ "--sidebar-width": "20rem" } as React.CSSProperties}
+      // 20rem, wider than the main nav's 16rem (SIDEBAR_WIDTH) since this
+      // panel carries a whole form and the nav just carries labels (ticket
+      // 07). Unaffected by `expanded`: that's a separate overlay Sidebar
+      // renders on its own terms (`overlay`/`overlayWidth` below), not a
+      // wider version of this in-flow width.
+      style={{ "--sidebar-width": DEFAULT_SIDEBAR_WIDTH } as React.CSSProperties}
     >
       <Sidebar
         side="right"
@@ -87,27 +121,38 @@ function FormSidebar({
         themed={false}
         contained
         onContainedRectChange={setRect}
+        overlay={expanded}
+        overlayWidth={EXPANDED_OVERLAY_WIDTH}
       >
         {title && (
           <SidebarHeader className="flex-row items-center justify-between border-b p-4">
             <h2 className="font-heading text-base font-medium">{title}</h2>
-            <FormSidebarClose />
+            <div className="flex items-center gap-1">
+              <FormSidebarExpandToggle
+                expanded={expanded}
+                onToggle={() => setExpanded((e) => !e)}
+              />
+              <FormSidebarClose expanded={expanded} />
+            </div>
           </SidebarHeader>
         )}
         <SidebarContent className={cn("gap-4 p-4", className)}>
           {children}
+          <FormSidebarContentEnd expanded={expanded} footerHeight={footerHeight} />
         </SidebarContent>
         {footer && (
           <FormSidebarFooter
             edge={rect.edge}
             panelBottom={rect.bottom}
             viewportHeight={rect.viewportHeight}
+            expanded={expanded}
+            onHeightChange={setFooterHeight}
           >
             {footer}
           </FormSidebarFooter>
         )}
       </Sidebar>
-      <FormSidebarTrigger edge={rect.edge} />
+      <FormSidebarTrigger edge={rect.edge} expanded={expanded} />
     </SidebarProvider>
   )
 }
@@ -128,9 +173,36 @@ const FOOTER_REST_GAP_PX = 12
 // part of it) sidesteps that race entirely. Desktop has no equivalent: its
 // panel is never full-width, so FormSidebarTrigger's edge tab is always
 // reachable and stays the only control there.
-function FormSidebarClose() {
-  const { isMobile, setOpenMobile } = useSidebar()
-  if (!isMobile) return null
+// Desktop's width toggle, sat in the header next to the title — mobile's
+// Sheet is already full-width, so this has nothing to do there and isn't
+// rendered, the same way FormSidebarClose has nothing to do on desktop.
+function FormSidebarExpandToggle({
+  expanded,
+  onToggle,
+}: {
+  expanded: boolean
+  onToggle: () => void
+}) {
+  const { isMobile } = useSidebar()
+  if (isMobile) return null
+  const label = expanded ? t.collapseForm : t.expandForm
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-lg"
+      aria-label={label}
+      title={label}
+      onClick={onToggle}
+    >
+      {expanded ? <RiContractLeftRightLine /> : <RiExpandLeftRightLine />}
+    </Button>
+  )
+}
+
+function FormSidebarClose({ expanded }: { expanded: boolean }) {
+  const { isMobile, setOpen, setOpenMobile } = useSidebar()
+  if (!isMobile && !expanded) return null
   return (
     <Button
       type="button"
@@ -138,7 +210,7 @@ function FormSidebarClose() {
       size="icon-lg"
       aria-label={t.hideForm}
       title={t.hideForm}
-      onClick={() => setOpenMobile(false)}
+      onClick={() => (isMobile ? setOpenMobile(false) : setOpen(false))}
     >
       <RiCloseLine />
     </Button>
@@ -162,16 +234,50 @@ function FormSidebarFooter({
   edge,
   panelBottom,
   viewportHeight,
+  expanded,
+  onHeightChange,
 }: {
   children: React.ReactNode
   edge: number
   panelBottom: number
   viewportHeight: number
+  expanded: boolean
+  // Reports this footer's own rendered height (0 while it isn't rendered at
+  // all, e.g. the panel is closed) — read by FormSidebarContentEnd, which
+  // reserves that much room at the end of the scrollable content so this
+  // footer, when it floats fixed over that content instead of reserving its
+  // own space, never permanently covers the last of it (a Salva/Annulla
+  // edit's two buttons are taller than a plain Aggiungi's one, so this has
+  // to be measured live rather than a single guessed constant).
+  onHeightChange?: (height: number) => void
 }) {
   const { isMobile, open } = useSidebar()
+  const ref = React.useRef<HTMLDivElement>(null)
 
-  if (isMobile) {
-    return <div className="shrink-0 border-t bg-background p-4">{children}</div>
+  React.useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) {
+      onHeightChange?.(0)
+      return
+    }
+    const measure = () => onHeightChange?.(el.getBoundingClientRect().height)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [isMobile, expanded, open, onHeightChange])
+
+  // Same as mobile, and for the same reason: the overlay Sidebar renders
+  // while `expanded` is exactly viewport-height too, so an ordinary
+  // flex-column tail item already sits at its visible bottom with no
+  // measuring/easing needed — FormSidebarContentEnd skips its own reserved
+  // space in both cases accordingly.
+  if (isMobile || expanded) {
+    return (
+      <div ref={ref} className="shrink-0 border-t bg-background p-4">
+        {children}
+      </div>
+    )
   }
   // Unlike mobile's Sheet, the desktop panel's own content stays mounted
   // (just width-collapsed) while closed — this bar is `fixed`, outside that
@@ -194,12 +300,32 @@ function FormSidebarFooter({
 
   return (
     <div
+      ref={ref}
       style={{ right: `${edge}px`, bottom: `${bottomInset}px` }}
       className="fixed z-20 w-(--sidebar-width) border-t bg-background p-4 shadow-sm"
     >
       {children}
     </div>
   )
+}
+
+// Reserves room at the end of the scrollable content equal to
+// FormSidebarFooter's own measured height, only where that footer actually
+// floats fixed over content rather than reserving its own space in flow
+// (mobile's Sheet and the expanded overlay already do the latter, so this
+// renders nothing there) — otherwise the page's natural scroll end lands
+// exactly where the footer already sits, and the last of the content is
+// never reachable no matter how far the page scrolls.
+function FormSidebarContentEnd({
+  expanded,
+  footerHeight,
+}: {
+  expanded: boolean
+  footerHeight: number
+}) {
+  const { isMobile } = useSidebar()
+  if (isMobile || expanded || footerHeight === 0) return null
+  return <div aria-hidden style={{ height: footerHeight }} />
 }
 
 // Both states are `fixed` to the real viewport edge — not placed in normal
@@ -214,14 +340,21 @@ function FormSidebarFooter({
 function FormSidebarTrigger({
   className,
   edge,
+  expanded,
 }: {
   className?: string
   edge: number
+  expanded: boolean
 }) {
   const { isMobile, open, openMobile, toggleSidebar } = useSidebar()
   const isOpen = isMobile ? openMobile : open
   const label = isOpen ? t.hideForm : t.showForm
   const Icon = isOpen ? RiCloseLine : RiAddLine
+
+  // Expanded, the panel is the same kind of Sheet overlay mobile's `isOpen`
+  // check just below already accounts for — FormSidebarClose (rendered
+  // inside it) is what closes it, so this has nothing left to do either.
+  if (!isMobile && expanded) return null
 
   if (isMobile) {
     // Open-only here — FormSidebarClose (rendered inside the Sheet) is what

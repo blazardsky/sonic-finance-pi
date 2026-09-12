@@ -30,6 +30,8 @@ export const t = {
   // accessible label, shared by every "add new" form it holds.
   showForm: "Mostra modulo",
   hideForm: "Nascondi modulo",
+  expandForm: "Espandi modulo",
+  collapseForm: "Riduci modulo",
 
   // Toast (web/src/components/toast.tsx) — shown after a successful add,
   // shared by every FormSidebar-based page.
