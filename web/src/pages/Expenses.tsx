@@ -8,15 +8,15 @@ import {
 } from "@remixicon/react"
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import {
+  Autocomplete,
+  AutocompleteContent,
+  AutocompleteInput,
+  AutocompleteItem,
+  AutocompleteList,
+} from "@/components/ui/autocomplete"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxList,
-} from "@/components/ui/combobox"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -62,12 +62,19 @@ import { t } from "@/lib/strings"
 import type { Category, Expense, Lists } from "@/types"
 
 // A free-text field that suggests from the household's own history as it
-// types (ticket 03's /api/items/suggest and /api/stores/suggest) — a
-// Combobox with no fixed list of its own: `items` is whatever the last
-// request answered, `inputValue` is the field's own typed text rather than a
-// selected option, so picking a suggestion or typing past it are the same
-// kind of edit. `filter={() => true}` turns off the primitive's own
-// client-side filtering, because the server already ranked what it returned.
+// types (ticket 03's /api/items/suggest and /api/stores/suggest) — built on
+// Autocomplete, not Combobox: base-ui's own docs are explicit that Combobox
+// is "a filterable Select... does not allow free-form text input", and it
+// isn't just a documentation nicety — this codebase hit it directly. Typing
+// with Combobox would get silently reset to "" a couple hundred milliseconds
+// later, once the debounced fetch below resolved with a fresh suggestion
+// list that didn't happen to contain the exact text as a selectable item:
+// Combobox reconciles the input against its item list and clears it when it
+// finds no match, which anything actually typed rarely will on the first
+// try. Autocomplete never does this; `items` is only ever a hint, and typing
+// past it is exactly as valid as picking one. `filter={() => true}` turns
+// off the primitive's own client-side filtering, because the server already
+// ranked what it returned.
 function SuggestField({
   id,
   value,
@@ -107,28 +114,23 @@ function SuggestField({
   }, [debounced, suggestPath])
 
   return (
-    <Combobox
+    <Autocomplete
       items={suggestions}
-      inputValue={value}
-      onInputValueChange={onValueChange}
+      value={value}
+      onValueChange={onValueChange}
       filter={() => true}
     >
-      <ComboboxInput
-        id={id}
-        placeholder={placeholder}
-        showTrigger={false}
-        className={className}
-      />
-      <ComboboxContent>
-        <ComboboxList>
+      <AutocompleteInput id={id} placeholder={placeholder} className={className} />
+      <AutocompleteContent>
+        <AutocompleteList>
           {(name: string) => (
-            <ComboboxItem key={name} value={name}>
+            <AutocompleteItem key={name} value={name}>
               {name}
-            </ComboboxItem>
+            </AutocompleteItem>
           )}
-        </ComboboxList>
-      </ComboboxContent>
-    </Combobox>
+        </AutocompleteList>
+      </AutocompleteContent>
+    </Autocomplete>
   )
 }
 
