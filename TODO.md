@@ -7,3 +7,4 @@
 - Aggiungere un sistema per caricare le spese a partire dalla foto di uno scontrino tramite OCR e probabilmente una AI
 - Aggiungere un mcp per interagire con l'app direttamente da claude code o qualche altra AI
 - Aggiungere un sistema per programmare delle spese, capire i momenti migliori per fare acquisti (in base a spese fatte, spese ricorrenti, entrate, stato dei contratti, andamento degli investimenti ecc)
+- color coding per le categorie e visualizzazione raggruppata (per ambito di applicazione)
