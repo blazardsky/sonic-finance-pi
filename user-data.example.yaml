@@ -15,8 +15,7 @@ users:
     sudo: ALL=(ALL) NOPASSWD:ALL
     lock_passwd: true
     ssh_authorized_keys:
-      - ssh-ed25519 YOUR_LINUX_PUBLIC_KEY
-      - ssh-ed25519 YOUR_MAC_PUBLIC_KEY
+      - ssh-ed25519 YOUR_PUBLIC_KEY
 
 ssh_pwauth: false
 
