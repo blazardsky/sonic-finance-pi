@@ -44,6 +44,7 @@ import {
   formatCents,
   formatDate,
   formatMonth,
+  thisMonth,
   toCents,
   today,
   toTyped,
@@ -168,12 +169,22 @@ export function Incomes({
         ? []
         : apiJSON<Contract[]>(`/api/clients/${draft.client_id}/contracts`).catch(() => []),
     ).then((cs) => {
-      if (!cancelled) setClientContracts(cs)
+      if (cancelled) return
+      setClientContracts(cs)
+      // A new income defaults to whichever Contract is active this month —
+      // a one-time prefill like the Client's own defaults above, never a
+      // guess on top of what an edited Income actually has recorded.
+      if (editing === null) {
+        const active = cs.find(
+          (c) => c.start_month <= thisMonth() && thisMonth() <= c.end_month,
+        )
+        if (active) set("contract_id", active.id)
+      }
     })
     return () => {
       cancelled = true
     }
-  }, [draft.client_id])
+  }, [draft.client_id, editing])
 
   // Loads a row into the form and makes sure the panel holding it is
   // actually visible — the form updates whether it is on screen or not, and a

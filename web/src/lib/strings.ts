@@ -405,8 +405,7 @@ export const t = {
   // A projection, not a promise (same spirit as the yearly Estimate,
   // ADR-0010) — a flat 5%/year compounded on today's portfolio value, so the
   // rate is named right where the number is, not buried in a tooltip.
-  estimatedIn20Years: (amount: string) =>
-    `Stima tra 20 anni al 5%/anno: € ${amount}`,
+  estimatedIn20Years: "Stima tra 20 anni al 5%/anno",
 
   // Obiettivo patrimonio — the household's own net worth target, and when
   // Risparmi + investimenti would reach it at the pace it is actually saving

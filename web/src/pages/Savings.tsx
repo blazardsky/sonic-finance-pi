@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react"
 
 import { RiEditLine } from "@remixicon/react"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
@@ -98,8 +99,11 @@ export function Savings() {
             <p className="text-2xl font-medium tabular-nums">
               € {formatCents(savings?.savings_cents ?? 0)}
             </p>
-            <p className="text-sm text-muted-foreground tabular-nums">
-              {t.savingsPlusPortfolio}: € {formatCents(savings?.combined_cents ?? 0)}
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              {t.savingsPlusPortfolio}
+              <Badge variant="secondary" className="tabular-nums">
+                € {formatCents(savings?.combined_cents ?? 0)}
+              </Badge>
             </p>
           </CardContent>
         </Card>
@@ -112,8 +116,11 @@ export function Savings() {
             <p className="text-2xl font-medium tabular-nums">
               € {formatCents(investmentsTotalCents)}
             </p>
-            <p className="text-sm text-muted-foreground tabular-nums">
-              {t.estimatedIn20Years(formatCents(estimatedIn20YearsCents))}
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              {t.estimatedIn20Years}
+              <Badge variant="secondary" className="tabular-nums">
+                € {formatCents(estimatedIn20YearsCents)}
+              </Badge>
             </p>
           </CardContent>
         </Card>

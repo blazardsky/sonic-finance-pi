@@ -186,10 +186,10 @@ type ItemDraft = {
   discounted: boolean
 }
 
-const blankItem = (): ItemDraft => ({
+const blankItem = (category_id: number | "" = ""): ItemDraft => ({
   name: "",
   amount: "",
-  category_id: "",
+  category_id,
   quantity: "",
   unit: "",
   discounted: false,
@@ -995,7 +995,12 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                       type="button"
                       variant="outline"
                       className="h-10"
-                      onClick={() => set("items", [...draft.items, blankItem()])}
+                      onClick={() =>
+                        set("items", [
+                          ...draft.items,
+                          blankItem(draft.category_id),
+                        ])
+                      }
                     >
                       {t.addItem}
                     </Button>
