@@ -3,7 +3,7 @@
 // for Expenses and both are exactly as true of Incomes, so they live here
 // rather than in two copies that can drift apart.
 
-import type { Applies, Category } from "@/types"
+import type { Applies, Category, Subcategory } from "@/types"
 
 // What a Category picker offers: no hidden Category, and nothing that
 // belongs to the other side — "Freelance" is never an Expense, "Alimentari"
@@ -16,6 +16,20 @@ export function pickableCategories(
 ): Category[] {
   return withSaved(
     categories.filter((c) => !c.hidden && c.applies_to !== opposite(side)),
+    chosen
+  )
+}
+
+// What a Subcategory picker offers — the same rule pickableCategories
+// applies, since a Subcategory is filtered by side exactly like a Category:
+// no hidden one, and nothing that belongs to the other side.
+export function pickableSubcategories(
+  subcategories: Subcategory[],
+  side: Exclude<Applies, "both">,
+  chosen: Subcategory | undefined
+): Subcategory[] {
+  return withSaved(
+    subcategories.filter((s) => !s.hidden && s.applies_to !== opposite(side)),
     chosen
   )
 }

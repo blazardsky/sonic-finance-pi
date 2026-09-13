@@ -49,6 +49,8 @@ export const t = {
   date: "Data",
   category: "Categoria",
   chooseCategory: "Scegli…",
+  subcategory: "Sottocategoria",
+  chooseSubcategory: "Nessuna",
   addExpense: "Aggiungi spesa",
   invalidAmount: "Importo non valido.",
   invalidPayer: "Scegli chi ha pagato.",
@@ -115,6 +117,17 @@ export const t = {
     "Questa categoria è di base: il riepilogo fiscale la usa. Puoi solo nasconderla.",
   categoryInUse:
     "Questa categoria è usata da spese registrate. Nascondila invece di eliminarla.",
+
+  // Subcategories — a second, independent tag an Expense can carry alongside
+  // its Category, freely paired with whichever Category an entry actually
+  // used it under (no fixed parent).
+  subcategories: "Sottocategorie",
+  addSubcategory: "Aggiungi sottocategoria",
+  isSubcategory: "È una sottocategoria",
+  confirmDeleteSubcategory: (name: string) =>
+    `Eliminare la sottocategoria "${name}"?`,
+  subcategoryInUse:
+    "Questa sottocategoria è usata da spese registrate. Nascondila invece di eliminarla.",
 
   // Incomes — money owed to or received by the household
   incomes: "Entrate",

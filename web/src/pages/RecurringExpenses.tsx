@@ -42,9 +42,14 @@ import {
   toCents,
   toTyped,
 } from "@/lib/money"
-import { nameOf, pickableCategories, withSaved } from "@/lib/pickers"
+import {
+  nameOf,
+  pickableCategories,
+  pickableSubcategories,
+  withSaved,
+} from "@/lib/pickers"
 import { t } from "@/lib/strings"
-import type { Category, Holding, Lists, Recurring } from "@/types"
+import type { Category, Holding, Lists, Recurring, Subcategory } from "@/types"
 
 // Payer and Payment method are both optional here (unlike Expenses/Incomes'
 // required Payer) and default to "—" — Radix Select refuses an empty-string
@@ -82,6 +87,7 @@ const blankDraft = (): Draft => ({
   start_month: thisMonth(),
   end_month: "",
   holding_id: "",
+  subcategory_id: null,
 })
 
 const draftOf = (r: Recurring): Draft => ({
@@ -95,6 +101,7 @@ const draftOf = (r: Recurring): Draft => ({
   start_month: r.start_month,
   end_month: r.end_month,
   holding_id: r.holding_id ?? "",
+  subcategory_id: r.subcategory_id,
 })
 
 // Still running is the window against the current month, not a stored flag —
@@ -123,6 +130,7 @@ const windowOf = (r: Recurring) =>
 export function RecurringExpenses() {
   const [recurring, setRecurring] = useState<Recurring[] | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
+  const [subcategories, setSubcategories] = useState<Subcategory[]>([])
   const [holdings, setHoldings] = useState<Holding[]>([])
   const [lists, setLists] = useState<Lists>({
     payers: [],
@@ -170,12 +178,14 @@ export function RecurringExpenses() {
         apiJSON<Category[]>("/api/categories"),
         apiJSON<Holding[]>("/api/holdings"),
         apiJSON<Lists>("/api/settings"),
+        apiJSON<Subcategory[]>("/api/subcategories"),
       ])
-        .then(([r, c, h, l]) => {
+        .then(([r, c, h, l, s]) => {
           setRecurring(r)
           setCategories(c)
           setHoldings(h)
           setLists(l)
+          setSubcategories(s)
         })
         .catch(() => setError(t.serverUnreachable)),
     []
@@ -302,6 +312,14 @@ export function RecurringExpenses() {
     categories,
     "expense",
     categories.find((c) => c.id === draft.category_id)
+  )
+
+  // A second, independent tag alongside Category — never narrowed by which
+  // Category is chosen, the same as Expenses.tsx.
+  const pickableSub = pickableSubcategories(
+    subcategories,
+    "expense",
+    subcategories.find((s) => s.id === draft.subcategory_id)
   )
 
   // Whether a category_id names the Investments Base category specifically —
@@ -540,6 +558,32 @@ export function RecurringExpenses() {
                   {pickable.map((c) => (
                     <SelectItem key={c.id} value={String(c.id)}>
                       {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field>
+              <FieldLabel htmlFor="subcategory">{t.subcategory}</FieldLabel>
+              <Select
+                value={
+                  draft.subcategory_id === null
+                    ? "none"
+                    : String(draft.subcategory_id)
+                }
+                onValueChange={(v) =>
+                  set("subcategory_id", v === "none" ? null : Number(v))
+                }
+              >
+                <SelectTrigger id="subcategory" className="h-10 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{t.chooseSubcategory}</SelectItem>
+                  {pickableSub.map((s) => (
+                    <SelectItem key={s.id} value={String(s.id)}>
+                      {s.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -37,6 +37,12 @@ type expense struct {
 	Note          string `json:"note"`
 	Items         []item `json:"items"`
 
+	// A second, independent tag alongside Category — "Caffè" rather than a
+	// child of "Alimentari" specifically, since the same Subcategory has to
+	// freely pair with whichever Category an Expense actually used it under.
+	// A pointer, like HoldingID: "no Subcategory" is the ordinary case.
+	SubcategoryID *int64 `json:"subcategory_id"`
+
 	// The year this payment's tax relates to, and 0 on every Expense that is
 	// not a tax one. Tax on 2026's income is paid during 2027, so the year the
 	// money left is not the year the summary attributes it to — hence a field
@@ -287,10 +293,10 @@ func handleCreateExpense(db *sql.DB, now func() time.Time) http.HandlerFunc {
 
 		res, err := tx.Exec(`INSERT INTO expense
 			(occurred_on, amount_cents, category_id, store, payer, payment_method, note,
-			 tax_year, holding_id, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 tax_year, holding_id, subcategory_id, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			e.OccurredOn, e.AmountCents, e.CategoryID, e.Store, e.Payer, e.PaymentMethod,
-			e.Note, nullYear(e.TaxYear), e.HoldingID, now().Format(time.RFC3339))
+			e.Note, nullYear(e.TaxYear), e.HoldingID, e.SubcategoryID, now().Format(time.RFC3339))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -316,14 +322,14 @@ func handleCreateExpense(db *sql.DB, now func() time.Time) http.HandlerFunc {
 }
 
 const expenseSelect = `SELECT id, occurred_on, amount_cents, category_id,
-	store, payer, payment_method, note, COALESCE(tax_year, 0), holding_id FROM expense`
+	store, payer, payment_method, note, COALESCE(tax_year, 0), holding_id, subcategory_id FROM expense`
 
 func scanExpense(row interface{ Scan(...any) error }) (expense, error) {
 	// The frontend maps over the breakdown, so an Expense without one has to
 	// marshal as [] rather than null. The caller fills in any Items there are.
 	e := expense{Items: []item{}}
 	err := row.Scan(&e.ID, &e.OccurredOn, &e.AmountCents, &e.CategoryID,
-		&e.Store, &e.Payer, &e.PaymentMethod, &e.Note, &e.TaxYear, &e.HoldingID)
+		&e.Store, &e.Payer, &e.PaymentMethod, &e.Note, &e.TaxYear, &e.HoldingID, &e.SubcategoryID)
 	return e, err
 }
 
@@ -468,9 +474,9 @@ func handlePatchExpense(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		if _, err := tx.Exec(`UPDATE expense SET occurred_on = ?, amount_cents = ?, category_id = ?,
-			store = ?, payer = ?, payment_method = ?, note = ?, tax_year = ?, holding_id = ? WHERE id = ?`,
+			store = ?, payer = ?, payment_method = ?, note = ?, tax_year = ?, holding_id = ?, subcategory_id = ? WHERE id = ?`,
 			e.OccurredOn, e.AmountCents, e.CategoryID, e.Store, e.Payer, e.PaymentMethod,
-			e.Note, nullYear(e.TaxYear), e.HoldingID, e.ID); err != nil {
+			e.Note, nullYear(e.TaxYear), e.HoldingID, e.SubcategoryID, e.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -650,6 +656,10 @@ func checkExpense(w http.ResponseWriter, db *sql.DB, e *expense) bool {
 	}
 	if !checkCategoryAccepts(w, db, e.CategoryID, appliesExpense,
 		"that category is not one an expense can go in") {
+		return false
+	}
+	if e.SubcategoryID != nil && !checkSubcategoryAccepts(w, db, *e.SubcategoryID, appliesExpense,
+		"that subcategory is not one an expense can go in") {
 		return false
 	}
 	// The Tax year is derived here rather than taken on trust, which is what

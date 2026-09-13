@@ -23,6 +23,18 @@ export type Category = {
   investments: boolean
 }
 
+// A second, independent tag an Expense (or a Recurring expense) can carry
+// alongside its Category — "Caffè" rather than a child of "Alimentari"
+// specifically, since the same Subcategory freely pairs with whichever
+// Category an entry actually used it under. Unlike Category, nothing here is
+// ever Base-protected: no report resolves a Subcategory by identity.
+export type Subcategory = {
+  id: number
+  name: string
+  applies_to: Applies
+  hidden: boolean
+}
+
 // Who money comes from, as one row rather than three spellings. Not a
 // freelance-only idea: "Mum" for a birthday gift is a valid Client. Hidden
 // Clients stay out of the Income picker but still resolve for old Incomes.
@@ -79,6 +91,9 @@ export type Expense = {
   // The Holding this Expense bought, or null on every Expense that is not a
   // buy — meaningful only under the Investments base category (ticket 03).
   holding_id: number | null
+  // A second, independent tag alongside category_id, or null on most
+  // Expenses — see Subcategory.
+  subcategory_id: number | null
 }
 
 // A part of an Expense under its own Category. No id: an Item is saved as one
@@ -401,6 +416,9 @@ export type Recurring = {
   // Recurring expense — a genuine template property, unlike tax_year, so
   // materialise copies it onto each generated Expense (ticket 06).
   holding_id: number | null
+  // A second, independent tag alongside category_id, copied onto each
+  // generated Expense the same way holding_id is — see Subcategory.
+  subcategory_id: number | null
 }
 
 // A labeled on/off toggle for a manual action the app doesn't automate — a

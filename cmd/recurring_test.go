@@ -28,6 +28,10 @@ type recurringJSON struct {
 	// Recurring expense — the template property materialise copies onto each
 	// generated Expense.
 	HoldingID *int64 `json:"holding_id"`
+
+	// A second, independent tag alongside CategoryID, copied onto each
+	// generated Expense the same way HoldingID is.
+	SubcategoryID *int64 `json:"subcategory_id"`
 }
 
 // recurringPath addresses one the way the API does.
@@ -329,6 +333,17 @@ func TestARecurringExpenseCannotBeDefinedInAnIncomeCategory(t *testing.T) {
 	body = a.rent(t, map[string]any{"category_id": 9999})
 	if res := a.post(t, "/api/recurring", body, nil); res.StatusCode != http.StatusBadRequest {
 		t.Errorf("POST in a Category that does not exist = %d, want 400", res.StatusCode)
+	}
+}
+
+// A Subcategory answers to the same gate as Category: an unknown id refuses
+// with a 400, not a foreign-key 500.
+func TestARecurringExpenseCannotBeDefinedWithAnUnknownSubcategory(t *testing.T) {
+	a := newTestApp(t)
+
+	body := a.rent(t, map[string]any{"subcategory_id": 9999})
+	if res := a.post(t, "/api/recurring", body, nil); res.StatusCode != http.StatusBadRequest {
+		t.Errorf("POST with an unknown subcategory_id = %d, want 400", res.StatusCode)
 	}
 }
 
@@ -728,6 +743,27 @@ func TestMaterialiseCopiesTheHoldingIDIntoTheGeneratedExpense(t *testing.T) {
 	}
 	if got[0].HoldingID == nil || *got[0].HoldingID != vwce.ID {
 		t.Errorf("generated Expense holding_id = %v, want %d", got[0].HoldingID, vwce.ID)
+	}
+}
+
+// materialise copies subcategory_id onto the generated Expense the same way
+// it already copies holding_id and category_id.
+func TestMaterialiseCopiesTheSubcategoryIDIntoTheGeneratedExpense(t *testing.T) {
+	a := newTestApp(t)
+	var sub subcategoryJSON
+	a.post(t, "/api/subcategories", map[string]any{"name": "Caffè", "applies_to": appliesExpense}, &sub)
+
+	a.addRecurring(t, a.rent(t, map[string]any{
+		"day_of_month": 5, "start_month": "2026-03", "subcategory_id": sub.ID,
+	}))
+	a.month(t, "2026-03")
+
+	got := a.expenses(t)
+	if len(got) != 1 {
+		t.Fatalf("listed %d Expenses, want the one generated", len(got))
+	}
+	if got[0].SubcategoryID == nil || *got[0].SubcategoryID != sub.ID {
+		t.Errorf("generated Expense subcategory_id = %v, want %d", got[0].SubcategoryID, sub.ID)
 	}
 }
 

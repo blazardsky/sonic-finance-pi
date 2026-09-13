@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { RiDeleteBinLine, RiEditLine, RiEyeLine, RiEyeOffLine, RiMoreLine } from "@remixicon/react"
 
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,7 +24,7 @@ import { api } from "@/lib/api"
 import { FormSidebar } from "@/components/form-sidebar"
 import { toast } from "@/lib/toast"
 import { t } from "@/lib/strings"
-import type { Applies, Category } from "@/types"
+import type { Applies, Category, Subcategory } from "@/types"
 
 const appliesLabels: Record<Applies, string> = {
   expense: t.appliesExpense,
@@ -36,10 +37,16 @@ const appliesLabels: Record<Applies, string> = {
 // are what every picker filters out.
 export function Categories() {
   const [categories, setCategories] = useState<Category[] | null>(null)
+  const [subcategories, setSubcategories] = useState<Subcategory[] | null>(null)
   const [error, setError] = useState("")
   const [name, setName] = useState("")
   const [appliesTo, setAppliesTo] = useState<Applies>("expense")
+  // The one toggle that decides which table the add form's POST targets —
+  // nothing about which Category was on screen at the time is stored: a
+  // Subcategory freely pairs with any Category, on any Expense, later.
+  const [isSubcategory, setIsSubcategory] = useState(false)
   const [editing, setEditing] = useState<number | null>(null)
+  const [editingSub, setEditingSub] = useState<number | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   // Returns its promise so a write can wait for the reload it triggers, and
@@ -47,9 +54,14 @@ export function Categories() {
   // keeps the effect below off React's cascading-render path.
   const load = useCallback(
     () =>
-      api("/api/categories")
-        .then((res) => res.json())
-        .then(setCategories)
+      Promise.all([
+        api("/api/categories").then((res) => res.json()),
+        api("/api/subcategories").then((res) => res.json()),
+      ])
+        .then(([c, s]) => {
+          setCategories(c)
+          setSubcategories(s)
+        })
         .catch(() => setError(t.serverUnreachable)),
     []
   )
@@ -85,10 +97,10 @@ export function Categories() {
 
   async function add(event: React.FormEvent) {
     event.preventDefault()
-    const created = await write("/api/categories", {
-      method: "POST",
-      body: JSON.stringify({ name, applies_to: appliesTo }),
-    })
+    const created = await write(
+      isSubcategory ? "/api/subcategories" : "/api/categories",
+      { method: "POST", body: JSON.stringify({ name, applies_to: appliesTo }) }
+    )
     if (created) {
       setName("")
       toast(t.added)
@@ -99,6 +111,15 @@ export function Categories() {
     setEditing(null)
     if (to.trim() === "" || to === category.name) return
     await write(`/api/categories/${category.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: to }),
+    })
+  }
+
+  async function renameSub(sub: Subcategory, to: string) {
+    setEditingSub(null)
+    if (to.trim() === "" || to === sub.name) return
+    await write(`/api/subcategories/${sub.id}`, {
       method: "PATCH",
       body: JSON.stringify({ name: to }),
     })
@@ -218,10 +239,97 @@ export function Categories() {
               ))}
             </TableBody>
           </Table>
+
+          <h2 className="font-medium">{t.subcategories}</h2>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t.categoryName}</TableHead>
+                <TableHead>{t.appliesTo}</TableHead>
+                <TableHead className="w-10">{t.actions}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {subcategories?.map((s) => (
+                <TableRow key={s.id}>
+                  <TableCell className="whitespace-normal">
+                    {editingSub === s.id ? (
+                      <Input
+                        autoFocus
+                        defaultValue={s.name}
+                        className="h-9"
+                        onBlur={(e) => void renameSub(s, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") e.currentTarget.blur()
+                          if (e.key === "Escape") setEditingSub(null)
+                        }}
+                      />
+                    ) : (
+                      <span className={s.hidden ? "text-muted-foreground" : ""}>
+                        {s.name}
+                        {s.hidden && ` · ${t.hidden}`}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {appliesLabels[s.applies_to]}
+                  </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={t.actions}
+                        >
+                          <RiMoreLine />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        align="end"
+                        onCloseAutoFocus={(e) => e.preventDefault()}
+                      >
+                        <DropdownMenuItem
+                          onClick={() => setTimeout(() => setEditingSub(s.id), 0)}
+                        >
+                          <RiEditLine /> {t.rename}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() =>
+                            void write(`/api/subcategories/${s.id}`, {
+                              method: "PATCH",
+                              body: JSON.stringify({ hidden: !s.hidden }),
+                            })
+                          }
+                        >
+                          {s.hidden ? <RiEyeLine /> : <RiEyeOffLine />}{" "}
+                          {s.hidden ? t.unhide : t.hide}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => {
+                            if (confirm(t.confirmDeleteSubcategory(s.name)))
+                              void write(
+                                `/api/subcategories/${s.id}`,
+                                { method: "DELETE" },
+                                t.subcategoryInUse
+                              )
+                          }}
+                        >
+                          <RiDeleteBinLine /> {t.delete}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
 
         <FormSidebar
-          title={t.addCategory}
+          title={isSubcategory ? t.addSubcategory : t.addCategory}
           open={sidebarOpen}
           onOpenChange={setSidebarOpen}
           footer={
@@ -231,7 +339,7 @@ export function Categories() {
               size="lg"
               className="h-12 text-base"
             >
-              {t.addCategory}
+              {isSubcategory ? t.addSubcategory : t.addCategory}
             </Button>
           }
         >
@@ -251,6 +359,15 @@ export function Categories() {
                 className="h-10"
               />
             </Field>
+
+            <FieldLabel htmlFor="is-subcategory" className="font-normal">
+              <Checkbox
+                id="is-subcategory"
+                checked={isSubcategory}
+                onCheckedChange={(v) => setIsSubcategory(v === true)}
+              />
+              {t.isSubcategory}
+            </FieldLabel>
 
             <Field>
               <FieldLabel>{t.appliesTo}</FieldLabel>

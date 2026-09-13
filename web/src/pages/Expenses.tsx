@@ -63,9 +63,15 @@ import {
   today,
   toTyped,
 } from "@/lib/money"
-import { isGiftCategory, nameOf, pickableCategories, withSaved } from "@/lib/pickers"
+import {
+  isGiftCategory,
+  nameOf,
+  pickableCategories,
+  pickableSubcategories,
+  withSaved,
+} from "@/lib/pickers"
 import { t } from "@/lib/strings"
-import type { Category, Expense, Holding, Lists } from "@/types"
+import type { Category, Expense, Holding, Lists, Subcategory } from "@/types"
 
 // A free-text field that suggests from the household's own history as it
 // types (ticket 03's /api/items/suggest and /api/stores/suggest) — built on
@@ -205,6 +211,7 @@ const blankDraft = (): Draft => ({
   note: "",
   tax_year: 0,
   items: [],
+  subcategory_id: null,
 })
 
 // Field by field rather than a spread, so the draft carries what the form
@@ -219,6 +226,7 @@ const draftOf = (e: Expense): Draft => ({
   payment_method: e.payment_method,
   note: e.note,
   tax_year: e.tax_year,
+  subcategory_id: e.subcategory_id,
   items: e.items.map((it) => ({
     name: it.name,
     amount: toTyped(it.amount_cents),
@@ -262,6 +270,7 @@ const PAGE_SIZE = 50
 export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
   const [expenses, setExpenses] = useState<Expense[] | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
+  const [subcategories, setSubcategories] = useState<Subcategory[]>([])
   // Only ever read for the view dialog's Holding name — a buy Expense on
   // this page is rare (Investments' own form is the usual way one gets a
   // holding_id), but "all info about the Expense" means naming it, not just
@@ -325,12 +334,14 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
         apiJSON<Category[]>("/api/categories"),
         apiJSON<Lists>("/api/settings"),
         apiJSON<Holding[]>("/api/holdings"),
+        apiJSON<Subcategory[]>("/api/subcategories"),
       ])
-        .then(([e, c, l, h]) => {
+        .then(([e, c, l, h, s]) => {
           setExpenses(e)
           setCategories(c)
           setLists(l)
           setHoldings(h)
+          setSubcategories(s)
         })
         .catch(() => toast(t.serverUnreachable)),
     [expensesPath]
@@ -459,6 +470,15 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
       "expense",
       categories.find((c) => c.id === chosen)
     )
+
+  // The Expense's own Subcategory picker — a second, independent tag, never
+  // narrowed by which Category is chosen: the whole point is that the same
+  // one pairs with any of them.
+  const pickableSub = pickableSubcategories(
+    subcategories,
+    "expense",
+    subcategories.find((s) => s.id === draft.subcategory_id)
+  )
 
   // Whether the Tax year field belongs on screen, which is only for an Expense
   // in a tax Category. Ticket 03: Investments is also a Base category now, and
@@ -699,6 +719,32 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                   {pickable(draft.category_id).map((c) => (
                     <SelectItem key={c.id} value={String(c.id)}>
                       {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field>
+              <FieldLabel htmlFor="subcategory">{t.subcategory}</FieldLabel>
+              <Select
+                value={
+                  draft.subcategory_id === null
+                    ? "none"
+                    : String(draft.subcategory_id)
+                }
+                onValueChange={(v) =>
+                  set("subcategory_id", v === "none" ? null : Number(v))
+                }
+              >
+                <SelectTrigger id="subcategory" className="h-10 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{t.chooseSubcategory}</SelectItem>
+                  {pickableSub.map((s) => (
+                    <SelectItem key={s.id} value={String(s.id)}>
+                      {s.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

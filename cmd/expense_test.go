@@ -29,6 +29,9 @@ type expenseJSON struct {
 
 	// Ticket 03: the Holding a buy Expense is for, nil on every other Expense.
 	HoldingID *int64 `json:"holding_id"`
+
+	// A second, independent tag alongside CategoryID, nil on most Expenses.
+	SubcategoryID *int64 `json:"subcategory_id"`
 }
 
 // An Item as the API hands it out. It carries no id: nothing addresses an Item
@@ -182,6 +185,7 @@ func TestExpenseWritesAreValidated(t *testing.T) {
 		"no Category":         {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500}, http.StatusBadRequest},
 		"an unknown Category": {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": 9999}, http.StatusBadRequest},
 		"an income Category":  {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": freelance}, http.StatusBadRequest},
+		"an unknown subcategory": {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": groceries, "subcategory_id": 9999}, http.StatusBadRequest},
 		// Ticket 08: "whose money was it" is never left unanswered going forward.
 		"an empty payer":     {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": groceries, "payer": ""}, http.StatusBadRequest},
 		"a whitespace payer": {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": groceries, "payer": "   "}, http.StatusBadRequest},
@@ -359,6 +363,7 @@ func TestEditsAreValidated(t *testing.T) {
 		"a malformed date":    {expensePath(logged.ID), map[string]any{"occurred_on": "15/03/2026"}, http.StatusBadRequest},
 		"an income Category":  {expensePath(logged.ID), map[string]any{"category_id": freelance}, http.StatusBadRequest},
 		"an unknown Category": {expensePath(logged.ID), map[string]any{"category_id": 9999}, http.StatusBadRequest},
+		"an unknown subcategory": {expensePath(logged.ID), map[string]any{"subcategory_id": 9999}, http.StatusBadRequest},
 		"an unknown Expense":  {expensePath(9999), map[string]any{"amount_cents": 100}, http.StatusNotFound},
 		"an unparseable id":   {"/api/expenses/nope", map[string]any{"amount_cents": 100}, http.StatusNotFound},
 		// Ticket 08: an edit setting the Payer empty is refused the same as a create.

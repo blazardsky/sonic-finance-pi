@@ -30,6 +30,11 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 	mux.HandleFunc("PATCH /api/categories/{id}", handlePatchCategory(db))
 	mux.HandleFunc("DELETE /api/categories/{id}", handleDeleteCategory(db))
 
+	mux.HandleFunc("GET /api/subcategories", handleListSubcategories(db))
+	mux.HandleFunc("POST /api/subcategories", handleCreateSubcategory(db))
+	mux.HandleFunc("PATCH /api/subcategories/{id}", handlePatchSubcategory(db))
+	mux.HandleFunc("DELETE /api/subcategories/{id}", handleDeleteSubcategory(db))
+
 	mux.HandleFunc("GET /api/clients", handleListClients(db))
 	mux.HandleFunc("POST /api/clients", handleCreateClient(db))
 	mux.HandleFunc("PATCH /api/clients/{id}", handlePatchClient(db))
