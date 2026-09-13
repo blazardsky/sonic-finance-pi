@@ -3,6 +3,10 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+	"time"
 )
 
 // schemaVersion is the user_version a fully migrated database carries. Every
@@ -25,11 +29,42 @@ func openDB(path string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := backupBeforeMigrate(db, path); err != nil {
+		db.Close()
+		return nil, err
+	}
 	if err := migrate(db); err != nil {
 		db.Close()
 		return nil, err
 	}
 	return db, nil
+}
+
+// backupBeforeMigrate snapshots db into a "backups" directory next to path
+// before migrate() changes its schema — the Pi's SD card is the only copy of
+// this data, and a bad migration should be recoverable from the file sitting
+// right next to it. A fresh database (user_version 0) has nothing worth
+// protecting yet, and one already at schemaVersion has no migration coming.
+func backupBeforeMigrate(db *sql.DB, path string) error {
+	var v int
+	if err := db.QueryRow("PRAGMA user_version").Scan(&v); err != nil {
+		return fmt.Errorf("reading user_version: %w", err)
+	}
+	if v == 0 || v >= schemaVersion {
+		return nil
+	}
+
+	dir := filepath.Join(filepath.Dir(path), "backups")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("creating backup dir: %w", err)
+	}
+	dst := filepath.Join(dir, fmt.Sprintf("%s-v%d-%s.db",
+		filepath.Base(path), v, time.Now().Format("20060102-150405")))
+	if _, err := db.Exec("VACUUM INTO ?", dst); err != nil {
+		return fmt.Errorf("backing up before migration: %w", err)
+	}
+	log.Printf("backed up schema v%d to %s before migrating to v%d", v, dst, schemaVersion)
+	return nil
 }
 
 // migrate brings db up to schemaVersion, applying each step in its own

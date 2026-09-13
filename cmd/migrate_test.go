@@ -2,6 +2,8 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -223,6 +225,79 @@ func TestItemPricingMigrationAddsColumnsWithSafeDefaults(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO item (expense_id, name, amount_cents, category_id, quantity, unit)
 		VALUES (?, 'Bad', 100, ?, -1, 'kg')`, expenseID, categoryID); err == nil {
 		t.Error("a non-positive quantity was accepted, want the CHECK constraint to refuse it")
+	}
+}
+
+// A database an older binary already migrated partway needs its data
+// protected before the new binary's migrateStep cases touch it.
+func TestMigrateBacksUpAnExistingDatabaseBeforeMigrating(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "existing.db")
+
+	db, err := openDB(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO setting (key, value) VALUES ('canary', 'alive')`); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a database an older binary left one migration behind.
+	if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion-1)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := backupBeforeMigrate(db, path); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	entries, err := os.ReadDir(filepath.Join(dir, "backups"))
+	if err != nil {
+		t.Fatalf("reading backups dir: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("got %d backup files, want 1", len(entries))
+	}
+
+	backup, err := sql.Open("sqlite", filepath.Join(dir, "backups", entries[0].Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backup.Close()
+
+	var v int
+	if err := backup.QueryRow("PRAGMA user_version").Scan(&v); err != nil {
+		t.Fatal(err)
+	}
+	if v != schemaVersion-1 {
+		t.Errorf("backup user_version = %d, want %d", v, schemaVersion-1)
+	}
+	var canary string
+	if err := backup.QueryRow(`SELECT value FROM setting WHERE key = 'canary'`).Scan(&canary); err != nil {
+		t.Fatalf("backup missing the data it was meant to protect: %v", err)
+	}
+	if canary != "alive" {
+		t.Errorf("canary = %q, want %q", canary, "alive")
+	}
+}
+
+// A brand new database has nothing worth protecting yet, so no backup file
+// should show up next to it.
+func TestBackupBeforeMigrateSkipsAFreshDatabase(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "fresh.db")
+
+	db, err := sql.Open("sqlite", "file:"+path+"?"+dsnPragmas)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if err := backupBeforeMigrate(db, path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "backups")); !os.IsNotExist(err) {
+		t.Error("backup dir created for a fresh database, want none")
 	}
 }
 
