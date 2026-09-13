@@ -1,0 +1,65 @@
+#cloud-config
+# Example cloud-init user-data for a Raspberry Pi Zero W on Raspberry Pi OS
+# Lite (32-bit). Fill in the placeholders below, then pass this file as
+# user-data when flashing the SD card (e.g. via Raspberry Pi Imager's
+# "Edit Settings" advanced options, or rpi-imager's --cloudinit flag).
+
+hostname: sonic-finance
+
+users:
+  - default
+  - name: sonic
+    groups:
+      - sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ssh-ed25519 YOUR_LINUX_PUBLIC_KEY
+      - ssh-ed25519 YOUR_MAC_PUBLIC_KEY
+
+ssh_pwauth: false
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - avahi-daemon
+  - curl
+
+write_files:
+  - path: /etc/systemd/system/sonic-finance.service
+    owner: root:root
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Sonic Finance API
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      User=sonic
+      Group=sonic
+      WorkingDirectory=/opt/sonic-finance
+      ExecStart=/opt/sonic-finance/sonic-finance
+      Restart=always
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  # The binary creates and migrates ./db/sonic.db itself on first run —
+  # relative to WorkingDirectory above — as long as it owns the directory.
+  - mkdir -p /opt/sonic-finance
+  - curl -fsSL -o /opt/sonic-finance/sonic-finance https://github.com/blazardsky/sonic-finance-pi/releases/latest/download/sonic-finance-armv6
+  - chmod +x /opt/sonic-finance/sonic-finance
+  - chown -R sonic:sonic /opt/sonic-finance
+
+  - curl -fsSL https://tailscale.com/install.sh | sh
+  - systemctl enable tailscaled
+  - systemctl start tailscaled
+
+  - systemctl daemon-reload
+  - systemctl enable --now sonic-finance.service

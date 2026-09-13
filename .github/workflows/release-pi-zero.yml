@@ -1,0 +1,45 @@
+name: release-pi-zero
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: debian:13
+    steps:
+      - name: Install base tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git
+
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: ./build.sh
+
+      - name: Rename binary for release
+        run: cp build/api-armv6 build/sonic-finance-armv6
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/sonic-finance-armv6
