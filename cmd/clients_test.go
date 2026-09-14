@@ -247,6 +247,38 @@ func TestClientsAreListedCaseInsensitivelyByName(t *testing.T) {
 	}
 }
 
+// Highest earner first — the name is only the tiebreak, which the test above
+// already covers for the all-zero case.
+func TestClientsAreListedHighestEarnerFirst(t *testing.T) {
+	a := newTestApp(t)
+	freelance := a.freelance(t)
+
+	low := a.createClient(t, "Cliente Basso")
+	high := a.createClient(t, "Cliente Alto")
+	zero := a.createClient(t, "Cliente Zero")
+
+	a.addIncome(t, map[string]any{
+		"amount_cents": 10000, "category_id": freelance.ID, "client_id": low.ID, "payment_date": "2026-03-10",
+	})
+	a.addIncome(t, map[string]any{
+		"amount_cents": 90000, "category_id": freelance.ID, "client_id": high.ID, "payment_date": "2026-03-10",
+	})
+
+	var got []string
+	for _, c := range a.clients(t) {
+		got = append(got, c.Name)
+	}
+	want := []string{high.Name, low.Name, zero.Name}
+	if len(got) != len(want) {
+		t.Fatalf("the list is %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("the list is %v, want %v", got, want)
+		}
+	}
+}
+
 // Ticket 04: a default Income Category is a plain PATCH-able field, exactly
 // like hidden — a new Client starts with none, and one it is given can later
 // be taken away.

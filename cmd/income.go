@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -114,14 +115,51 @@ func migrateBolloFattura(tx *sql.Tx) error {
 
 // handleListIncomes returns every Income, paid and unpaid alike: the payment
 // state is a field on the row, and the screens are what decide which they
-// want. Newest first by id — an Income has no single date, and an unpaid one
-// has none at all, so the order is the order they were entered.
+// want. Newest first by invoice date, falling back to the payment date for an
+// Income never invoiced (a gift, a salary) — the closest thing an Income has
+// to Expense's own occurred_on — and finally to id for the rare Income with
+// neither date yet.
 //
-// ponytail: unpaginated, like the Expense list. Add a month filter when a
-// report needs one.
+// Optional query params, the same shape handleListExpenses offers: `year`
+// (YYYY) scopes to one year of that same date, and `limit`/`offset` page
+// through whatever `year` (or the absence of it) already selected.
 func handleListIncomes(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rows, err := db.Query(incomeSelect + ` ORDER BY id DESC`)
+		query := incomeSelect
+		var args []any
+		if year := r.URL.Query().Get("year"); year != "" {
+			if len(year) != 4 {
+				writeError(w, http.StatusBadRequest, fmt.Errorf("year must be 4 digits"))
+				return
+			}
+			if _, err := strconv.Atoi(year); err != nil {
+				writeError(w, http.StatusBadRequest, fmt.Errorf("year must be numeric"))
+				return
+			}
+			query += ` WHERE COALESCE(invoice_sent_date, payment_date) LIKE ?`
+			args = append(args, year+"-%")
+		}
+		query += ` ORDER BY COALESCE(invoice_sent_date, payment_date) DESC, id DESC`
+		if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+			limit, err := strconv.Atoi(limitStr)
+			if err != nil || limit <= 0 {
+				writeError(w, http.StatusBadRequest, fmt.Errorf("limit must be a positive integer"))
+				return
+			}
+			query += ` LIMIT ?`
+			args = append(args, limit)
+			if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+				offset, err := strconv.Atoi(offsetStr)
+				if err != nil || offset < 0 {
+					writeError(w, http.StatusBadRequest, fmt.Errorf("offset must be a non-negative integer"))
+					return
+				}
+				query += ` OFFSET ?`
+				args = append(args, offset)
+			}
+		}
+
+		rows, err := db.Query(query, args...)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return

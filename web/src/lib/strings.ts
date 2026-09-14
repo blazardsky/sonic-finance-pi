@@ -190,6 +190,14 @@ export const t = {
   noIncomesYet: "Nessuna entrata registrata.",
   confirmDeleteIncome: (amount: string) =>
     `Eliminare l'entrata di € ${amount}?`,
+  viewIncome: "Visualizza entrata",
+  incomeDetails: "Dettagli entrata",
+
+  // The Incomes table's own year picker (default: the most recent PAGE_SIZE,
+  // unfiltered), same shape as Expenses' recentExpenses — named differently
+  // from the Dashboard's own recentIncomes (its "Ultime entrate" widget
+  // title), a different screen entirely.
+  incomesYearFilterRecent: "Recenti",
 
   // Sidebar groups — the same altitude the screens are already ordered at:
   // where things stand, what gets typed, what gets managed.

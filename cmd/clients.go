@@ -60,14 +60,17 @@ func migrateClients(tx *sql.Tx) error {
 
 // handleListClients returns every Client, hidden ones included: pickers filter
 // on `hidden` themselves, and the management screen needs to see what it has
-// hidden in order to unhide it. Ordered case-insensitively, because SQLite's
-// default collation would otherwise sort "zia Carla" above "Banca".
+// hidden in order to unhide it. Highest earner first, so the household sees
+// who it actually bills most at a glance; ties (most commonly 0, for a Client
+// with no received Income yet) fall back to the name, case-insensitively,
+// because SQLite's default collation would otherwise sort "zia Carla" above
+// "Banca".
 //
 // ponytail: unpaginated, like the Expense list. A household bills a couple of
 // dozen Clients; add a filter when a screen needs one.
 func handleListClients(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rows, err := db.Query(clientSelect + ` ORDER BY name COLLATE NOCASE`)
+		rows, err := db.Query(clientSelect + ` ORDER BY total_earned_cents DESC, name COLLATE NOCASE`)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -217,7 +220,7 @@ func clientExists(db *sql.DB, id int64) (bool, error) {
 // actually stores.
 const clientSelect = `SELECT id, name, hidden, default_category_id, default_payer,
 	(SELECT COALESCE(SUM(amount_cents), 0) FROM income
-		WHERE income.client_id = client.id AND income.payment_date IS NOT NULL)
+		WHERE income.client_id = client.id AND income.payment_date IS NOT NULL) AS total_earned_cents
 	FROM client`
 
 func scanClient(row interface{ Scan(...any) error }) (client, error) {

@@ -51,6 +51,7 @@ import { ColorDot } from "@/components/ColorDot"
 import { DatePicker } from "@/components/date-picker"
 import { FormSidebar } from "@/components/form-sidebar"
 import { SpoilerAmount } from "@/components/SpoilerAmount"
+import { ViewRow } from "@/components/ViewRow"
 import { toast } from "@/lib/toast"
 import { useDebouncedValue } from "@/hooks/use-debounce"
 import {
@@ -250,18 +251,6 @@ const draftOf = (e: Expense): Draft => ({
 // the form checks the total against and shows the remainder from.
 const itemsCents = (items: ItemDraft[]) =>
   items.reduce((sum, it) => sum + (toCents(it.amount) ?? 0), 0)
-
-// One label/value row in the view dialog — plain text, not an input: this
-// dialog only ever reads an Expense, editing is still "Modifica" and its own
-// form.
-function ViewRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3 py-2">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="truncate text-right">{value}</dd>
-    </div>
-  )
-}
 
 // How many Expenses a page (the default recent view, or one page of a
 // selected year) holds — see the backend's own `limit` ceiling on

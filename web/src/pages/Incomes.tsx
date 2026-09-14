@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from "react"
 import {
-  RiArrowDownSLine,
-  RiArrowUpSLine,
   RiCheckLine,
   RiDeleteBinLine,
   RiEditLine,
+  RiEyeLine,
   RiMoreLine,
 } from "@remixicon/react"
 
@@ -19,6 +18,12 @@ import {
   ComboboxItem,
   ComboboxList,
 } from "@/components/ui/combobox"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,12 +46,14 @@ import { api, apiJSON } from "@/lib/api"
 import { ColorDot } from "@/components/ColorDot"
 import { DatePicker } from "@/components/date-picker"
 import { FormSidebar } from "@/components/form-sidebar"
+import { ViewRow } from "@/components/ViewRow"
 import { toast } from "@/lib/toast"
 import {
   formatCents,
   formatDate,
   formatMonth,
   thisMonth,
+  thisYear,
   toCents,
   today,
   toTyped,
@@ -54,6 +61,11 @@ import {
 import { nameOf, pickableCategories, withSaved } from "@/lib/pickers"
 import { t } from "@/lib/strings"
 import type { Category, Client, Contract, Income, Lists } from "@/types"
+
+// How many Incomes a page (the default recent view, or one page of a
+// selected year) holds — same ceiling Expenses.tsx uses on GET /api/expenses,
+// mirrored here on GET /api/incomes.
+const PAGE_SIZE = 50
 
 // The Contract picker's default: "Extra" is a real, common choice (unlinked
 // income), never an unset placeholder — so, like the payment-method sentinel
@@ -158,16 +170,17 @@ export function Incomes({
   // Client's are ever relevant to the form open at a time.
   const [clientContracts, setClientContracts] = useState<Contract[]>([])
 
-  // Fattura inviata and Note have no column of their own — this is what a
-  // row's Dettagli toggle expands to show instead.
-  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
-  const toggleExpanded = (id: number) =>
-    setExpandedIds((s) => {
-      const next = new Set(s)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+  // The Income the "Visualizza" action opened, or null when the dialog is
+  // closed — Motivo, Ricevuto da, Fattura inviata and Note all live only here
+  // now, not in the table itself, the same simplification Expenses.tsx
+  // already made for its own row.
+  const [viewing, setViewing] = useState<Income | null>(null)
+  // null is the default view: the most recent PAGE_SIZE Incomes, unfiltered.
+  // Picking a year switches to that year's own Incomes, paged PAGE_SIZE at a
+  // time — the same "recent / anno" filter Expenses.tsx offers, off the same
+  // invoice-date-or-payment-date the list is ordered by.
+  const [year, setYear] = useState<string | null>(null)
+  const [page, setPage] = useState(0)
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
@@ -206,10 +219,18 @@ export function Incomes({
     setSidebarOpen(true)
   }
 
+  // No year selected: the recent view, `limit` alone. A year selected: that
+  // year's own Incomes, one PAGE_SIZE page at a time — same shape
+  // Expenses.tsx's own expensesPath uses.
+  const incomesPath =
+    year === null
+      ? `/api/incomes?limit=${PAGE_SIZE}`
+      : `/api/incomes?year=${year}&limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}`
+
   const load = useCallback(
     () =>
       Promise.all([
-        apiJSON<Income[]>("/api/incomes"),
+        apiJSON<Income[]>(incomesPath),
         apiJSON<Category[]>("/api/categories"),
         apiJSON<Client[]>("/api/clients"),
         apiJSON<Lists>("/api/settings"),
@@ -221,8 +242,19 @@ export function Incomes({
           setLists(l)
         })
         .catch(() => setError(t.serverUnreachable)),
-    []
+    [incomesPath]
   )
+
+  // -1: further back is always available, arbitrarily. +1: a step past the
+  // current year returns to the recent (unfiltered) view — same stepper
+  // Expenses.tsx uses, off the same invoice-date-or-payment-date ordering.
+  const stepYear = (delta: number) => {
+    setPage(0)
+    setYear((y) => {
+      if (delta < 0) return y === null ? thisYear() : String(Number(y) - 1)
+      return y !== null && y < thisYear() ? String(Number(y) + 1) : null
+    })
+  }
 
   useEffect(() => {
     void load()
@@ -417,15 +449,66 @@ export function Incomes({
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
       <div className="flex flex-1 flex-wrap gap-6">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={t.previousYear}
+                onClick={() => stepYear(-1)}
+              >
+                ‹
+              </Button>
+              <span className="min-w-16 text-center text-sm font-medium tabular-nums">
+                {year ?? t.incomesYearFilterRecent}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={t.nextYear}
+                disabled={year === null}
+                onClick={() => stepYear(1)}
+              >
+                ›
+              </Button>
+            </div>
+            {/* Paging only exists once a year is picked — the recent view is
+                always exactly one page (PAGE_SIZE), by design, so there is
+                never a second page of it to flip to. */}
+            {year !== null && (
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page === 0}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  {t.previousPage}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  // A full page might not be the last one — cheaper than a
+                  // separate count query, at the cost of one possible extra
+                  // (empty) page click at the true end.
+                  disabled={(incomes?.length ?? 0) < PAGE_SIZE}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  {t.nextPage}
+                </Button>
+              </div>
+            )}
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>{t.date}</TableHead>
                 <TableHead className="text-right">{t.amount}</TableHead>
-                <TableHead>{t.incomeReason}</TableHead>
                 <TableHead>{t.client}</TableHead>
-                <TableHead>{t.incomePayer}</TableHead>
-                <TableHead>{t.details}</TableHead>
                 <TableHead className="w-10">{t.actions}</TableHead>
               </TableRow>
             </TableHeader>
@@ -461,50 +544,8 @@ export function Incomes({
                   <TableCell className="text-right font-medium tabular-nums">
                     € {formatCents(income.amount_cents)}
                   </TableCell>
-                  <TableCell className="truncate">
-                    {nameOf(categories, income.category_id)}
-                  </TableCell>
                   <TableCell className="truncate text-xs text-muted-foreground">
                     {nameOf(clients, income.client_id)}
-                  </TableCell>
-                  <TableCell className="truncate text-xs text-muted-foreground">
-                    {income.payer}
-                  </TableCell>
-                  <TableCell className="whitespace-normal">
-                    <div className="flex w-48 flex-col gap-0.5">
-                      {/* Fattura inviata and Note have no column of their
-                          own — this is the one place to reach them. */}
-                      {(income.invoice_sent_date || income.note) && (
-                        <button
-                          type="button"
-                          className="flex items-center gap-1 text-xs text-muted-foreground"
-                          onClick={() => toggleExpanded(income.id)}
-                          aria-expanded={expandedIds.has(income.id)}
-                          aria-label={t.details}
-                        >
-                          {expandedIds.has(income.id) ? (
-                            <RiArrowUpSLine className="size-3.5" />
-                          ) : (
-                            <RiArrowDownSLine className="size-3.5" />
-                          )}
-                          {t.details}
-                        </button>
-                      )}
-                      {expandedIds.has(income.id) && (
-                        <div className="flex flex-col gap-0.5">
-                          {income.invoice_sent_date && (
-                            <span className="truncate text-xs text-muted-foreground">
-                              {t.invoiceSentDate}: {formatDate(income.invoice_sent_date)}
-                            </span>
-                          )}
-                          {income.note && (
-                            <span className="truncate text-xs text-muted-foreground">
-                              {t.note}: {income.note}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -519,6 +560,9 @@ export function Incomes({
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setViewing(income)}>
+                          <RiEyeLine /> {t.viewIncome}
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => selectIncome(income)}>
                           <RiEditLine /> {t.editIncome}
                         </DropdownMenuItem>
@@ -788,6 +832,57 @@ export function Incomes({
           </form>
         </FormSidebar>
       </div>
+
+      {/* Everything the table's own columns used to show inline (Motivo,
+          Ricevuto da, the Dettagli disclosure) — one place for the whole
+          Income now that the table itself only carries what most rows
+          actually need at a glance, the same simplification Expenses.tsx's
+          own view dialog already made. */}
+      <Dialog
+        open={viewing !== null}
+        onOpenChange={(open) => !open && setViewing(null)}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+          {viewing && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{t.incomeDetails}</DialogTitle>
+              </DialogHeader>
+              <dl className="flex flex-col divide-y divide-border text-sm">
+                <ViewRow
+                  label={t.amount}
+                  value={`€ ${formatCents(viewing.amount_cents)}`}
+                />
+                <ViewRow
+                  label={t.incomeReason}
+                  value={nameOf(categories, viewing.category_id)}
+                />
+                {viewing.client_id !== null && (
+                  <ViewRow label={t.client} value={nameOf(clients, viewing.client_id)} />
+                )}
+                {viewing.payer && (
+                  <ViewRow label={t.incomePayer} value={viewing.payer} />
+                )}
+                {viewing.invoice_sent_date && (
+                  <ViewRow
+                    label={t.invoiceSentDate}
+                    value={formatDate(viewing.invoice_sent_date)}
+                  />
+                )}
+                <ViewRow
+                  label={t.paymentDate}
+                  value={
+                    viewing.payment_date
+                      ? formatDate(viewing.payment_date)
+                      : t.notPaidYet
+                  }
+                />
+                {viewing.note && <ViewRow label={t.note} value={viewing.note} />}
+              </dl>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

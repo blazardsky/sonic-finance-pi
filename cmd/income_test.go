@@ -445,8 +445,9 @@ func TestAnIncomeCanBeRecordedInAHiddenCategory(t *testing.T) {
 }
 
 // The list sits under the form, so what was just recorded is the first thing
-// on it. An Income has no single date — an unpaid one has none at all — so the
-// order is the order they were entered, newest first.
+// on it. Neither of an Income's own dates is set here — an unpaid, uninvoiced
+// one has none at all — so the order falls all the way back to id, newest
+// first.
 func TestIncomesAreListedNewestFirst(t *testing.T) {
 	a := newTestApp(t)
 	id := a.freelance(t).ID
@@ -463,6 +464,95 @@ func TestIncomesAreListedNewestFirst(t *testing.T) {
 	for i, want := range []int64{ids[2], ids[1], ids[0]} {
 		if got[i].ID != want {
 			t.Fatalf("ids = %d, %d, %d, want them newest first: %v", got[0].ID, got[1].ID, got[2].ID, []int64{ids[2], ids[1], ids[0]})
+		}
+	}
+}
+
+// The invoice date is what an Income is ordered by first — the closest thing
+// it has to an Expense's own occurred_on — regardless of insertion order.
+func TestIncomesAreOrderedByInvoiceDateNotInsertionOrder(t *testing.T) {
+	a := newTestApp(t)
+	id := a.freelance(t).ID
+
+	older := a.addIncome(t, map[string]any{
+		"amount_cents": 1000, "category_id": id, "invoice_sent_date": "2026-01-01",
+	})
+	newer := a.addIncome(t, map[string]any{
+		"amount_cents": 1000, "category_id": id, "invoice_sent_date": "2026-06-01",
+	})
+
+	got := a.incomes(t)
+	if len(got) != 2 || got[0].ID != newer.ID || got[1].ID != older.ID {
+		t.Fatalf("ids = %v, want the later invoice date first", got)
+	}
+}
+
+// An Income never invoiced (a gift, a salary) is ordered by its payment date
+// instead — the fallback the invoice date has for exactly this case.
+func TestAnUninvoicedIncomeFallsBackToItsPaymentDateForOrdering(t *testing.T) {
+	a := newTestApp(t)
+	id := a.freelance(t).ID
+
+	older := a.addIncome(t, map[string]any{
+		"amount_cents": 1000, "category_id": id, "payment_date": "2026-01-01",
+	})
+	newer := a.addIncome(t, map[string]any{
+		"amount_cents": 1000, "category_id": id, "payment_date": "2026-06-01",
+	})
+
+	got := a.incomes(t)
+	if len(got) != 2 || got[0].ID != newer.ID || got[1].ID != older.ID {
+		t.Fatalf("ids = %v, want the later payment date first", got)
+	}
+}
+
+// The same year/limit/offset paging handleListExpenses offers, off the same
+// invoice-date-or-payment-date the list is ordered by.
+func TestYearFiltersIncomesByInvoiceOrPaymentDate(t *testing.T) {
+	a := newTestApp(t)
+	id := a.freelance(t).ID
+	a.addIncome(t, map[string]any{"amount_cents": 100, "category_id": id, "invoice_sent_date": "2025-06-01"})
+	a.addIncome(t, map[string]any{"amount_cents": 200, "category_id": id, "invoice_sent_date": "2026-01-01"})
+	// Never invoiced, paid in 2026: still counts toward 2026 via the fallback.
+	a.addIncome(t, map[string]any{"amount_cents": 300, "category_id": id, "payment_date": "2026-12-31"})
+
+	var got []incomeJSON
+	if res := a.get(t, "/api/incomes?year=2026", &got); res.StatusCode != http.StatusOK {
+		t.Fatalf("GET ?year=2026 = %d, want 200", res.StatusCode)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len(incomes) = %d, want 2 (only 2026)", len(got))
+	}
+}
+
+func TestLimitCapsHowManyIncomesComeBack(t *testing.T) {
+	a := newTestApp(t)
+	id := a.freelance(t).ID
+	for i := 1; i <= 5; i++ {
+		a.addIncome(t, map[string]any{
+			"amount_cents": 100, "category_id": id,
+			"invoice_sent_date": strconv.Itoa(2026) + "-01-0" + strconv.Itoa(i),
+		})
+	}
+
+	var got []incomeJSON
+	if res := a.get(t, "/api/incomes?limit=3", &got); res.StatusCode != http.StatusOK {
+		t.Fatalf("GET ?limit=3 = %d, want 200", res.StatusCode)
+	}
+	if len(got) != 3 {
+		t.Fatalf("len(incomes) = %d, want 3", len(got))
+	}
+	if got[0].InvoiceSentDate != "2026-01-05" {
+		t.Errorf("first row's invoice_sent_date = %q, want the newest (2026-01-05)", got[0].InvoiceSentDate)
+	}
+}
+
+func TestAMalformedIncomeYearOrLimitIsRefused(t *testing.T) {
+	a := newTestApp(t)
+	for _, qs := range []string{"year=26", "year=20266", "year=abcd", "limit=0", "limit=-1", "limit=abc"} {
+		res := a.get(t, "/api/incomes?"+qs, nil)
+		if res.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400", qs, res.StatusCode)
 		}
 	}
 }
