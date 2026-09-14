@@ -264,16 +264,34 @@ warn "displayed, logged, or shown to anyone reviewing this session."
 
 # ── Stage 4: capture the values and push them to GitHub ────────────────────
 stage "GitHub secrets"
+say "Neither value has any legitimate whitespace in it, so anything picked up"
+say "by an accidental extra space or newline on copy is stripped below."
+
 ask TS_OAUTH_CLIENT_ID "Paste the Client ID:"
+TS_OAUTH_CLIENT_ID="$(printf '%s' "$TS_OAUTH_CLIENT_ID" | tr -d '[:space:]')"
 if [[ -z "$TS_OAUTH_CLIENT_ID" ]]; then
   printf '%s✗ empty Client ID — nothing was saved. Re-run this script.%s\n' "$RED" "$RESET"
   exit 1
 fi
+
 ask_secret TS_OAUTH_CLIENT_SECRET "Paste the Client Secret (hidden):"
+TS_OAUTH_CLIENT_SECRET="$(printf '%s' "$TS_OAUTH_CLIENT_SECRET" | tr -d '[:space:]')"
 if [[ -z "$TS_OAUTH_CLIENT_SECRET" ]]; then
   printf '%s✗ empty Client Secret — nothing was saved. Re-run this script.%s\n' "$RED" "$RESET"
   exit 1
 fi
+# A real OAuth client secret always looks like tskey-client-<id>-<suffix> —
+# catches the most common mix-up (pasting the Client ID twice, or a node
+# auth key instead) before it silently becomes a wrong GitHub secret.
+if [[ "$TS_OAUTH_CLIENT_SECRET" != tskey-client-* ]]; then
+  warn "that doesn't look like an OAuth client secret (expected it to start"
+  warn "with \"tskey-client-\") — got a prefix of: ${TS_OAUTH_CLIENT_SECRET:0:12}..."
+  if ! confirm "Save it anyway?"; then
+    printf '%s✗ nothing was saved. Re-run this script and re-paste the Client Secret.%s\n' "$RED" "$RESET"
+    exit 1
+  fi
+fi
+
 set_secret TS_OAUTH_CLIENT_ID "$TS_OAUTH_CLIENT_ID"
 set_secret TS_OAUTH_CLIENT_SECRET "$TS_OAUTH_CLIENT_SECRET"
 
