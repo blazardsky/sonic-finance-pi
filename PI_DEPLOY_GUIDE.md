@@ -19,6 +19,23 @@ Watch it happen with `gh run watch`, or check the Actions tab.
   Tailscale OAuth client the workflow uses to join the tailnet, and stores
   its credentials as the `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_CLIENT_SECRET`
   GitHub secrets. Re-run it if those ever need rotating.
+
+  The OAuth client (Trust credentials → Credential → OAuth in the admin
+  console) needs **both** scopes below set to Write, each scoped to
+  `tag:ci-deploy` — `auth_keys` alone mints the key but `devices:core` is
+  what's actually checked when it registers a tagged node, so without both
+  you get `403: calling actor does not have enough permissions` at
+  `tailscale up`:
+
+  | Scope | Access | Tags |
+  |---|---|---|
+  | Devices Core | Write | `tag:ci-deploy` |
+  | Keys / Auth Keys | Write | `tag:ci-deploy` |
+
+  The tailnet policy also needs `tag:ci-deploy` in `tagOwners` (either
+  policy-file format — `acls`/rules or the newer `grants` — works, and most
+  tailnets' default wide-open rule already covers reachability with no
+  further change).
 - **`scripts/ci-deploy.sh`** — lives on the Pi at `/opt/sonic-finance/ci-deploy.sh`
   (copy it there by hand; it can't deploy itself). A dedicated SSH key on the
   Pi is restricted, via a forced command in `~/.ssh/authorized_keys`, to
