@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // The spec puts one seam at the HTTP boundary, and app_test.go is the reference
@@ -278,6 +279,64 @@ func TestMigrateBacksUpAnExistingDatabaseBeforeMigrating(t *testing.T) {
 	}
 	if canary != "alive" {
 		t.Errorf("canary = %q, want %q", canary, "alive")
+	}
+}
+
+// Only the maxBackups most recent snapshots survive — old ones are for
+// falling back past one bad migration, not an ever-growing archive.
+func TestPruneBackupsKeepsOnlyTheMostRecent(t *testing.T) {
+	dir := t.TempDir()
+	base := "sonic.db"
+	names := []string{
+		base + "-v12-20260101-000000.db",
+		base + "-v13-20260102-000000.db",
+		base + "-v14-20260103-000000.db",
+		base + "-v15-20260104-000000.db",
+	}
+	for i, name := range names {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		// One second apart and strictly increasing with the filename order,
+		// so "most recent" is unambiguous regardless of write speed.
+		mtime := time.Date(2026, 1, 1+i, 0, 0, 0, 0, time.UTC)
+		if err := os.Chtimes(p, mtime, mtime); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A file for a different database in the same dir must survive untouched.
+	other := filepath.Join(dir, "other.db-v15-20260101-000000.db")
+	if err := os.WriteFile(other, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := pruneBackups(dir, base); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, e := range entries {
+		got = append(got, e.Name())
+	}
+	want := []string{names[2], names[3], "other.db-v15-20260101-000000.db"}
+	if len(got) != len(want) {
+		t.Fatalf("dir contains %v, want %v", got, want)
+	}
+	for _, w := range want {
+		found := false
+		for _, g := range got {
+			if g == w {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("dir contains %v, missing %q", got, w)
+		}
 	}
 }
 

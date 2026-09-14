@@ -6,14 +6,21 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 )
+
+// maxBackups is how many pre-migration snapshots stay on the SD card at
+// once: enough to fall back past a single bad migration, not so many that
+// backups themselves start crowding the card they exist to protect.
+const maxBackups = 2
 
 // schemaVersion is the user_version a fully migrated database carries. Every
 // schema change bumps this by one and adds the matching case to migrate's
 // switch, so deploying a new binary to the Pi is all it takes to update the
 // schema on the only copy of the data. No migration library.
-const schemaVersion = 15
+const schemaVersion = 16
 
 // Set on every pooled connection, not just the first: synchronous and
 // busy_timeout are per-connection settings, so a PRAGMA exec'd after Open would
@@ -64,6 +71,41 @@ func backupBeforeMigrate(db *sql.DB, path string) error {
 		return fmt.Errorf("backing up before migration: %w", err)
 	}
 	log.Printf("backed up schema v%d to %s before migrating to v%d", v, dst, schemaVersion)
+	return pruneBackups(dir, filepath.Base(path))
+}
+
+// pruneBackups keeps only the maxBackups most recent snapshots for this
+// database — old ones are for falling back past one bad migration, not an
+// ever-growing archive on the one SD card they are meant to protect.
+func pruneBackups(dir, base string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("reading backup dir: %w", err)
+	}
+	var backups []os.DirEntry
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), base+"-v") {
+			backups = append(backups, e)
+		}
+	}
+	// Newest first, by modification time rather than the filename's version
+	// number — v9 would otherwise sort after v14 as plain strings.
+	sort.Slice(backups, func(i, j int) bool {
+		ti, err := backups[i].Info()
+		if err != nil {
+			return false
+		}
+		tj, err := backups[j].Info()
+		if err != nil {
+			return false
+		}
+		return ti.ModTime().After(tj.ModTime())
+	})
+	for _, old := range backups[min(len(backups), maxBackups):] {
+		if err := os.Remove(filepath.Join(dir, old.Name())); err != nil {
+			return fmt.Errorf("removing old backup %s: %w", old.Name(), err)
+		}
+	}
 	return nil
 }
 
@@ -132,6 +174,8 @@ func migrateStep(db *sql.DB, v int) error {
 		err = migrateItemStoreFTS(tx)
 	case 14:
 		err = migrateSubcategories(tx)
+	case 15:
+		err = migrateBolloFattura(tx)
 	default:
 		// schemaVersion was bumped without adding a case. Refusing is the whole
 		// point: committing the version bump with no DDL would leave the only
