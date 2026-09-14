@@ -48,3 +48,41 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: build/sonic-finance-armv6
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      # Same asset a human would grab by hand (see PI_DEPLOY_GUIDE.md) — no
+      # inter-job artifact plumbing, just the release the build job above
+      # just published.
+      - name: Download the release binary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download ${{ github.event.release.tag_name }} --repo ${{ github.repository }} --pattern sonic-finance-armv6
+
+      # The Pi is on a private LAN with no public inbound port — Tailscale is
+      # already running on it for other reasons (see README), so joining the
+      # tailnet here is what lets this runner reach it at all.
+      - name: Join the tailnet
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
+          tags: tag:ci-deploy
+
+      # PI_DEPLOY_SSH_KEY is restricted server-side (see authorized_keys on
+      # the Pi) to running exactly one forced command — even a leaked key
+      # (this repo is public) can't do anything beyond that.
+      - name: Load the deploy key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PI_DEPLOY_SSH_KEY }}
+
+      # accept-new trusts the Pi's host key on first connect, per run — an
+      # ephemeral runner has no earlier known_hosts to compare against
+      # anyway, and the connection is already inside the tailnet's own
+      # encrypted, authenticated overlay.
+      - name: Deploy and restart
+        run: |
+          ssh -o StrictHostKeyChecking=accept-new sonic@100.74.171.49 < sonic-finance-armv6
