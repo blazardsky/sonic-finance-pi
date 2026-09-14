@@ -60,6 +60,12 @@ import type { Category, Client, Contract, Income, Lists } from "@/types"
 // on the Expenses form, it needs a stand-in value Radix Select will accept.
 const EXTRA_CONTRACT = "__extra__"
 
+// Same bargain, for the Category Select: `undefined` for "unset" makes the
+// Select treat itself as no longer controlled, so it keeps showing whatever
+// was last picked instead of clearing — even once `category_id` has
+// genuinely reset to "" after a submit.
+const NO_CATEGORY = "__none__"
+
 // What the form holds: the amount as it was typed, and everything else as the
 // API's own field names, so submitting is one spread rather than a mapping.
 // "" is the unchosen picker for both references — a Client is optional, so ""
@@ -251,6 +257,15 @@ export function Incomes({
     const cents = toCents(draft.amount)
     if (cents === null || cents <= 0) {
       setError(t.invalidAmount)
+      return
+    }
+
+    // Caught here rather than left to the server's opaque failure: a Select
+    // stuck showing a stale category after the form reset (the NO_CATEGORY
+    // sentinel fix above addresses the visual half of it) would otherwise
+    // submit "" for category_id.
+    if (draft.category_id === "") {
+      setError(t.invalidCategory)
       return
     }
 
@@ -617,8 +632,10 @@ export function Incomes({
               <Field className="flex-1">
                 <FieldLabel htmlFor="reason">{t.incomeReason}</FieldLabel>
                 <Select
-                  value={draft.category_id === "" ? undefined : String(draft.category_id)}
-                  onValueChange={(v) => set("category_id", Number(v))}
+                  value={draft.category_id === "" ? NO_CATEGORY : String(draft.category_id)}
+                  onValueChange={(v) =>
+                    set("category_id", v === NO_CATEGORY ? "" : Number(v))
+                  }
                   required
                 >
                   <SelectTrigger id="reason" className="h-10 w-full">

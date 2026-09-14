@@ -162,6 +162,13 @@ const NO_PAYMENT_METHOD = "__none__"
 // Radix Select will accept, since "" is reserved for a real item.
 const NO_UNIT = "__none__"
 
+// Same bargain again, for the Category Select specifically: passing
+// `undefined` for "unset" (rather than a real sentinel) makes the Select
+// treat itself as no longer controlled, so it keeps showing whatever was
+// last picked instead of clearing — even once `category_id` has genuinely
+// reset to "" after a submit.
+const NO_CATEGORY = "__none__"
+
 // What the form holds: the amount as it was typed, and everything else as the
 // API's own field names, so submitting is one spread rather than a mapping.
 // holding_id is left out of the draft entirely: this form never shows a
@@ -360,6 +367,15 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
     const cents = toCents(draft.amount)
     if (cents === null || cents <= 0) {
       toast(t.invalidAmount)
+      return
+    }
+
+    // Caught here rather than left to the server's opaque failure: a Select
+    // stuck showing a stale category after the form reset (the NO_CATEGORY
+    // sentinel fix above addresses the visual half of it) would otherwise
+    // submit "" for category_id.
+    if (draft.category_id === "") {
+      toast(t.invalidCategory)
       return
     }
 
@@ -709,8 +725,10 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
             <Field>
               <FieldLabel htmlFor="category">{t.category}</FieldLabel>
               <Select
-                value={draft.category_id === "" ? undefined : String(draft.category_id)}
-                onValueChange={(v) => set("category_id", Number(v))}
+                value={draft.category_id === "" ? NO_CATEGORY : String(draft.category_id)}
+                onValueChange={(v) =>
+                  set("category_id", v === NO_CATEGORY ? "" : Number(v))
+                }
                 required
               >
                 <SelectTrigger id="category" className="h-10 w-full">
@@ -960,11 +978,13 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                               <Select
                                 value={
                                   it.category_id === ""
-                                    ? undefined
+                                    ? NO_CATEGORY
                                     : String(it.category_id)
                                 }
                                 onValueChange={(v) =>
-                                  setItem(i, { category_id: Number(v) })
+                                  setItem(i, {
+                                    category_id: v === NO_CATEGORY ? "" : Number(v),
+                                  })
                                 }
                               >
                                 <SelectTrigger

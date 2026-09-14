@@ -224,7 +224,11 @@ func handleChangePassword(db *sql.DB, now func() time.Time) http.HandlerFunc {
 			CurrentPassword string `json:"current_password"`
 			NewPassword     string `json:"new_password"`
 		}
-		if err := decodeJSON(w, r, &body); err != nil {
+		// Not decodeJSON: that logs the raw body on a decode failure when
+		// DEBUG is on, and this body carries two plaintext passwords — the
+		// journal is not the place for those.
+		r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}

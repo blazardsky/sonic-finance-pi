@@ -63,13 +63,13 @@ function FormSidebar({
 }: {
   title?: React.ReactNode
   children: React.ReactNode
-  // The submit/cancel action bar, kept reachable without scrolling: since
-  // the panel above is now sized by its own content and scrolls with the
-  // page (no longer viewport-clamped), this is rendered outside that flow,
-  // in its own always-on-screen strip — `fixed` to the viewport bottom on
-  // desktop, an ordinary flex-column tail on mobile's already viewport-sized
-  // Sheet. Not inside a caller's own `<form>` element: give the form an
-  // `id` and this its submit button's `form={id}` to keep them associated.
+  // The submit/cancel action bar, kept reachable without scrolling: the
+  // panel itself is viewport-height-bounded now (`contained`'s own fixed
+  // sizing), so this is just its last flex child, same on every form of the
+  // panel (desktop, mobile's Sheet, the expanded overlay) — SidebarContent's
+  // own overflow-auto is what scrolls, not the page underneath it. Not
+  // inside a caller's own `<form>` element: give the form an `id` and this
+  // its submit button's `form={id}` to keep them associated.
   footer?: React.ReactNode
   className?: string
   open?: boolean
@@ -80,24 +80,16 @@ function FormSidebar({
   // reach the desktop panel.
   openMobile?: boolean
 }) {
-  // The measured content-edge and bottom (viewport px), reported by the
-  // `contained` Sidebar below — read by FormSidebarTrigger (which stays
-  // genuinely `fixed` even while the panel is closed, so it tracks this edge
-  // itself rather than the true viewport edge, ticket 14) and by
-  // FormSidebarFooter (which eases its own `fixed` bottom inset as this
-  // bottom nears the viewport's, ticket 07).
-  const [rect, setRect] = React.useState({ edge: 0, bottom: 0, viewportHeight: 0 })
+  // The measured content-edge (viewport px), reported by the `contained`
+  // Sidebar below — read by FormSidebarTrigger, which stays genuinely
+  // `fixed` even while the panel is closed, so it has to track this edge
+  // itself rather than the true viewport edge (ticket 14).
+  const [edge, setEdge] = React.useState(0)
   // Desktop-only: mobile's Sheet is already full-width, so there is nothing
   // for this to expand there. Local and unpersisted — it's a working-room
   // toggle for the session, not a layout choice worth remembering across
   // visits the way open/closed already is (its own cookie, above).
   const [expanded, setExpanded] = React.useState(false)
-  // The footer's own measured height, live — an edit's Salva/Annulla pair is
-  // taller than a plain Aggiungi button, and the desktop `fixed` footer
-  // below floats over content rather than reserving its own space, so
-  // FormSidebarContentEnd needs to know exactly how much room to reserve at
-  // the end of the scrollable content instead.
-  const [footerHeight, setFooterHeight] = React.useState(0)
 
   return (
     <SidebarProvider
@@ -120,7 +112,7 @@ function FormSidebar({
         mobileWidth="100vw"
         themed={false}
         contained
-        onContainedRectChange={setRect}
+        onContainedRectChange={(r) => setEdge(r.edge)}
         overlay={expanded}
         overlayWidth={EXPANDED_OVERLAY_WIDTH}
       >
@@ -138,31 +130,13 @@ function FormSidebar({
         )}
         <SidebarContent className={cn("gap-4 p-4", className)}>
           {children}
-          <FormSidebarContentEnd expanded={expanded} footerHeight={footerHeight} />
         </SidebarContent>
-        {footer && (
-          <FormSidebarFooter
-            edge={rect.edge}
-            panelBottom={rect.bottom}
-            viewportHeight={rect.viewportHeight}
-            expanded={expanded}
-            onHeightChange={setFooterHeight}
-          >
-            {footer}
-          </FormSidebarFooter>
-        )}
+        {footer && <FormSidebarFooter>{footer}</FormSidebarFooter>}
       </Sidebar>
-      <FormSidebarTrigger edge={rect.edge} expanded={expanded} />
+      <FormSidebarTrigger edge={edge} expanded={expanded} />
     </SidebarProvider>
   )
 }
-
-// How close to the panel's true end (viewport px) the footer starts easing
-// off `bottom-0`, and how much of a gap (viewport px) it settles into once
-// there — ticket 07's "sits at bottom-0 ... eases to bottom-3 ... within
-// 3rem", at the default 16px root: 3rem and 0.75rem.
-const FOOTER_EASE_ZONE_PX = 48
-const FOOTER_REST_GAP_PX = 12
 
 // Mobile's dedicated close control, sat in the header next to the title
 // rather than reusing the outside FAB as a toggle. Radix's Dialog treats any
@@ -217,115 +191,14 @@ function FormSidebarClose({ expanded }: { expanded: boolean }) {
   )
 }
 
-// The submit/cancel bar, kept reachable without scrolling. Mobile's Sheet is
-// already exactly viewport height, so an ordinary flex-column tail item
-// already sits at the visible bottom — no positioning trick needed there.
-// Desktop's panel is `contained` (in flow, scrolling with the rest of the
-// page), so this is `fixed` to the viewport bottom instead, docked to the
-// same measured edge as FormSidebarTrigger — `position: sticky` would be the
-// simpler way to track "the viewport bottom, until the panel's own end",
-// but it only holds against an ancestor that actually scrolls, and this
-// app's shell doesn't: it's sized with `min-h-svh` (a floor), so a page
-// taller than the viewport grows the whole document instead of clipping
-// `main` into its own scrollport — the window is what scrolls, so this
-// tracks that directly instead.
-function FormSidebarFooter({
-  children,
-  edge,
-  panelBottom,
-  viewportHeight,
-  expanded,
-  onHeightChange,
-}: {
-  children: React.ReactNode
-  edge: number
-  panelBottom: number
-  viewportHeight: number
-  expanded: boolean
-  // Reports this footer's own rendered height (0 while it isn't rendered at
-  // all, e.g. the panel is closed) — read by FormSidebarContentEnd, which
-  // reserves that much room at the end of the scrollable content so this
-  // footer, when it floats fixed over that content instead of reserving its
-  // own space, never permanently covers the last of it (a Salva/Annulla
-  // edit's two buttons are taller than a plain Aggiungi's one, so this has
-  // to be measured live rather than a single guessed constant).
-  onHeightChange?: (height: number) => void
-}) {
-  const { isMobile, open } = useSidebar()
-  const ref = React.useRef<HTMLDivElement>(null)
-
-  React.useLayoutEffect(() => {
-    const el = ref.current
-    if (!el) {
-      onHeightChange?.(0)
-      return
-    }
-    const measure = () => onHeightChange?.(el.getBoundingClientRect().height)
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [isMobile, expanded, open, onHeightChange])
-
-  // Same as mobile, and for the same reason: the overlay Sidebar renders
-  // while `expanded` is exactly viewport-height too, so an ordinary
-  // flex-column tail item already sits at its visible bottom with no
-  // measuring/easing needed — FormSidebarContentEnd skips its own reserved
-  // space in both cases accordingly.
-  if (isMobile || expanded) {
-    return (
-      <div ref={ref} className="shrink-0 border-t bg-background p-4">
-        {children}
-      </div>
-    )
-  }
-  // Unlike mobile's Sheet, the desktop panel's own content stays mounted
-  // (just width-collapsed) while closed — this bar is `fixed`, outside that
-  // collapsing box, so it has to hide itself instead of being clipped along
-  // with it.
-  if (!open) return null
-
-  // How far below the *current* viewport bottom the panel's true end sits —
-  // large while there's plenty of panel left to scroll through, shrinking
-  // to 0 right as the viewport bottom reaches it. Bottom-0 (flush) until
-  // that's within the ease zone, then a linear ease down to the rest gap, so
-  // the bar is never pushed past the panel's own end into whatever (if
-  // anything) follows it.
-  const distanceToEnd = panelBottom - viewportHeight
-  const eased = FOOTER_REST_GAP_PX * (1 - distanceToEnd / FOOTER_EASE_ZONE_PX)
-  const bottomInset =
-    distanceToEnd >= FOOTER_EASE_ZONE_PX
-      ? 0
-      : Math.min(FOOTER_REST_GAP_PX, Math.max(0, eased))
-
-  return (
-    <div
-      ref={ref}
-      style={{ right: `${edge}px`, bottom: `${bottomInset}px` }}
-      className="fixed z-20 w-(--sidebar-width) border-t bg-background p-4 shadow-sm"
-    >
-      {children}
-    </div>
-  )
-}
-
-// Reserves room at the end of the scrollable content equal to
-// FormSidebarFooter's own measured height, only where that footer actually
-// floats fixed over content rather than reserving its own space in flow
-// (mobile's Sheet and the expanded overlay already do the latter, so this
-// renders nothing there) — otherwise the page's natural scroll end lands
-// exactly where the footer already sits, and the last of the content is
-// never reachable no matter how far the page scrolls.
-function FormSidebarContentEnd({
-  expanded,
-  footerHeight,
-}: {
-  expanded: boolean
-  footerHeight: number
-}) {
-  const { isMobile } = useSidebar()
-  if (isMobile || expanded || footerHeight === 0) return null
-  return <div aria-hidden style={{ height: footerHeight }} />
+// The submit/cancel bar, kept reachable without scrolling: `contained`'s
+// panel is now genuinely `fixed` and height-bounded (viewport, minus the
+// header), so this is just its last flex child on every form of the panel —
+// desktop, mobile's Sheet, the expanded overlay alike. SidebarContent's own
+// `overflow-auto` is what scrolls a form taller than the panel; this bar
+// never moves.
+function FormSidebarFooter({ children }: { children: React.ReactNode }) {
+  return <div className="shrink-0 border-t bg-background p-4">{children}</div>
 }
 
 // Both states are `fixed` to the real viewport edge — not placed in normal

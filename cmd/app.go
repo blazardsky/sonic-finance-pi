@@ -1,17 +1,58 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
+
+// debugEnabled gates the extra diagnostic logging this turns on: every
+// /api/ request's method, path, status and duration, and — on a decode
+// failure — the raw body that didn't parse. On by default, since a
+// household-scale Pi's traffic is quiet enough that the extra journal lines
+// cost nothing until someone actually needs to grep them; DEBUG=false (or 0)
+// in the environment turns it back off.
+var debugEnabled = os.Getenv("DEBUG") != "false" && os.Getenv("DEBUG") != "0"
+
+// logRequests logs each /api/ request once it completes, when debugEnabled —
+// silent otherwise, exactly today's behavior. Static asset serving (GET /)
+// is deliberately left out: every page load fetches a handful of those, and
+// they never fail in the way this exists to catch.
+func logRequests(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !debugEnabled || !strings.HasPrefix(r.URL.Path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		start := time.Now()
+		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(sw, r)
+		log.Printf("debug: %s %s -> %d (%s)", r.Method, r.URL.Path, sw.status, time.Since(start))
+	})
+}
+
+// statusWriter is the one thing http.ResponseWriter doesn't hand back on its
+// own — what status a handler actually wrote — captured for logRequests.
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (sw *statusWriter) WriteHeader(status int) {
+	sw.status = status
+	sw.ResponseWriter.WriteHeader(status)
+}
 
 // newApp builds the whole HTTP surface. The clock is injected: no handler may
 // read the wall clock, because half the recurring logic is "which month is it"
@@ -111,15 +152,32 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 		})
 	})
 
-	return requireSession(db, now, mux)
+	return logRequests(requireSession(db, now, mux))
 }
 
 // decodeJSON reads a JSON request body into dst. The cap is the point: the Pi
 // has 512MB of RAM, and none of these payloads — an Expense with its Items is
 // the largest — has any business being bigger than this.
+//
+// On a decode failure, the raw body is logged when debugEnabled — this is
+// the one case "add error logs with context" exists for: the error Go's own
+// json package returns already names the offending field (e.g. "cannot
+// unmarshal string into Go struct field ...category_id of type int64"), but
+// not what was actually sent, which is what turns "something broke" into
+// "the category picker sent an empty string again."
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	return json.NewDecoder(r.Body).Decode(dst)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(body, dst); err != nil {
+		if debugEnabled {
+			log.Printf("debug: %s %s failed to decode body: %s", r.Method, r.URL.Path, bytes.TrimSpace(body))
+		}
+		return err
+	}
+	return nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

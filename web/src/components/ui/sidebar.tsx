@@ -239,13 +239,26 @@ function Sidebar({
   const bg = themed ? "bg-sidebar" : "bg-background"
   const fg = themed ? "text-sidebar-foreground" : "text-foreground"
 
-  // Tracks the panel's edge and bottom (viewport px). Read only by the
-  // `contained` branch below; called unconditionally so hook order never
-  // depends on the `contained` prop. `isMobile`/`overlay` must also gate this
-  // (and sit in the deps array) because both switch the branch below away
-  // from `contained` — unmounting this ref's div without them here would
-  // leave the observer/listeners attached to a now-detached node instead of
-  // being cleaned up, and a detached node's rect is all zeros.
+  // The panel's own horizontal edge (viewport px) — read only by the
+  // `contained` branch below, to position the genuinely-`fixed` panel
+  // against the content column's edge rather than the true viewport edge
+  // (ticket 14's reason for `contained` existing at all: on a screen wider
+  // than max-w-(--content-max-width), those aren't the same place). 0 until
+  // the first measurement lands, which reads correctly on any screen at or
+  // under that max-width (no centering margin yet to account for) and
+  // self-corrects a frame later on a wider one.
+  const [edge, setEdge] = React.useState(0)
+
+  // Measured off the in-flow gap placeholder, not the panel itself — the
+  // panel is now `fixed` and no longer part of this layout, so its own rect
+  // can't answer "where should I sit" without measuring something else that
+  // still is. Read by the `contained` branch below; called unconditionally
+  // so hook order never depends on the `contained` prop. `isMobile`/`overlay`
+  // must also gate this (and sit in the deps array) because both switch the
+  // branch below away from `contained` — unmounting this ref's div without
+  // them here would leave the observer/listeners attached to a now-detached
+  // node instead of being cleaned up, and a detached node's rect is all
+  // zeros.
   const containedGapRef = React.useRef<HTMLDivElement>(null)
   React.useLayoutEffect(() => {
     if (!contained || isMobile || overlay) return
@@ -253,9 +266,10 @@ function Sidebar({
     if (!el) return
     const measure = () => {
       const rect = el.getBoundingClientRect()
-      const edge = side === "right" ? window.innerWidth - rect.right : rect.left
+      const nextEdge = side === "right" ? window.innerWidth - rect.right : rect.left
+      setEdge(nextEdge)
       onContainedRectChange?.({
-        edge,
+        edge: nextEdge,
         bottom: rect.bottom,
         viewportHeight: window.innerHeight,
       })
@@ -264,11 +278,9 @@ function Sidebar({
     const ro = new ResizeObserver(measure)
     ro.observe(el)
     window.addEventListener("resize", measure)
-    window.addEventListener("scroll", measure, { passive: true })
     return () => {
       ro.disconnect()
       window.removeEventListener("resize", measure)
-      window.removeEventListener("scroll", measure)
     }
   }, [contained, isMobile, overlay, side, onContainedRectChange])
 
@@ -329,26 +341,29 @@ function Sidebar({
         data-side={side}
         data-slot="sidebar"
       >
-        {/* In-flow, not fixed: sized by its own content rather than clamped
-            to the viewport, so a form longer than one screen just grows the
-            column and scrolls with the rest of the page instead of getting
-            its own separate, viewport-bounded scrollbar. The measured rect
-            still tells FormSidebarTrigger — genuinely fixed, since it must
-            stay reachable while this panel is closed — where the content
-            edge is (ticket 14). */}
+        {/* Reserves the column's width in the page's own flex row — the
+            actual panel below is `fixed` and out of that flow, so nothing
+            else would hold this space open for it. */}
         <div
           ref={containedGapRef}
+          data-slot="sidebar-gap"
+          className="h-full w-(--sidebar-width) shrink-0 bg-transparent transition-[width] duration-200 ease-linear group-data-[collapsible=offcanvas]:w-0"
+        />
+        {/* Genuinely `fixed` — top-20 clears the page header, same inset
+            FormSidebarTrigger already docks against — but positioned off
+            the content column's own measured edge (`edge`, ticket 14)
+            rather than the true viewport edge, so it still lands inside
+            max-w-(--content-max-width) on a screen wider than that. Bounded
+            height plus SidebarContent's own overflow-auto (below) is what
+            keeps the form on screen while scrolling and the submit button
+            reachable: internal scroll, not the whole page scrolling this
+            panel out of view. */}
+        <div
           data-slot="sidebar-container"
           data-side={side}
+          style={{ [side === "right" ? "right" : "left"]: edge }}
           className={cn(
-            // h-full: without it this box (the one carrying the border) is
-            // only as tall as its own content, so a short form reads as a
-            // short-looking panel next to a taller list column. The row
-            // above already stretches this box to match its siblings via
-            // ordinary flex align-items (default: stretch) — this just lets
-            // that stretched height reach the border instead of stopping at
-            // the block child's auto-height content size.
-            "hidden h-full w-(--sidebar-width) shrink-0 overflow-x-hidden transition-[width] duration-200 ease-linear group-data-[collapsible=offcanvas]:w-0 group-data-[side=left]:border-r group-data-[side=right]:border-l md:flex",
+            "fixed top-20 z-20 hidden h-[calc(100dvh-var(--spacing)*20)] w-(--sidebar-width) shrink-0 overflow-x-hidden transition-[width] duration-200 ease-linear group-data-[collapsible=offcanvas]:w-0 group-data-[side=left]:border-r group-data-[side=right]:border-l md:flex",
             className
           )}
           {...props}
@@ -356,7 +371,7 @@ function Sidebar({
           <div
             data-sidebar="sidebar"
             data-slot="sidebar-inner"
-            className={`flex w-full flex-col ${bg}`}
+            className={`flex h-full w-full flex-col ${bg}`}
           >
             {children}
           </div>

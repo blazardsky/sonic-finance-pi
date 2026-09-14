@@ -224,6 +224,14 @@ export function RecurringExpenses() {
       setError(t.invalidAmount)
       return
     }
+    // Caught here rather than left to the server's generic failure: a Select
+    // stuck showing a stale category after the form reset (the bug the
+    // NONE-sentinel fix above addresses) would otherwise submit "" for
+    // category_id, which the server can only answer with an opaque 400.
+    if (draft.category_id === "") {
+      setError(t.invalidCategory)
+      return
+    }
     // "" is left to the server, which fills in the day it was set up. Anything
     // typed has to be a real day of a month — the server refuses this too, in
     // English; checking here is what gets the household an Italian sentence.
@@ -548,8 +556,15 @@ export function RecurringExpenses() {
             <Field>
               <FieldLabel htmlFor="category">{t.category}</FieldLabel>
               <Select
-                value={draft.category_id === "" ? undefined : String(draft.category_id)}
-                onValueChange={(v) => set("category_id", Number(v))}
+                // Never `undefined`: Radix/Base UI's Select treats that as
+                // "I no longer control this," not "clear the selection" — it
+                // keeps showing whatever was last picked instead of the
+                // placeholder, even though `draft.category_id` really did
+                // reset to "" after a submit. NONE matches no real
+                // SelectItem, so SelectValue's placeholder shows correctly
+                // while the Select itself stays controlled throughout.
+                value={draft.category_id === "" ? NONE : String(draft.category_id)}
+                onValueChange={(v) => set("category_id", v === NONE ? "" : Number(v))}
                 required
               >
                 <SelectTrigger id="category" className="h-10 w-full">

@@ -367,6 +367,10 @@ export const t = {
   recurringInUse:
     "Questa spesa ricorrente ha già generato delle spese. Terminala invece di eliminarla.",
   invalidDayOfMonth: "Il giorno del mese deve essere tra 1 e 31.",
+  // Checked client-side before every submit (Expenses, Incomes, Recurring):
+  // the picker's own `required` attribute doesn't catch a Select stuck
+  // showing a stale choice after the form reset out from under it.
+  invalidCategory: "Scegli una categoria.",
   endBeforeStart: "Il mese di fine è prima di quello di inizio.",
   // The 31st does not exist in April: say so once, here, rather than let the
   // household wonder why the date moved.
