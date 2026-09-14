@@ -39,6 +39,47 @@ side — is in `web/README.md`.
 
 Run the command `pnpm --dir web dev` for the Vite app, run the command `go run ./cmd` for the Go server.
 
+## Deploying to the Pi
+
+There is no CD — a new binary reaches the Pi by hand. Two ways to get one:
+
+**A) Build it yourself:** `./build.sh` produces `build/api-armv6`, ready to copy over.
+
+**B) Grab a CI build:** pushing a tag alone builds nothing — `.github/workflows/release-pi-zero.yml`
+only runs `on: release: published`, so a GitHub Release has to actually be
+created from that tag:
+
+    git tag vX.Y                 # X.Y — whatever this release is for you
+    git push origin vX.Y
+    gh release create vX.Y       # publishes it, which is what triggers the build
+
+Wait for the workflow to finish (`gh run watch`, or check the Actions tab),
+then the binary is attached to the release as `sonic-finance-armv6`:
+
+    curl -L -o sonic-finance-armv6 \
+      https://github.com/blazardsky/sonic-finance-pi/releases/download/vX.Y/sonic-finance-armv6
+      # vX.Y — the tag you just released
+
+Either way, copying it over and restarting is the same, and is the one part
+of this that is genuinely yours to fill in — this repo carries no systemd
+unit or deploy script, so how the binary is run on your Pi is whatever you
+set up when you first installed it:
+
+    scp sonic-finance-armv6 <user>@<pi-host>:<path-to-the-running-binary>
+      # <user>@<pi-host> — however you already SSH in: an IP, `raspberrypi.local`,
+      # a Tailscale name, whatever's in your own ~/.ssh/config.
+      # <path-to-the-running-binary> — wherever the binary already lives on the
+      # Pi. Match the existing name/path exactly if something (a systemd unit,
+      # a login script, a crontab @reboot line) hardcodes it — otherwise the
+      # thing that starts it on boot will look in the wrong place.
+
+    ssh <user>@<pi-host> 'systemctl restart <service-name>'
+      # only if it runs as a systemd service — <service-name> is whatever you
+      # named it (`sudo systemctl status` on the Pi will show it if you forget).
+      # Running it by hand instead (a screen/tmux session, a plain foreground
+      # process)? Kill that process and start the new binary the same way you
+      # started the old one.
+
 ## How to install a certificate (TLS)
 
 By default the server runs plain HTTP on `:8080` — fine for use over Tailscale,
