@@ -30,9 +30,10 @@ import {
 } from "@/components/ui/table"
 import { apiJSON } from "@/lib/api"
 import { formatCents, thisMonth, thisYear } from "@/lib/money"
-import { categoryColor } from "@/lib/trend"
+import { paletteVar } from "@/lib/palette"
+import { colorOf } from "@/lib/pickers"
 import { t } from "@/lib/strings"
-import type { FullYearReport, MonthRow, YearTotals } from "@/types"
+import type { Category, FullYearReport, MonthRow, YearTotals } from "@/types"
 
 // ADR-0011: this page, and only this page, is allowed to ask for a whole
 // year's Category breakdown — a query the ticket that added Year.tsx's own
@@ -44,6 +45,7 @@ export function YearlyReport() {
   const [year, setYear] = useState(thisYear)
   const [totals, setTotals] = useState<YearTotals | null>(null)
   const [full, setFull] = useState<FullYearReport | null>(null)
+  const [categories, setCategories] = useState<Category[]>([])
   const [error, setError] = useState("")
 
   useEffect(() => {
@@ -69,10 +71,22 @@ export function YearlyReport() {
     }
   }, [year])
 
+  // Independent of which year is on screen — the pie chart below only reads
+  // each Category's own stored `color` (ticket 05), which never changes with
+  // the year selector.
+  useEffect(() => {
+    apiJSON<Category[]>("/api/categories")
+      .then(setCategories)
+      .catch(() => setCategories([]))
+  }, [])
+
   const grid = useMemo(() => pivotByMonth(full?.by_month ?? [], year), [full, year])
   const path = useMemo(() => cumulativePath(totals?.months ?? []), [totals])
   const monthly = useMemo(() => monthlyTotals(totals?.months ?? []), [totals])
-  const slices = useMemo(() => categorySlices(categoryShares(full?.by_month ?? [])), [full])
+  const slices = useMemo(
+    () => categorySlices(categoryShares(full?.by_month ?? []), categories),
+    [full, categories]
+  )
   const sliceConfig = useMemo(() => categorySliceConfig(slices), [slices])
   const step = (by: number) => setYear(String(Number(year) + by))
 
@@ -277,16 +291,20 @@ function categoryShares(byMonth: FullYearReport["by_month"]): CategoryShare[] {
 
 // One slice of the pie chart: a Category's share of the year, with
 // the long tail lumped into "Altre categorie" so a year with thirty
-// Categories still draws a pie someone can read. Colours come from
-// categoryColor (lib/trend), keyed by Category id: --chart-1..5 are five
-// shades of the same blue, which is what made every wedge look alike, and
-// keying by id means a Category is the same colour here as it is on the
-// Dashboard's trend chart and calendar dots.
+// Categories still draws a pie someone can read. Colours come from each
+// Category's own stored `color` slot (ticket 05) — the same lookup
+// pickers.ts's colorOf does elsewhere — so a Category is the same colour
+// here as it is on the Dashboard's trend chart and calendar dots. Two
+// Categories sharing a color render as the same wedge colour, which is
+// expected (ADR-0016), not a bug this chart works around.
 type CategorySlice = { key: string; label: string; amount: number; fill: string }
 
 const MAX_CATEGORY_SLICES = 5
 
-function categorySlices(shares: CategoryShare[]): CategorySlice[] {
+function categorySlices(
+  shares: CategoryShare[],
+  categories: Category[]
+): CategorySlice[] {
   const top = shares.slice(0, MAX_CATEGORY_SLICES)
   const rest = shares.slice(MAX_CATEGORY_SLICES)
 
@@ -294,7 +312,7 @@ function categorySlices(shares: CategoryShare[]): CategorySlice[] {
     key: `c${c.id}`,
     label: c.name,
     amount: c.amount,
-    fill: categoryColor(c.id),
+    fill: paletteVar(colorOf(categories, c.id), "primary"),
   }))
 
   if (rest.length > 0) {

@@ -51,9 +51,10 @@ import { SpoilerAmount } from "@/components/SpoilerAmount"
 import { Progress } from "@/components/ui/progress"
 import { api, apiJSON } from "@/lib/api"
 import { formatCents, formatDate, thisMonth, thisYear, today } from "@/lib/money"
-import { nameOf } from "@/lib/pickers"
+import { colorOf, nameOf } from "@/lib/pickers"
+import { paletteVar } from "@/lib/palette"
 import { t } from "@/lib/strings"
-import { addDays, categoriesIn, categoryColor, dailyBuckets } from "@/lib/trend"
+import { addDays, categoriesIn, dailyBuckets } from "@/lib/trend"
 import type {
   Category,
   DailyCategoryTotal,
@@ -214,7 +215,7 @@ export function Dashboard({
         </div>
       )}
 
-      <DailyTrendCard daily={daily} />
+      <DailyTrendCard daily={daily} categories={categories} />
 
       {/* items-start: without it the grid stretches the calendar column to
           match whichever side ends up taller, leaving Prossime scadenze
@@ -400,7 +401,13 @@ function NetSparkline({ months }: { months: MonthRow[] }) {
 // The Dashboard's daily chart by Category — every day of the rolling window,
 // zero-spend days included, so a quiet stretch reads as a real gap rather
 // than a shorter chart.
-function DailyTrendCard({ daily }: { daily: DailyCategoryTotal[] }) {
+function DailyTrendCard({
+  daily,
+  categories,
+}: {
+  daily: DailyCategoryTotal[]
+  categories: Category[]
+}) {
   const days = Array.from({ length: dailyWindowDays }, (_, i) =>
     addDays(today(), -(dailyWindowDays - 1 - i))
   )
@@ -416,7 +423,7 @@ function DailyTrendCard({ daily }: { daily: DailyCategoryTotal[] }) {
         ) : (
           <CategoryTrendChart
             buckets={dailyBuckets(daily, days)}
-            categories={categoriesIn(daily)}
+            categories={categoriesIn(daily, categories)}
           />
         )}
       </CardContent>
@@ -436,7 +443,10 @@ function UpcomingCard({
 }) {
   const [selected, setSelected] = useState<Date | undefined>(new Date())
   const dayColors = Object.fromEntries(
-    upcoming.map((u) => [u.date, categoryColor(u.r.category_id)])
+    upcoming.map((u) => [
+      u.date,
+      paletteVar(colorOf(categories, u.r.category_id), "primary"),
+    ])
   )
 
   return (
@@ -467,7 +477,12 @@ function UpcomingCard({
                   <span
                     aria-hidden
                     className="size-1.5 shrink-0 -translate-y-px rounded-full"
-                    style={{ backgroundColor: categoryColor(r.category_id) }}
+                    style={{
+                      backgroundColor: paletteVar(
+                        colorOf(categories, r.category_id),
+                        "primary"
+                      ),
+                    }}
                   />
                   <span className="min-w-0">
                     <span className="truncate">

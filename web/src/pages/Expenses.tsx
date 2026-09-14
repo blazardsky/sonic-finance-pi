@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/lib/api"
+import { ColorDot } from "@/components/ColorDot"
 import { DatePicker } from "@/components/date-picker"
 import { FormSidebar } from "@/components/form-sidebar"
 import { SpoilerAmount } from "@/components/SpoilerAmount"
@@ -718,7 +719,10 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                 <SelectContent>
                   {pickable(draft.category_id).map((c) => (
                     <SelectItem key={c.id} value={String(c.id)}>
-                      {c.name}
+                      <span className="flex items-center gap-2">
+                        <ColorDot color={c.color} />
+                        {c.name}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -744,7 +748,10 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                   <SelectItem value="none">{t.chooseSubcategory}</SelectItem>
                   {pickableSub.map((s) => (
                     <SelectItem key={s.id} value={String(s.id)}>
-                      {s.name}
+                      <span className="flex items-center gap-2">
+                        <ColorDot color={s.color} />
+                        {s.name}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -969,7 +976,10 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                                 <SelectContent>
                                   {pickable(it.category_id).map((c) => (
                                     <SelectItem key={c.id} value={String(c.id)}>
-                                      {c.name}
+                                      <span className="flex items-center gap-2">
+                                        <ColorDot color={c.color} />
+                                        {c.name}
+                                      </span>
                                     </SelectItem>
                                   ))}
                                 </SelectContent>

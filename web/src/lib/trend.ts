@@ -4,7 +4,8 @@
 // page. Not a library: it is a handful of date offsets, and this is the only
 // place in the app that cares about weeks.
 
-import type { DailyCategoryTotal } from "@/types"
+import { colorOf } from "@/lib/pickers"
+import type { Category, DailyCategoryTotal } from "@/types"
 
 // One column a trend chart draws: a label the axis shows, and each Category's
 // cents under it, keyed by Category id — never by name, so a rename does not
@@ -44,10 +45,13 @@ function mondayOf(date: string): string {
 // categoriesIn is every Category a daily report mentions, biggest total
 // first — the order both the legend and the by_category list already use.
 // The name travels with the id straight off the rows themselves, so a trend
-// chart never has to hold the whole Category list just to label its legend.
+// chart never has to hold the whole Category list just to label its legend —
+// but color does need it, since a daily report row carries no color of its
+// own (ticket 05), hence the categories list handed in just for that lookup.
 export function categoriesIn(
-  daily: DailyCategoryTotal[]
-): { id: number; name: string }[] {
+  daily: DailyCategoryTotal[],
+  categories: Category[]
+): { id: number; name: string; color: Category["color"] }[] {
   const totals = new Map<number, { name: string; total: number }>()
   for (const row of daily) {
     const c = totals.get(row.category_id) ?? { name: row.category, total: 0 }
@@ -56,7 +60,7 @@ export function categoriesIn(
   }
   return [...totals.entries()]
     .sort(([, a], [, b]) => b.total - a.total)
-    .map(([id, c]) => ({ id, name: c.name }))
+    .map(([id, c]) => ({ id, name: c.name, color: colorOf(categories, id) }))
 }
 
 // dailyBuckets is one bucket per day in days, in that order, whether or not
@@ -101,15 +105,4 @@ export function weeklyBuckets(daily: DailyCategoryTotal[]): TrendBucket[] {
       label: `${shortDate(monday)}–${shortDate(addDays(monday, 6))}`,
       amounts,
     }))
-}
-
-// categoryColor spaces Categories around the hue wheel by the golden angle,
-// so any number of them stay visually distinct instead of cycling through a
-// handful of --chart-N tokens that were all the same blue family — the fix
-// for the collision the old five-token version was named for. Keyed by id
-// rather than by position, so a Category keeps its colour as the set of
-// Categories in view changes.
-export function categoryColor(categoryId: number): string {
-  const hue = (categoryId * 137.508) % 360
-  return `oklch(0.62 0.16 ${hue.toFixed(1)})`
 }

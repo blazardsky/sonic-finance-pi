@@ -1,5 +1,7 @@
 // The shapes the API hands out, shared by the screens that read them.
 
+import type { ColorSlot } from "@/lib/palette"
+
 export type Applies = "expense" | "income" | "both"
 
 export type Category = {
@@ -7,6 +9,9 @@ export type Category = {
   name: string
   applies_to: Applies
   hidden: boolean
+  // One of the 9 fixed palette slots (web/src/lib/palette.ts), never empty —
+  // a shared grouping signal, not a unique identity (ADR-0016).
+  color: ColorSlot
   // A Base category is one the tax summary resolves by identity: it can be
   // hidden, never renamed or deleted, and the server enforces that with a 409.
   base: boolean
@@ -33,6 +38,8 @@ export type Subcategory = {
   name: string
   applies_to: Applies
   hidden: boolean
+  // Same palette and rules as Category.color, added by the same migration.
+  color: ColorSlot
 }
 
 // Who money comes from, as one row rather than three spellings. Not a

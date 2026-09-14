@@ -229,7 +229,7 @@ function CalendarDayButton({
       {children}
       {/* dayColors: a day with an upcoming Recurring due gets a dot in that
           Category's colour — the same colour the list below marks its row
-          with (see lib/trend.ts's categoryColor). */}
+          with (Category.color, via lib/palette.ts's paletteVar). */}
       {(() => {
         const key = `${day.date.getFullYear()}-${String(day.date.getMonth() + 1).padStart(2, "0")}-${String(day.date.getDate()).padStart(2, "0")}`
         const color = dayColors?.[key]

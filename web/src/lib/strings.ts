@@ -117,6 +117,29 @@ export const t = {
     "Questa categoria è di base: il riepilogo fiscale la usa. Puoi solo nasconderla.",
   categoryInUse:
     "Questa categoria è usata da spese registrate. Nascondila invece di eliminarla.",
+  // Ticket 01 (safe delete): the picker offered instead of the bare 409 above,
+  // once a replacement is mandatory to actually finish the delete.
+  replaceCategoryTitle: (name: string) =>
+    `"${name}" è usata da spese o entrate registrate`,
+  replaceCategoryHint:
+    "Scegli una categoria dello stesso tipo su cui spostare tutto quello che punta a questa, poi elimina.",
+  replaceWith: "Sposta su",
+  chooseReplacementCategory: "Scegli una categoria…",
+  confirmReplaceAndDelete: "Sposta ed elimina",
+
+  // Ticket 04: the 9-slot color picker, shared by the add forms and the
+  // row-actions "cambia colore" popover for both Category and Subcategory.
+  color: "Colore",
+  changeColor: "Cambia colore",
+  colorSlotBlue: "Blu",
+  colorSlotOrange: "Arancione",
+  colorSlotAqua: "Acqua",
+  colorSlotYellow: "Giallo",
+  colorSlotMagenta: "Magenta",
+  colorSlotGreen: "Verde",
+  colorSlotViolet: "Viola",
+  colorSlotRed: "Rosso",
+  colorSlotBlueGray: "Nessun colore",
 
   // Subcategories — a second, independent tag an Expense can carry alongside
   // its Category, freely paired with whichever Category an entry actually
@@ -128,6 +151,16 @@ export const t = {
     `Eliminare la sottocategoria "${name}"?`,
   subcategoryInUse:
     "Questa sottocategoria è usata da spese registrate. Nascondila invece di eliminarla.",
+  // Ticket 02 (safe delete): the picker offered instead of the bare 409
+  // above. Unlike Category, a replacement is optional here — "remove the tag
+  // instead" clears subcategory_id everywhere without touching the Category
+  // on those same rows.
+  replaceSubcategoryTitle: (name: string) =>
+    `"${name}" è usata da spese registrate`,
+  replaceSubcategoryHint:
+    "Scegli una sottocategoria dello stesso tipo su cui spostare tutto quello che punta a questa, oppure rimuovi semplicemente l'etichetta.",
+  chooseReplacementSubcategory: "Scegli una sottocategoria…",
+  removeSubcategoryTag: "Rimuovi l'etichetta invece",
 
   // Incomes — money owed to or received by the household
   incomes: "Entrate",

@@ -69,3 +69,15 @@ export function nameOf(
 export function isGiftCategory(categories: Category[], id: number): boolean {
   return categories.find((c) => c.id === id)?.gift ?? false
 }
+
+// The color slot for an id, the same shape of lookup nameOf does for a name —
+// used wherever a chart or dot has only a Category id (from a report row) and
+// needs the actual Category's own stored color (ticket 05). "blue-gray" only
+// ever covers an id missing from the list handed in; every real Category and
+// Subcategory always carries one of the 9 slots (ADR-0016).
+export function colorOf(
+  rows: { id: number; color: Category["color"] }[],
+  id: number
+): Category["color"] {
+  return rows.find((r) => r.id === id)?.color ?? "blue-gray"
+}

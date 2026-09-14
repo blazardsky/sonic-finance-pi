@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/lib/api"
+import { ColorDot } from "@/components/ColorDot"
 import { FormSidebar } from "@/components/form-sidebar"
 import { toast } from "@/lib/toast"
 import {
@@ -557,7 +558,10 @@ export function RecurringExpenses() {
                 <SelectContent>
                   {pickable.map((c) => (
                     <SelectItem key={c.id} value={String(c.id)}>
-                      {c.name}
+                      <span className="flex items-center gap-2">
+                        <ColorDot color={c.color} />
+                        {c.name}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -583,7 +587,10 @@ export function RecurringExpenses() {
                   <SelectItem value="none">{t.chooseSubcategory}</SelectItem>
                   {pickableSub.map((s) => (
                     <SelectItem key={s.id} value={String(s.id)}>
-                      {s.name}
+                      <span className="flex items-center gap-2">
+                        <ColorDot color={s.color} />
+                        {s.name}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>

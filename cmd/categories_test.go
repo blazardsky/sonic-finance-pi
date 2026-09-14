@@ -14,6 +14,7 @@ type categoryJSON struct {
 	Name        string `json:"name"`
 	AppliesTo   string `json:"applies_to"`
 	Hidden      bool   `json:"hidden"`
+	Color       string `json:"color"`
 	Base        bool   `json:"base"`
 	Gift        bool   `json:"gift"`
 	Freelance   bool   `json:"freelance"`
@@ -358,12 +359,14 @@ func TestCategoryWritesAreValidated(t *testing.T) {
 		body         any
 		want         int
 	}{
-		"an empty name":               {"POST", "/api/categories", map[string]any{"name": "  ", "applies_to": appliesExpense}, http.StatusBadRequest},
-		"a missing applies_to":        {"POST", "/api/categories", map[string]any{"name": "Bici"}, http.StatusBadRequest},
-		"an unknown applies_to":       {"POST", "/api/categories", map[string]any{"name": "Bici", "applies_to": "elsewhere"}, http.StatusBadRequest},
-		"a rename to nothing":         {"PATCH", id, map[string]any{"name": ""}, http.StatusBadRequest},
-		"a patch of an unknown id":    {"PATCH", "/api/categories/9999", map[string]any{"name": "Bici"}, http.StatusNotFound},
-		"a patch of a non-numeric id": {"PATCH", "/api/categories/abc", map[string]any{"name": "Bici"}, http.StatusNotFound},
+		"an empty name":                {"POST", "/api/categories", map[string]any{"name": "  ", "applies_to": appliesExpense}, http.StatusBadRequest},
+		"a missing applies_to":         {"POST", "/api/categories", map[string]any{"name": "Bici"}, http.StatusBadRequest},
+		"an unknown applies_to":        {"POST", "/api/categories", map[string]any{"name": "Bici", "applies_to": "elsewhere"}, http.StatusBadRequest},
+		"an out-of-set color":          {"POST", "/api/categories", map[string]any{"name": "Bici", "applies_to": appliesExpense, "color": "chartreuse"}, http.StatusBadRequest},
+		"a rename to nothing":          {"PATCH", id, map[string]any{"name": ""}, http.StatusBadRequest},
+		"an out-of-set color on patch": {"PATCH", id, map[string]any{"color": "chartreuse"}, http.StatusBadRequest},
+		"a patch of an unknown id":     {"PATCH", "/api/categories/9999", map[string]any{"name": "Bici"}, http.StatusNotFound},
+		"a patch of a non-numeric id":  {"PATCH", "/api/categories/abc", map[string]any{"name": "Bici"}, http.StatusNotFound},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -384,6 +387,48 @@ func TestCategoryNamesAreTrimmed(t *testing.T) {
 	a.post(t, "/api/categories", map[string]any{"name": "  Bici  ", "applies_to": appliesExpense}, &created)
 	if created.Name != "Bici" {
 		t.Errorf("name = %q, want %q", created.Name, "Bici")
+	}
+}
+
+// Picking a color is never a required chore (spec, user story 9): omitting it
+// on create lands on the neutral default, not an error.
+func TestCategoryColorDefaultsToBlueGrayWhenOmitted(t *testing.T) {
+	a := newTestApp(t)
+
+	var created categoryJSON
+	res := a.post(t, "/api/categories", map[string]any{"name": "Bici", "applies_to": appliesExpense}, &created)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", res.StatusCode)
+	}
+	if created.Color != defaultColor {
+		t.Errorf("color = %q, want %q", created.Color, defaultColor)
+	}
+	if got := a.category(t, "Bici").Color; got != defaultColor {
+		t.Errorf("listed color = %q, want %q", got, defaultColor)
+	}
+}
+
+// A color round-trips on PATCH exactly like hidden does (spec: not a
+// Base-protected attribute), including on a Base category.
+func TestCategoryColorRoundTripsOnPatch(t *testing.T) {
+	a := newTestApp(t)
+	before := a.category(t, "Alimentari")
+
+	res := a.patch(t, categoryPath(before.ID), map[string]any{"color": "violet"}, nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", res.StatusCode)
+	}
+	if got := a.category(t, "Alimentari").Color; got != "violet" {
+		t.Errorf("color = %q after the patch, want %q", got, "violet")
+	}
+
+	// Base category: color is not one of the attributes ADR-0008 guards.
+	freelance := a.category(t, seedFreelanceName)
+	if res := a.patch(t, categoryPath(freelance.ID), map[string]any{"color": "red"}, nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("changing a base category's color = %d, want 200", res.StatusCode)
+	}
+	if got := a.category(t, seedFreelanceName).Color; got != "red" {
+		t.Errorf("base category color = %q after the patch, want %q", got, "red")
 	}
 }
 
@@ -426,4 +471,137 @@ func (a *testApp) createCategoryNamed(t *testing.T, name string) categoryJSON {
 		t.Fatalf("POST /api/categories %q = %d, want 201", name, res.StatusCode)
 	}
 	return got
+}
+
+// createCategoryApplying adds a Category on the given side and returns it —
+// createCategoryNamed's expense-only sibling, for the safe-delete tests that
+// need a "both" pair to touch an Income too.
+func (a *testApp) createCategoryApplying(t *testing.T, name, appliesTo string) categoryJSON {
+	t.Helper()
+	var got categoryJSON
+	res := a.post(t, "/api/categories", map[string]any{"name": name, "applies_to": appliesTo}, &got)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /api/categories %q = %d, want 201", name, res.StatusCode)
+	}
+	return got
+}
+
+// Ticket 01, the whole feature in one test: an in-use Category deleted with
+// replace_with moves every one of the five referencing columns onto the
+// replacement, then the old row is gone — none of the five left dangling on
+// the old id, none left behind on it either.
+func TestDeletingACategoryWithReplaceWithReassignsEveryReference(t *testing.T) {
+	a := newTestApp(t)
+	oldCat := a.createCategoryApplying(t, "Vecchia", appliesBoth)
+	newCat := a.createCategoryApplying(t, "Nuova", appliesBoth)
+
+	expense := a.addExpense(t, map[string]any{
+		"occurred_on":  "2026-03-15",
+		"amount_cents": 5000,
+		"category_id":  oldCat.ID,
+		"items": []map[string]any{
+			{"name": "Souvenir", "amount_cents": 2000, "category_id": oldCat.ID},
+		},
+	})
+	income := a.addIncome(t, map[string]any{
+		"amount_cents": 12000,
+		"category_id":  oldCat.ID,
+	})
+	recurring := a.addRecurring(t, a.rent(t, map[string]any{"category_id": oldCat.ID}))
+	client := a.createClient(t, "Studio Rossi")
+	if res := a.patch(t, clientPath(client.ID), map[string]any{"default_category_id": oldCat.ID}, nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("setting default_category_id = %d, want 200", res.StatusCode)
+	}
+
+	res := a.delete(t, categoryPath(oldCat.ID)+"?replace_with="+strconv.FormatInt(newCat.ID, 10))
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("DELETE ?replace_with = %d, want 204", res.StatusCode)
+	}
+
+	for _, c := range a.categories(t) {
+		if c.ID == oldCat.ID {
+			t.Error("the replaced Category is still in the list")
+		}
+	}
+
+	gotExpense := a.expenses(t)[0]
+	if gotExpense.ID != expense.ID || gotExpense.CategoryID != newCat.ID {
+		t.Errorf("expense.category_id = %d, want %d", gotExpense.CategoryID, newCat.ID)
+	}
+	if len(gotExpense.Items) != 1 || gotExpense.Items[0].CategoryID != newCat.ID {
+		t.Errorf("item.category_id = %+v, want category_id %d", gotExpense.Items, newCat.ID)
+	}
+
+	gotIncome := a.incomes(t)[0]
+	if gotIncome.ID != income.ID || gotIncome.CategoryID != newCat.ID {
+		t.Errorf("income.category_id = %d, want %d", gotIncome.CategoryID, newCat.ID)
+	}
+
+	gotRecurring := a.recurrings(t)[0]
+	if gotRecurring.ID != recurring.ID || gotRecurring.CategoryID != newCat.ID {
+		t.Errorf("recurring_expense.category_id = %d, want %d", gotRecurring.CategoryID, newCat.ID)
+	}
+
+	gotClient := a.clients(t)[0]
+	if gotClient.DefaultCategoryID == nil || *gotClient.DefaultCategoryID != newCat.ID {
+		t.Errorf("client.default_category_id = %v, want %d", gotClient.DefaultCategoryID, newCat.ID)
+	}
+}
+
+// A replacement on the wrong side is refused with 400, the same way an
+// Expense pointed at an Income-only Category is — the picker must never be
+// able to hand an Expense off to a Category that cannot hold one.
+func TestDeletingACategoryWithWrongSideReplaceWithIsRefused(t *testing.T) {
+	a := newTestApp(t)
+	expenseSide := a.createCategoryApplying(t, "Lato spesa", appliesExpense)
+	incomeSide := a.createCategoryApplying(t, "Lato entrata", appliesIncome)
+	a.addExpense(t, map[string]any{
+		"occurred_on":  "2026-03-15",
+		"amount_cents": 1000,
+		"category_id":  expenseSide.ID,
+	})
+
+	res := a.delete(t, categoryPath(expenseSide.ID)+"?replace_with="+strconv.FormatInt(incomeSide.ID, 10))
+	if res.StatusCode != http.StatusBadRequest {
+		t.Errorf("DELETE ?replace_with=<wrong side> = %d, want 400", res.StatusCode)
+	}
+	if got := a.category(t, "Lato spesa"); got.ID != expenseSide.ID {
+		t.Errorf("the refused delete removed the Category anyway")
+	}
+}
+
+// A replace_with naming a Category that does not exist is refused the same
+// way — 400, not a 500 and not treated as absent.
+func TestDeletingACategoryWithNonexistentReplaceWithIsRefused(t *testing.T) {
+	a := newTestApp(t)
+	inUse := a.createCategoryNamed(t, "In uso")
+	a.addExpense(t, map[string]any{
+		"occurred_on":  "2026-03-15",
+		"amount_cents": 1000,
+		"category_id":  inUse.ID,
+	})
+
+	res := a.delete(t, categoryPath(inUse.ID)+"?replace_with=999999")
+	if res.StatusCode != http.StatusBadRequest {
+		t.Errorf("DELETE ?replace_with=<nonexistent> = %d, want 400", res.StatusCode)
+	}
+	if got := a.category(t, "In uso"); got.ID != inUse.ID {
+		t.Errorf("the refused delete removed the Category anyway")
+	}
+}
+
+// A Base Category still refuses deletion outright even with replace_with set
+// — the guard runs before replace_with is even looked at (ADR-0008).
+func TestDeletingABaseCategoryIsRefusedEvenWithReplaceWith(t *testing.T) {
+	a := newTestApp(t)
+	base := a.category(t, seedTaxesName)
+	other := a.createCategoryNamed(t, "Altra spesa")
+
+	res := a.delete(t, categoryPath(base.ID)+"?replace_with="+strconv.FormatInt(other.ID, 10))
+	if res.StatusCode != http.StatusConflict {
+		t.Errorf("DELETE a Base Category with replace_with = %d, want 409", res.StatusCode)
+	}
+	if got := a.category(t, seedTaxesName); got.ID != base.ID {
+		t.Errorf("the refused delete removed the Base Category anyway")
+	}
 }

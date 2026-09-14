@@ -13,6 +13,7 @@ import { t } from "@/lib/strings"
 import { categoriesIn, weeklyBuckets } from "@/lib/trend"
 import type {
   BudgetReport,
+  Category,
   DailyCategoryTotal,
   MonthTotals,
   RecentEntry,
@@ -36,6 +37,7 @@ export function Month() {
   const [totals, setTotals] = useState<MonthTotals | null>(null)
   const [recent, setRecent] = useState<RecentEntry[]>([])
   const [daily, setDaily] = useState<DailyCategoryTotal[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [budget, setBudget] = useState<BudgetReport | null>(null)
   const [error, setError] = useState("")
 
@@ -48,6 +50,15 @@ export function Month() {
     apiJSON<RecentEntry[]>("/api/reports/recent")
       .then(setRecent)
       .catch(() => setRecent([]))
+  }, [])
+
+  // Categories, fetched once and independent of which month is on screen —
+  // the weekly chart below only reads their `color` (ticket 05), the same
+  // rule as the recent-entries fetch just above.
+  useEffect(() => {
+    apiJSON<Category[]>("/api/categories")
+      .then(setCategories)
+      .catch(() => setCategories([]))
   }, [])
 
   useEffect(() => {
@@ -256,7 +267,7 @@ export function Month() {
             <CardContent>
               <CategoryTrendChart
                 buckets={weeklyBuckets(daily)}
-                categories={categoriesIn(daily)}
+                categories={categoriesIn(daily, categories)}
               />
             </CardContent>
           </Card>

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,6 +18,26 @@ const (
 	appliesIncome  = "income"
 	appliesBoth    = "both"
 )
+
+// The 9-slot color palette (ADR-0016, ticket 04): a Category or Subcategory's
+// color is one of these keys, never an arbitrary value. blue-gray is the
+// neutral default for a genuinely uncolored one — not a hue snap target, just
+// a ninth entry. Defined once here so the CHECK constraint's literal list, the
+// Go-side validator, and the migration's snap targets never drift apart.
+var categoryColors = []string{
+	"blue", "orange", "aqua", "yellow", "magenta", "green", "violet", "red", "blue-gray",
+}
+
+const defaultColor = "blue-gray"
+
+func validColor(c string) bool {
+	for _, v := range categoryColors {
+		if c == v {
+			return true
+		}
+	}
+	return false
+}
 
 // The stable codes of the four Base categories. A non-null code is what marks
 // a Category as one the code resolves by identity — the yearly tax summary
@@ -70,6 +91,9 @@ type category struct {
 	Name      string `json:"name"`
 	AppliesTo string `json:"applies_to"`
 	Hidden    bool   `json:"hidden"`
+	// One of categoryColors, never empty (ADR-0016) — a loose grouping signal,
+	// not a unique identity, so two unrelated Categories sharing one is normal.
+	Color string `json:"color"`
 
 	// Base is what the UI greys the rename and delete buttons on. The code
 	// behind it is not published: it is an implementation detail of the
@@ -162,18 +186,22 @@ func handleCreateCategory(db *sql.DB) http.HandlerFunc {
 		var body struct {
 			Name      string `json:"name"`
 			AppliesTo string `json:"applies_to"`
+			Color     string `json:"color"`
 		}
 		if err := decodeJSON(w, r, &body); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		c := category{Name: strings.TrimSpace(body.Name), AppliesTo: body.AppliesTo}
+		c := category{Name: strings.TrimSpace(body.Name), AppliesTo: body.AppliesTo, Color: body.Color}
+		if c.Color == "" {
+			c.Color = defaultColor
+		}
 		if err := c.validate(); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
 
-		res, err := db.Exec(`INSERT INTO category (name, applies_to) VALUES (?, ?)`, c.Name, c.AppliesTo)
+		res, err := db.Exec(`INSERT INTO category (name, applies_to, color) VALUES (?, ?, ?)`, c.Name, c.AppliesTo, c.Color)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -211,6 +239,7 @@ func handlePatchCategory(db *sql.DB) http.HandlerFunc {
 			Name      *string `json:"name"`
 			AppliesTo *string `json:"applies_to"`
 			Hidden    *bool   `json:"hidden"`
+			Color     *string `json:"color"`
 		}
 		if err := decodeJSON(w, r, &body); err != nil {
 			writeError(w, http.StatusBadRequest, err)
@@ -230,13 +259,16 @@ func handlePatchCategory(db *sql.DB) http.HandlerFunc {
 		if body.Hidden != nil {
 			c.Hidden = *body.Hidden
 		}
+		if body.Color != nil {
+			c.Color = *body.Color
+		}
 		if err := c.validate(); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
 
-		if _, err := db.Exec(`UPDATE category SET name = ?, applies_to = ?, hidden = ? WHERE id = ?`,
-			c.Name, c.AppliesTo, c.Hidden, c.ID); err != nil {
+		if _, err := db.Exec(`UPDATE category SET name = ?, applies_to = ?, hidden = ?, color = ? WHERE id = ?`,
+			c.Name, c.AppliesTo, c.Hidden, c.Color, c.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -244,6 +276,15 @@ func handlePatchCategory(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// handleDeleteCategory refuses a Base category outright, replace_with or not
+// (ADR-0008, checked first). With no replace_with it behaves exactly as
+// before: a bare DELETE, which the FK constraint turns into a 409 via
+// writeError when something still points at the row. With replace_with, that
+// target is validated the same way a Category on an Expense/Income write is —
+// checkCategoryAccepts, so "must exist" and "must accept this side" are one
+// rule, not two — and then every reference is moved onto it before the old
+// row goes, in one transaction, so nothing is ever left pointing at a
+// half-deleted Category.
 func handleDeleteCategory(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		c, ok := findCategory(w, db, r.PathValue("id"))
@@ -254,12 +295,75 @@ func handleDeleteCategory(db *sql.DB) http.HandlerFunc {
 			writeError(w, http.StatusConflict, errors.New("a base category cannot be deleted"))
 			return
 		}
-		if _, err := db.Exec(`DELETE FROM category WHERE id = ?`, c.ID); err != nil {
+
+		raw := r.URL.Query().Get("replace_with")
+		if raw == "" {
+			if _, err := db.Exec(`DELETE FROM category WHERE id = ?`, c.ID); err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		replaceID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("replace_with must be a category id"))
+			return
+		}
+		if !checkCategoryAccepts(w, db, replaceID, c.AppliesTo,
+			"replace_with must be an existing category accepting the same side as the one being deleted") {
+			return
+		}
+
+		if err := reassignCategoryTo(db, c.ID, replaceID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+// execStmt is one parameterized statement for runThenDelete to run.
+type execStmt struct {
+	query string
+	args  []any
+}
+
+// runThenDelete runs every stmt, then deletes the row `id` names from table,
+// all in one transaction — the shared shape behind reassignCategoryTo,
+// reassignSubcategoryTo and clearSubcategoryFrom: a failure partway must
+// never leave some entries reassigned (or cleared) and others still pointing
+// at a row about to vanish.
+func runThenDelete(db *sql.DB, stmts []execStmt, table string, id int64) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for _, s := range stmts {
+		if _, err := tx.Exec(s.query, s.args...); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`DELETE FROM `+table+` WHERE id = ?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// reassignCategoryTo moves every column ticket 01 lists from oldID to newID —
+// Expense, Item and Income category, Recurring expense's template category,
+// and a Client's default — then removes the now-unreferenced old row.
+func reassignCategoryTo(db *sql.DB, oldID, newID int64) error {
+	return runThenDelete(db, []execStmt{
+		{`UPDATE expense SET category_id = ? WHERE category_id = ?`, []any{newID, oldID}},
+		{`UPDATE item SET category_id = ? WHERE category_id = ?`, []any{newID, oldID}},
+		{`UPDATE income SET category_id = ? WHERE category_id = ?`, []any{newID, oldID}},
+		{`UPDATE recurring_expense SET category_id = ? WHERE category_id = ?`, []any{newID, oldID}},
+		{`UPDATE client SET default_category_id = ? WHERE default_category_id = ?`, []any{newID, oldID}},
+	}, "category", oldID)
 }
 
 // findCategory loads the Category the path names, writing the response itself
@@ -290,12 +394,12 @@ func findCategory(w http.ResponseWriter, db *sql.DB, rawID string) (category, bo
 // PAC badge) — the code itself stays an implementation detail of the reports
 // that resolve by it.
 var categorySelect = fmt.Sprintf(
-	`SELECT id, name, applies_to, hidden, code IS NOT NULL, IFNULL(code, '') = '%s', IFNULL(code, '') = '%s', IFNULL(code, '') = '%s' FROM category`,
+	`SELECT id, name, applies_to, hidden, color, code IS NOT NULL, IFNULL(code, '') = '%s', IFNULL(code, '') = '%s', IFNULL(code, '') = '%s' FROM category`,
 	codeGift, codeFreelance, codeInvestments)
 
 func scanCategory(row interface{ Scan(...any) error }) (category, error) {
 	var c category
-	err := row.Scan(&c.ID, &c.Name, &c.AppliesTo, &c.Hidden, &c.Base, &c.Gift, &c.Freelance, &c.Investments)
+	err := row.Scan(&c.ID, &c.Name, &c.AppliesTo, &c.Hidden, &c.Color, &c.Base, &c.Gift, &c.Freelance, &c.Investments)
 	return c, err
 }
 
@@ -351,7 +455,93 @@ func (c category) validate() error {
 	}
 	switch c.AppliesTo {
 	case appliesExpense, appliesIncome, appliesBoth:
-		return nil
+	default:
+		return errors.New("applies_to must be expense, income or both")
 	}
-	return errors.New("applies_to must be expense, income or both")
+	if !validColor(c.Color) {
+		return fmt.Errorf("color must be one of %v", categoryColors)
+	}
+	return nil
+}
+
+// migrateCategoryColor is schema step 16: category and subcategory each gain
+// a color column, then every existing Category row (Subcategory never had a
+// color, so it simply takes the column default) is backfilled from the
+// retired frontend generator so the switch to a fixed palette does not
+// visually scramble what the household is already used to (ADR-0016).
+func migrateCategoryColor(tx *sql.Tx) error {
+	colorDDL := `TEXT NOT NULL DEFAULT 'blue-gray' CHECK (color IN ('blue','orange','aqua','yellow','magenta','green','violet','red','blue-gray'))`
+	if _, err := tx.Exec(`ALTER TABLE category ADD COLUMN color ` + colorDDL); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`ALTER TABLE subcategory ADD COLUMN color ` + colorDDL); err != nil {
+		return err
+	}
+
+	rows, err := tx.Query(`SELECT id FROM category`)
+	if err != nil {
+		return err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	for _, id := range ids {
+		if _, err := tx.Exec(`UPDATE category SET color = ? WHERE id = ?`, nearestVividSlot(legacyHue(id)), id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// vividSlots is the spec's hue-angle table for the 8 vivid palette slots —
+// blue-gray is deliberately absent, since it is never a snap target.
+var vividSlots = []struct {
+	name string
+	hue  float64
+}{
+	{"red", 0.4},
+	{"orange", 17.0},
+	{"yellow", 40.8},
+	{"green", 120.0},
+	{"aqua", 158.5},
+	{"blue", 212.8},
+	{"violet", 248.8},
+	{"magenta", 337.4},
+}
+
+// legacyHue reproduces the retired frontend color function exactly, so the
+// migration snaps to the same hue that function would have rendered.
+func legacyHue(id int64) float64 {
+	return math.Mod(float64(id)*137.508, 360)
+}
+
+// nearestVividSlot picks whichever vividSlots entry is angularly closest to
+// hue, by circular distance on the 0-360 wheel (the wrap-around at 360/0 must
+// not make 350 and 10 look 340 apart).
+func nearestVividSlot(hue float64) string {
+	best := vividSlots[0].name
+	bestDist := math.Inf(1)
+	for _, s := range vividSlots {
+		d := math.Abs(hue - s.hue)
+		if d > 180 {
+			d = 360 - d
+		}
+		if d < bestDist {
+			bestDist = d
+			best = s.name
+		}
+	}
+	return best
 }

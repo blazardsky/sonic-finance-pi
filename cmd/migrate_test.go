@@ -229,6 +229,67 @@ func TestItemPricingMigrationAddsColumnsWithSafeDefaults(t *testing.T) {
 	}
 }
 
+// Schema step 16 (ticket 04): category and subcategory each gain a color
+// column, and every existing Category row is backfilled by snapping its
+// legacy hue = (id * 137.508) % 360 to the nearest of the 8 vivid slots by
+// circular distance — not left at the plain column default, which a fresh
+// Subcategory insert (no legacy color to preserve) does take.
+//
+// Two seeded ids are checked against hand-computed expectations:
+//   - id 1 (Tasse, the first row migrateCategories inserts) has legacy hue
+//     1*137.508 mod 360 = 137.508. Distance to green (120.0) is 17.508 — the
+//     smallest of any slot (yellow at 40.8 is 96.7 away, aqua at 158.5 is
+//     21.0 away) — so it lands on green.
+//   - id 9 (Abbigliamento, the 9th row) has legacy hue 9*137.508 mod 360 =
+//     1237.572 mod 360 = 157.572. Distance to aqua (158.5) is 0.928 —
+//     closer than blue (212.8, 55.2 away) or any other slot — so it lands
+//     on aqua.
+func TestCategoryColorMigrationBackfillsExistingCategoriesByHue(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "category-color.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	var tasseColor string
+	if err := db.QueryRow(`SELECT color FROM category WHERE code = ?`, codeTaxes).Scan(&tasseColor); err != nil {
+		t.Fatalf("category.color missing or wrong shape: %v", err)
+	}
+	if tasseColor != "green" {
+		t.Errorf("Tasse (id 1) color = %q, want %q (hue 137.508, nearest slot green at 120.0)", tasseColor, "green")
+	}
+
+	var abbigliamentoColor string
+	if err := db.QueryRow(`SELECT color FROM category WHERE name = ?`, "Abbigliamento").Scan(&abbigliamentoColor); err != nil {
+		t.Fatal(err)
+	}
+	if abbigliamentoColor != "aqua" {
+		t.Errorf("Abbigliamento (id 9) color = %q, want %q (hue 157.572, nearest slot aqua at 158.5)", abbigliamentoColor, "aqua")
+	}
+
+	// Subcategory never had a legacy color: a fresh row simply takes the
+	// plain column default, no snapping applied.
+	res, err := db.Exec(`INSERT INTO subcategory (name, applies_to) VALUES ('Caffè', 'expense')`)
+	if err != nil {
+		t.Fatalf("subcategory.color missing or wrong shape: %v", err)
+	}
+	subID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var subColor string
+	if err := db.QueryRow(`SELECT color FROM subcategory WHERE id = ?`, subID).Scan(&subColor); err != nil {
+		t.Fatal(err)
+	}
+	if subColor != "blue-gray" {
+		t.Errorf("a fresh Subcategory's color = %q, want the plain column default %q", subColor, "blue-gray")
+	}
+
+	if _, err := db.Exec(`UPDATE category SET color = 'not-a-color' WHERE code = ?`, codeTaxes); err == nil {
+		t.Error("an out-of-list color was accepted, want the CHECK constraint to refuse it")
+	}
+}
+
 // A database an older binary already migrated partway needs its data
 // protected before the new binary's migrateStep cases touch it.
 func TestMigrateBacksUpAnExistingDatabaseBeforeMigrating(t *testing.T) {
