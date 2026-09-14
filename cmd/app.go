@@ -9,7 +9,6 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -19,11 +18,9 @@ import (
 
 // debugEnabled gates the extra diagnostic logging this turns on: every
 // /api/ request's method, path, status and duration, and — on a decode
-// failure — the raw body that didn't parse. On by default, since a
-// household-scale Pi's traffic is quiet enough that the extra journal lines
-// cost nothing until someone actually needs to grep them; DEBUG=false (or 0)
-// in the environment turns it back off.
-var debugEnabled = os.Getenv("DEBUG") != "false" && os.Getenv("DEBUG") != "0"
+// failure — the raw body that didn't parse. A code-level knob rather than an
+// env var: it's a debug aid to flip and rebuild, not deployment config.
+const debugEnabled = true
 
 // logRequests logs each /api/ request once it completes, when debugEnabled —
 // silent otherwise, exactly today's behavior. Static asset serving (GET /)
