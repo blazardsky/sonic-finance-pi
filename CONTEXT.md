@@ -32,6 +32,10 @@ _Avoid_: subscription, schedule, standing order, repeat
 A named bucket money is counted under when the household looks at where it went. Every Expense and Income has one; an Item may override an Expense's for part of the amount. A Category applies to Expenses, to Incomes, or to both — "Food" is never an Income and "Freelance" is never an Expense. Categories are a flat list. On Income screens the same concept is worded "income reason"; it is not a second field.
 _Avoid_: tag, label, type, kind, type of payment
 
+**Subcategory**:
+A second, independent tag an Expense (or a Recurring expense) may optionally carry alongside its Category — never a child of one specific Category, and never nested itself. The same Subcategory freely pairs with whichever Category an entry actually used it under; nothing links a Subcategory to a fixed parent.
+_Avoid_: sub-category (as a kind of Category), child category, tag
+
 **Base category**:
 A Category the app itself depends on and therefore protects from renaming and deletion — "Freelance" and "Taxes" are what the yearly tax summary is computed from, "Investments" is what Budget, Target, and the yearly Estimate exclude, and "Gift" is what the spoiler blur resolves. They can be hidden from the pickers once you stop using them, but never renamed or removed. Only categories the code actually resolves are protected; every other Category is yours to add, rename, and archive freely.
 _Avoid_: system category, built-in, default, reserved
