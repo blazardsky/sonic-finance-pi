@@ -143,6 +143,7 @@ export const t = {
   invalidIncomeClient: "Scegli un cliente.",
   paymentDate: "Data incasso",
   invoiceSentDate: "Fattura inviata",
+  bolloFattura: "Marca da bollo (2€, non conta per il contratto)",
   notPaidYet: "Da incassare",
   waitingSince: (date: string) => `in attesa dal ${date}`,
   // The row action that sets payment_date to today, for an invoiced Income

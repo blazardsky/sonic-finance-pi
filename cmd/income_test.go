@@ -26,6 +26,10 @@ type incomeJSON struct {
 
 	// Ticket 05: the Contract this Income counts toward, nil for "Extra".
 	ContractID *int64 `json:"contract_id"`
+
+	// True by default: whether this Income still carries its 2€ marca da
+	// bollo, excluded from a linked Contract's received/accounted figures.
+	BolloFattura bool `json:"bollo_fattura"`
 }
 
 // incomePath addresses one Income the way the API does.

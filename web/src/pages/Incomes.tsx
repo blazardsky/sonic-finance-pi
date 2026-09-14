@@ -10,6 +10,7 @@ import {
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Combobox,
   ComboboxContent,
@@ -96,6 +97,7 @@ const blankDraft = (): Draft => ({
   payment_date: "",
   invoice_sent_date: "",
   note: "",
+  bollo_fattura: true,
 })
 
 // Field by field rather than a spread, so the draft carries what the form
@@ -110,6 +112,7 @@ const draftOf = (income: Income): Draft => ({
   payment_date: income.payment_date,
   invoice_sent_date: income.invoice_sent_date,
   note: income.note,
+  bollo_fattura: income.bollo_fattura,
 })
 
 // The Income screen: record an invoice the day it goes out, and add the
@@ -684,6 +687,20 @@ export function Incomes({
                   className="w-full"
                 />
               </Field>
+            )}
+            {/* Freelance-only, on by default: every invoice over the bollo
+                threshold carries a 2€ marca da bollo, which arrives inside
+                amount_cents but is not real revenue — unticking it is for
+                the rare invoice under the threshold. */}
+            {isFreelance && (
+              <FieldLabel htmlFor="bollo_fattura" className="font-normal">
+                <Checkbox
+                  id="bollo_fattura"
+                  checked={draft.bollo_fattura}
+                  onCheckedChange={(v) => set("bollo_fattura", v === true)}
+                />
+                {t.bolloFattura}
+              </FieldLabel>
             )}
             <Field>
               <FieldLabel htmlFor="payment_date">{t.paymentDate}</FieldLabel>

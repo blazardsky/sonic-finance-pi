@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 )
@@ -237,12 +238,21 @@ func contractClientID(db *sql.DB, id int64) (int64, bool, error) {
 // Every column is qualified with contract., unneeded when contractSelect
 // queries the bare table but required once contractsDueThisMonth joins in
 // client — id and client_id would otherwise be ambiguous between the two.
-const contractColumns = `contract.id, contract.client_id, contract.start_month, contract.end_month, contract.total_cents,
-	(SELECT COALESCE(SUM(amount_cents), 0) FROM income
-		WHERE income.contract_id = contract.id AND income.payment_date IS NOT NULL),
-	(SELECT COALESCE(SUM(amount_cents), 0) FROM income WHERE income.contract_id = contract.id)`
+// netOfBolloFattura is what an Income actually counts toward a Contract:
+// AmountCents itself is never adjusted (it is still the amount that arrived),
+// but a qualifying Income's 2€ marca da bollo (bolloThresholdCents,
+// bolloFatturaCents) is not real freelance revenue, so it is subtracted here
+// rather than at the source.
+var netOfBolloFattura = fmt.Sprintf(
+	`(amount_cents - CASE WHEN bollo_fattura = 1 AND amount_cents > %d THEN %d ELSE 0 END)`,
+	bolloThresholdCents, bolloFatturaCents)
 
-const contractSelect = `SELECT ` + contractColumns + ` FROM contract`
+var contractColumns = `contract.id, contract.client_id, contract.start_month, contract.end_month, contract.total_cents,
+	(SELECT COALESCE(SUM(` + netOfBolloFattura + `), 0) FROM income
+		WHERE income.contract_id = contract.id AND income.payment_date IS NOT NULL),
+	(SELECT COALESCE(SUM(` + netOfBolloFattura + `), 0) FROM income WHERE income.contract_id = contract.id)`
+
+var contractSelect = `SELECT ` + contractColumns + ` FROM contract`
 
 func scanContract(row interface{ Scan(...any) error }) (contract, error) {
 	var c contract

@@ -172,6 +172,11 @@ export type Income = {
   // The Contract this Income counts toward, or null for "Extra" — real
   // income from this Client, just outside any agreed total (ticket 05).
   contract_id: number | null
+  // Whether this Income still carries its 2€ "marca da bollo elettronica" —
+  // true by default for a Freelance invoice over the bollo threshold. The 2€
+  // stays inside amount_cents (it did arrive), but a linked Contract's
+  // received/accounted figures exclude it since it isn't real revenue.
+  bollo_fattura: boolean
 }
 
 // A total the household expects from a Client over a date range (ticket 05).

@@ -163,6 +163,9 @@ func TestInvoiceTargetRecomputesFromWhatsAlreadyAccountedFor(t *testing.T) {
 		"client_id":         c.ID,
 		"contract_id":       contract.ID,
 		"invoice_sent_date": "2026-01-20",
+		// Not the point of this test — off, so the invoice-target math below
+		// is exactly the round numbers the comments walk through.
+		"bollo_fattura": false,
 	})
 
 	a.setNow(t, time.Date(2026, 2, 10, 0, 0, 0, 0, time.UTC))
@@ -272,6 +275,61 @@ func TestExtraIncomeIsExcludedFromContractFiguresButCountsTowardTotalEarned(t *t
 	a.get(t, "/api/clients", &clients)
 	if len(clients) != 1 || clients[0].TotalEarnedCents != 5000 {
 		t.Errorf("total_earned_cents = %+v, want 5000 — Extra income still counts toward it", clients)
+	}
+}
+
+// A qualifying Income's 2€ marca da bollo (over bolloThresholdCents, and not
+// explicitly turned off) is excluded from received/accounted — it arrived
+// with the payment but is not real revenue.
+func TestBolloFatturaIsExcludedFromContractFigures(t *testing.T) {
+	a := newTestApp(t)
+	freelance := a.freelance(t)
+	c := a.createClient(t, "Studio Rossi")
+	a.createContract(t, c.ID, yearContract(120000))
+
+	// Over the threshold, bollo_fattura defaulted (on) — 1502.00 counts as 1500.00.
+	created := a.addIncome(t, map[string]any{
+		"amount_cents": 150200,
+		"category_id":  freelance.ID,
+		"client_id":    c.ID,
+		"contract_id":  a.contracts(t, c.ID)[0].ID,
+		"payment_date": "2026-06-10",
+	})
+	if !created.BolloFattura {
+		t.Error("bollo_fattura = false on create, want true by default")
+	}
+	got := a.contracts(t, c.ID)[0]
+	if got.ReceivedCents != 150000 || got.AccountedCents != 150000 {
+		t.Errorf("received/accounted = %d/%d, want 150000/150000 (2€ bollo excluded)",
+			got.ReceivedCents, got.AccountedCents)
+	}
+
+	// Under the threshold: no bollo required, no deduction even though
+	// bollo_fattura is still true.
+	a.addIncome(t, map[string]any{
+		"amount_cents": 5000,
+		"category_id":  freelance.ID,
+		"client_id":    c.ID,
+		"contract_id":  a.contracts(t, c.ID)[0].ID,
+		"payment_date": "2026-06-11",
+	})
+	got = a.contracts(t, c.ID)[0]
+	if got.ReceivedCents != 155000 {
+		t.Errorf("received_cents = %d, want 155000 — an under-threshold Income should not lose 2€", got.ReceivedCents)
+	}
+
+	// Explicitly turned off: no deduction even over the threshold.
+	a.addIncome(t, map[string]any{
+		"amount_cents":  150200,
+		"category_id":   freelance.ID,
+		"client_id":     c.ID,
+		"contract_id":   a.contracts(t, c.ID)[0].ID,
+		"payment_date":  "2026-06-12",
+		"bollo_fattura": false,
+	})
+	got = a.contracts(t, c.ID)[0]
+	if got.ReceivedCents != 305200 {
+		t.Errorf("received_cents = %d, want 305200 — bollo_fattura:false should not deduct", got.ReceivedCents)
 	}
 }
 

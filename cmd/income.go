@@ -55,7 +55,25 @@ type income struct {
 	// belong to ClientID, so linking across Clients is not a state a write can
 	// reach even though nothing at the database layer forbids it.
 	ContractID *int64 `json:"contract_id"`
+
+	// Whether this Income still owes its 2€ "marca da bollo elettronica" —
+	// true by default, since every freelance invoice over bolloThresholdCents
+	// carries one. The 2€ arrived with the payment like the rest of the
+	// amount — AmountCents is never adjusted for it — but it is not real
+	// freelance revenue, so a linked Contract's received/accounted figures
+	// (computeContractFigures, via contractColumns) subtract it before
+	// counting the Income toward the agreed total.
+	BolloFattura bool `json:"bollo_fattura"`
 }
+
+// bolloThresholdCents is the amount above which an Italian invoice needs a 2€
+// marca da bollo — the household's own rounding of the real threshold
+// (77.47€) to a plain 77€.
+const bolloThresholdCents = 7700
+
+// bolloFatturaCents is the 2€ stamp duty a qualifying Income already carries
+// inside AmountCents, in cents.
+const bolloFatturaCents = 200
 
 // migrateIncomes is schema step 6. client_id is a plain reference: not
 // ON DELETE SET NULL, which would strip the name off every past Income the
@@ -82,6 +100,15 @@ func migrateIncomes(tx *sql.Tx) error {
 		note              TEXT NOT NULL DEFAULT '',
 		created_at        TEXT NOT NULL
 	) STRICT`)
+	return err
+}
+
+// migrateBolloFattura is schema step 15: bollo_fattura defaults to 1 for
+// every existing Income too — every one of them is a real invoice, so the
+// same 2€-over-77€ rule already applies retroactively to a Contract's
+// received/accounted figures once this ships.
+func migrateBolloFattura(tx *sql.Tx) error {
+	_, err := tx.Exec(`ALTER TABLE income ADD COLUMN bollo_fattura INTEGER NOT NULL DEFAULT 1 CHECK (bollo_fattura IN (0, 1))`)
 	return err
 }
 
@@ -122,7 +149,10 @@ func handleListIncomes(db *sql.DB) http.HandlerFunc {
 
 func handleCreateIncome(db *sql.DB, now func() time.Time) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var in income
+		// On by default: a request that says nothing about bollo_fattura
+		// gets true, and decodeJSON only overwrites fields the body actually
+		// names, so an explicit false still lands.
+		in := income{BolloFattura: true}
 		// A fractional amount_cents fails to decode into the int64 field, and
 		// that is the intended answer: cents are whole, and a client sending
 		// euros as a float is a bug to reject rather than round.
@@ -135,10 +165,10 @@ func handleCreateIncome(db *sql.DB, now func() time.Time) http.HandlerFunc {
 		}
 
 		res, err := db.Exec(`INSERT INTO income
-			(amount_cents, category_id, client_id, payer, payment_date, invoice_sent_date, note, holding_id, contract_id, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			(amount_cents, category_id, client_id, payer, payment_date, invoice_sent_date, note, holding_id, contract_id, bollo_fattura, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			in.AmountCents, in.CategoryID, in.ClientID, in.Payer,
-			nullDate(in.PaymentDate), nullDate(in.InvoiceSentDate), in.Note, in.HoldingID, in.ContractID,
+			nullDate(in.PaymentDate), nullDate(in.InvoiceSentDate), in.Note, in.HoldingID, in.ContractID, in.BolloFattura,
 			now().Format(time.RFC3339))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
@@ -177,9 +207,9 @@ func handlePatchIncome(db *sql.DB) http.HandlerFunc {
 		}
 
 		if _, err := db.Exec(`UPDATE income SET amount_cents = ?, category_id = ?, client_id = ?,
-			payer = ?, payment_date = ?, invoice_sent_date = ?, note = ?, holding_id = ?, contract_id = ? WHERE id = ?`,
+			payer = ?, payment_date = ?, invoice_sent_date = ?, note = ?, holding_id = ?, contract_id = ?, bollo_fattura = ? WHERE id = ?`,
 			in.AmountCents, in.CategoryID, in.ClientID, in.Payer,
-			nullDate(in.PaymentDate), nullDate(in.InvoiceSentDate), in.Note, in.HoldingID, in.ContractID, in.ID); err != nil {
+			nullDate(in.PaymentDate), nullDate(in.InvoiceSentDate), in.Note, in.HoldingID, in.ContractID, in.BolloFattura, in.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -227,12 +257,12 @@ func findIncome(w http.ResponseWriter, db *sql.DB, rawID string) (income, bool) 
 // it. The two nullable dates are flattened to ” on the way out, because that
 // is the shape the API publishes and the shape a PATCH merges onto.
 const incomeSelect = `SELECT id, amount_cents, category_id, client_id, payer,
-	COALESCE(payment_date, ''), COALESCE(invoice_sent_date, ''), note, holding_id, contract_id FROM income`
+	COALESCE(payment_date, ''), COALESCE(invoice_sent_date, ''), note, holding_id, contract_id, bollo_fattura FROM income`
 
 func scanIncome(row interface{ Scan(...any) error }) (income, error) {
 	var in income
 	err := row.Scan(&in.ID, &in.AmountCents, &in.CategoryID, &in.ClientID, &in.Payer,
-		&in.PaymentDate, &in.InvoiceSentDate, &in.Note, &in.HoldingID, &in.ContractID)
+		&in.PaymentDate, &in.InvoiceSentDate, &in.Note, &in.HoldingID, &in.ContractID, &in.BolloFattura)
 	return in, err
 }
 
