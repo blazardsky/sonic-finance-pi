@@ -23,6 +23,9 @@
 - [x] Tenere traccia delle quantità di quote possedute per investimento (opzionale, manuale): prezzo attuale e correzione quote a mano nella pagina Titoli, valore/guadagno-perdita calcolati e mostrati in un dettaglio separato
 
 ## v1.2.3
+- [x] "Fatture da fare" in dashboard: mostrare la quota del mese invece del totale rimanente del contratto, ed escludere i clienti già fatturati questo mese (anche se non ancora pagati)
+
+## v1.2.4
 - [ ] Aggiungere il tema Alta visibilità / Alto contrasto
 - [ ] card su report annuale da spostare su anno
 - [ ] Aggiungere nelle ricorrenti anche le entrate, per esempio per uno stipendio fisso

@@ -28,7 +28,7 @@ Write it down: it is logged once and never shown again. If it is lost,
 
 ## Development
 
-`./build.sh` builds the frontend into `cmd/static/`, which the binary embeds, then
+`./scripts/build.sh` builds the frontend into `cmd/static/`, which the binary embeds, then
 compiles both binaries into the gitignored `build/`: `build/api-armv6` is the
 single file to copy to the Pi, and `build/sonic-finance-pi` is the same code
 for this machine. The dev loop — the Go server and the Vite dev server side by
@@ -41,5 +41,5 @@ Run the command `pnpm --dir web dev` for the Vite app, run the command `go run .
 
 ## Deploying, and TLS
 
-See [PI_DEPLOY_GUIDE.md](PI_DEPLOY_GUIDE.md) — publishing a release deploys
+See [docs/guides/PI_DEPLOY_GUIDE.md](docs/guides/PI_DEPLOY_GUIDE.md) — publishing a release deploys
 itself; that file also covers the manual fallback and setting up HTTPS.

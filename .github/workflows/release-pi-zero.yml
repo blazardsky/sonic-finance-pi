@@ -39,7 +39,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Build
-        run: ./build.sh
+        run: ./scripts/build.sh
 
       - name: Rename binary for release
         run: cp build/api-armv6 build/sonic-finance-armv6
@@ -53,7 +53,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      # Same asset a human would grab by hand (see PI_DEPLOY_GUIDE.md) — no
+      # Same asset a human would grab by hand (see docs/guides/PI_DEPLOY_GUIDE.md) — no
       # inter-job artifact plumbing, just the release the build job above
       # just published.
       - name: Download the release binary

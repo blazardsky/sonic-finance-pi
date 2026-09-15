@@ -46,7 +46,7 @@ Watch it happen with `gh run watch`, or check the Actions tab.
 
 Get a binary — either build it locally, or grab a published release's asset:
 
-    ./build.sh                                    # -> build/api-armv6
+    ./scripts/build.sh                            # -> build/api-armv6
     gh release download vX.Y --pattern sonic-finance-armv6
 
 Copy it to wherever it runs and restart:

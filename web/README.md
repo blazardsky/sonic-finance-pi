@@ -16,7 +16,7 @@ relative URLs in dev as in the binary.
 
 ## Production build
 
-`./build.sh` at the repo root does both halves. `cmd/static/` is gitignored
+`./scripts/build.sh` at the repo root does both halves. `cmd/static/` is gitignored
 apart from `.gitkeep`: Vite empties `outDir`, and `//go:embed static/*` will not
 compile against an empty directory, so `public/.gitkeep` is copied back in by
 every build.

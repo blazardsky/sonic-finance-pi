@@ -1,6 +1,6 @@
 # Sonic Finance Backend
 
-Go backend API for the Sonic Finance App. Targets a Raspberry Pi Zero W (1st gen, ARMv6); build with `./build.sh`.
+Go backend API for the Sonic Finance App. Targets a Raspberry Pi Zero W (1st gen, ARMv6); build with `./scripts/build.sh`.
 
 ## Frontend
 
