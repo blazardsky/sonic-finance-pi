@@ -26,10 +26,10 @@ const (
 // 03); this ticket is the fixed, household-maintained list itself.
 //
 // Quantity and pricing are both opt-in, per Holding, and both still entirely
-// hand-typed (schema step 17) — CONTEXT.md's "never priced or revalued by the
-// app" stays true in the sense that matters: nothing here fetches a price or
-// runs on a schedule, it only has somewhere to put one the household typed
-// in. QuantityOwned, PaidCents, ValueNowCents, GainLossCents and
+// hand-typed (schema steps 17-18) — CONTEXT.md's "never priced or revalued by
+// the app" stays true in the sense that matters: nothing here fetches a
+// price or runs on a schedule, it only has somewhere to put one the
+// household typed in. PaidCents, ValueNowCents, GainLossCents and
 // GainLossPercent are all computed at read time, never stored, the same
 // bargain a Client's TotalEarnedCents and a Contract's own figures make.
 type holding struct {
@@ -38,11 +38,19 @@ type holding struct {
 	Type              string `json:"type"`
 	CurrentPriceCents *int64 `json:"current_price_cents"`
 
-	// Net of every linked Expense (a buy) and paid Income (a sell) —
-	// symmetric and simple on purpose: this answers "how much of my own
-	// money is tied up here right now," not a capital-gains-accurate
-	// weighted cost basis, which is the household's tax software's job, not
-	// this app's.
+	// A hand-typed correction added to the quantity summed from linked
+	// Expenses/Incomes — a PAC's own monthly Expenses are generated without
+	// a quantity (materialise has no reliable per-month price to derive one
+	// from), so this is the household's way to true up QuantityOwned without
+	// having to open every one of them. Zero on a Holding nobody has
+	// corrected.
+	QuantityAdjustment float64 `json:"quantity_adjustment"`
+
+	// QuantityAdjustment plus every linked Expense (a buy) less every linked,
+	// paid Income (a sell) — symmetric and simple on purpose: this answers
+	// "how much of my own money is tied up here right now," not a
+	// capital-gains-accurate weighted cost basis, which is the household's
+	// tax software's job, not this app's.
 	QuantityOwned float64 `json:"quantity_owned"`
 	PaidCents     int64   `json:"paid_cents"`
 
@@ -138,6 +146,17 @@ func migrateHoldingQuantityAndPrice(tx *sql.Tx) error {
 	return err
 }
 
+// migrateHoldingQuantityAdjustment is schema step 18: the hand-typed
+// correction QuantityOwned adds to whatever linked Expenses/Incomes sum to —
+// a PAC's own generated Expenses carry no quantity (materialise has no
+// per-month price to derive one from), so without this the household would
+// have to open every one of them by hand to keep QuantityOwned true. Signed,
+// unlike current_price_cents: a correction can go either way.
+func migrateHoldingQuantityAdjustment(tx *sql.Tx) error {
+	_, err := tx.Exec(`ALTER TABLE holding ADD COLUMN quantity_adjustment REAL NOT NULL DEFAULT 0`)
+	return err
+}
+
 // handleListHoldings returns every Holding. Unlike Category and Client there
 // is no hidden flag in this version (see the spec's Out of Scope), so there is
 // nothing for a picker to filter out.
@@ -188,8 +207,8 @@ func handleCreateHolding(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		res, err := db.Exec(`INSERT INTO holding (name, type, current_price_cents) VALUES (?, ?, ?)`,
-			h.Name, h.Type, h.CurrentPriceCents)
+		res, err := db.Exec(`INSERT INTO holding (name, type, current_price_cents, quantity_adjustment) VALUES (?, ?, ?, ?)`,
+			h.Name, h.Type, h.CurrentPriceCents, h.QuantityAdjustment)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -198,21 +217,23 @@ func handleCreateHolding(db *sql.DB) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		h.QuantityOwned, h.PaidCents = 0, 0
+		h.QuantityOwned, h.PaidCents = h.QuantityAdjustment, 0
 		computeHoldingFigures(&h)
 		writeJSON(w, http.StatusCreated, h)
 	}
 }
 
-// handlePatchHolding renames a Holding, changes its type, or sets/clears its
-// current_price_cents. Decoding onto the stored row is what makes it
-// partial, the same bargain a Client's PATCH makes. QuantityOwned and
-// PaidCents are restored after decoding — computed from linked
-// Expenses/Incomes, never something a PATCH body gets to claim directly,
-// the same protection handlePatchContract gives ReceivedCents/AccountedCents.
-// Nothing else here is protected the way a Base category is: no report
-// resolves one Holding by identity, so every Holding is the household's to
-// rename.
+// handlePatchHolding renames a Holding, changes its type, sets/clears its
+// current_price_cents, or corrects its quantity_adjustment. Decoding onto the
+// stored row is what makes it partial, the same bargain a Client's PATCH
+// makes. PaidCents and the quantity summed from linked Expenses/Incomes are
+// restored after decoding — computed, never something a PATCH body gets to
+// claim directly, the same protection handlePatchContract gives
+// ReceivedCents/AccountedCents — but QuantityAdjustment is a real column and
+// freely writable, so QuantityOwned is rebuilt from the (possibly just
+// changed) adjustment plus the untouched transaction sum. Nothing else here
+// is protected the way a Base category is: no report resolves one Holding by
+// identity, so every Holding is the household's to rename.
 func handlePatchHolding(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		h, ok := findHolding(w, db, r.PathValue("id"))
@@ -220,20 +241,21 @@ func handlePatchHolding(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		id := h.ID
-		quantityOwned, paidCents := h.QuantityOwned, h.PaidCents
+		quantityFromTransactions, paidCents := h.QuantityOwned-h.QuantityAdjustment, h.PaidCents
 		if err := decodeJSON(w, r, &h); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
 		h.ID = id // an id in the body is not a way to move the row
-		h.QuantityOwned, h.PaidCents = quantityOwned, paidCents
+		h.PaidCents = paidCents
+		h.QuantityOwned = h.QuantityAdjustment + quantityFromTransactions
 		if err := h.validate(); err != nil {
 			writeInvalid(w, err)
 			return
 		}
 
-		if _, err := db.Exec(`UPDATE holding SET name = ?, type = ?, current_price_cents = ? WHERE id = ?`,
-			h.Name, h.Type, h.CurrentPriceCents, h.ID); err != nil {
+		if _, err := db.Exec(`UPDATE holding SET name = ?, type = ?, current_price_cents = ?, quantity_adjustment = ? WHERE id = ?`,
+			h.Name, h.Type, h.CurrentPriceCents, h.QuantityAdjustment, h.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -264,10 +286,12 @@ func findHolding(w http.ResponseWriter, db *sql.DB, rawID string) (holding, bool
 	return h, true
 }
 
-// The two subqueries are QuantityOwned and PaidCents: every linked Expense
-// (a buy) less every linked, paid Income (a sell) — ADR-0003's payment_date
-// filter, the same as clientSelect's own total-earned subquery relies on.
-const holdingSelect = `SELECT id, name, type, current_price_cents,
+// The two subqueries are the quantity and amount summed from linked
+// Expenses (a buy) less linked, paid Incomes (a sell) — ADR-0003's
+// payment_date filter, the same as clientSelect's own total-earned subquery
+// relies on. quantity_adjustment rides along raw; scanHolding adds it to the
+// summed quantity to get QuantityOwned.
+const holdingSelect = `SELECT id, name, type, current_price_cents, quantity_adjustment,
 	(SELECT COALESCE(SUM(quantity), 0) FROM expense WHERE expense.holding_id = holding.id) -
 		(SELECT COALESCE(SUM(quantity), 0) FROM income WHERE income.holding_id = holding.id AND income.payment_date IS NOT NULL),
 	(SELECT COALESCE(SUM(amount_cents), 0) FROM expense WHERE expense.holding_id = holding.id) -
@@ -276,9 +300,11 @@ const holdingSelect = `SELECT id, name, type, current_price_cents,
 
 func scanHolding(row interface{ Scan(...any) error }) (holding, error) {
 	var h holding
-	if err := row.Scan(&h.ID, &h.Name, &h.Type, &h.CurrentPriceCents, &h.QuantityOwned, &h.PaidCents); err != nil {
+	var quantityFromTransactions float64
+	if err := row.Scan(&h.ID, &h.Name, &h.Type, &h.CurrentPriceCents, &h.QuantityAdjustment, &quantityFromTransactions, &h.PaidCents); err != nil {
 		return holding{}, err
 	}
+	h.QuantityOwned = h.QuantityAdjustment + quantityFromTransactions
 	computeHoldingFigures(&h)
 	return h, nil
 }

@@ -8,15 +8,16 @@ import (
 
 // A Holding as the API hands it out.
 type holdingJSON struct {
-	ID                int64    `json:"id"`
-	Name              string   `json:"name"`
-	Type              string   `json:"type"`
-	CurrentPriceCents *int64   `json:"current_price_cents"`
-	QuantityOwned     float64  `json:"quantity_owned"`
-	PaidCents         int64    `json:"paid_cents"`
-	ValueNowCents     *int64   `json:"value_now_cents"`
-	GainLossCents     *int64   `json:"gain_loss_cents"`
-	GainLossPercent   *float64 `json:"gain_loss_percent"`
+	ID                 int64    `json:"id"`
+	Name               string   `json:"name"`
+	Type               string   `json:"type"`
+	CurrentPriceCents  *int64   `json:"current_price_cents"`
+	QuantityAdjustment float64  `json:"quantity_adjustment"`
+	QuantityOwned      float64  `json:"quantity_owned"`
+	PaidCents          int64    `json:"paid_cents"`
+	ValueNowCents      *int64   `json:"value_now_cents"`
+	GainLossCents      *int64   `json:"gain_loss_cents"`
+	GainLossPercent    *float64 `json:"gain_loss_percent"`
 }
 
 // holdingPath addresses one Holding the way the API does.
@@ -294,6 +295,42 @@ func TestPatchingAHoldingCannotForgeQuantityOrPaid(t *testing.T) {
 	if got.QuantityOwned != 2.0 || got.PaidCents != 10000 {
 		t.Errorf("quantity/paid = %v/%d, want the real 2/10000, not the forged claim",
 			got.QuantityOwned, got.PaidCents)
+	}
+}
+
+// quantity_adjustment is the one figure here that is a real column, not a
+// computed one — a household correcting for a PAC's own quantity-less
+// Expenses moves QuantityOwned by exactly the adjustment, on top of whatever
+// linked Expenses/Incomes already summed to.
+func TestQuantityAdjustmentCorrectsQuantityOwned(t *testing.T) {
+	a := newTestApp(t)
+	h := a.createHolding(t, "VWCE", holdingETF)
+	investments := a.investments(t)
+	a.addExpense(t, map[string]any{
+		"amount_cents": 10000, "category_id": investments.ID, "occurred_on": "2026-06-01",
+		"holding_id": h.ID, "quantity": 2.0,
+	})
+
+	var got holdingJSON
+	res := a.patch(t, holdingPath(h.ID), map[string]any{"quantity_adjustment": 0.5}, &got)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH quantity_adjustment = %d, want 200", res.StatusCode)
+	}
+	if got.QuantityAdjustment != 0.5 {
+		t.Errorf("quantity_adjustment = %v, want 0.5", got.QuantityAdjustment)
+	}
+	if got.QuantityOwned != 2.5 {
+		t.Errorf("quantity_owned = %v, want 2.5 (2.0 from the buy plus the 0.5 correction)", got.QuantityOwned)
+	}
+	if got.PaidCents != 10000 {
+		t.Errorf("paid_cents = %d, want 10000 — the correction is quantity-only", got.PaidCents)
+	}
+
+	// The list endpoint applies the same correction, not just the single-PATCH
+	// response.
+	list := a.holdings(t)[0]
+	if list.QuantityOwned != 2.5 {
+		t.Errorf("list's quantity_owned = %v, want 2.5", list.QuantityOwned)
 	}
 }
 

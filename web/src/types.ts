@@ -75,7 +75,12 @@ export type Holding = {
   // by the app (CONTEXT.md). Null until one is set, in which case value/
   // gain-loss below stay null too.
   current_price_cents: number | null
-  // Net units still held: quantity bought minus quantity sold from paid
+  // A hand-typed correction added to the quantity summed from linked
+  // Expenses/Incomes — a PAC's own generated Expenses carry no quantity, so
+  // this is how quantity_owned gets trued up without opening every one of
+  // them. 0 on a Holding nobody has corrected.
+  quantity_adjustment: number
+  // quantity_adjustment plus quantity bought minus quantity sold from paid
   // Incomes only (ADR-0003), computed at read time and never stored.
   quantity_owned: number
   // Net of what was spent buying this Holding minus what was received

@@ -28,6 +28,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -127,6 +128,11 @@ export function Dashboard({
   const [pending, setPending] = useState<Pending | null>(null)
   const [daily, setDaily] = useState<DailyCategoryTotal[]>([])
   const [error, setError] = useState("")
+  // True only until the first load settles — every list here starts empty
+  // regardless of whether the household has no data yet or the request is
+  // simply still in flight, and a Skeleton is how the two stop looking the
+  // same for the second or so that tells them apart.
+  const [loading, setLoading] = useState(true)
 
   const load = useCallback(
     () =>
@@ -150,7 +156,8 @@ export function Dashboard({
           setPending(p)
           setDaily(d)
         })
-        .catch(() => setError(t.serverUnreachable)),
+        .catch(() => setError(t.serverUnreachable))
+        .finally(() => setLoading(false)),
     []
   )
 
@@ -178,7 +185,13 @@ export function Dashboard({
         </p>
       )}
 
-      {year && (
+      {loading ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <Skeleton className="h-44 w-full" />
+          <Skeleton className="h-44 w-full" />
+          <Skeleton className="h-44 w-full" />
+        </div>
+      ) : year && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <TotalsCard
             icon={RiWallet3Line}
@@ -215,7 +228,7 @@ export function Dashboard({
         </div>
       )}
 
-      <DailyTrendCard daily={daily} categories={categories} />
+      <DailyTrendCard loading={loading} daily={daily} categories={categories} />
 
       {/* items-start: without it the grid stretches the calendar column to
           match whichever side ends up taller, leaving Prossime scadenze
@@ -223,16 +236,20 @@ export function Dashboard({
           needs to be. */}
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
         <div className="flex flex-col gap-4">
-          <UpcomingCard upcoming={upcoming} categories={categories} />
-          {pending && (
-            <ClientsCard
-              pending={pending}
-              clockOK={clockOK}
-              onEditIncome={onEditIncome}
-              onPaid={load}
-            />
+          <UpcomingCard loading={loading} upcoming={upcoming} categories={categories} />
+          {loading ? (
+            <Skeleton className="h-32 w-full" />
+          ) : (
+            pending && (
+              <ClientsCard
+                pending={pending}
+                clockOK={clockOK}
+                onEditIncome={onEditIncome}
+                onPaid={load}
+              />
+            )
           )}
-          <RemindersCard />
+          <RemindersCard loading={loading} />
         </div>
 
         {/* The two recent lists stacked in the two columns Prossime scadenze
@@ -242,11 +259,13 @@ export function Dashboard({
             shorter than either list could be. */}
         <div className="flex flex-col gap-4 lg:col-span-2">
           <RecentList
+            loading={loading}
             title={t.latestExpenses}
             empty={t.noRecentExpenses}
             entries={latestExpenses}
           />
           <RecentList
+            loading={loading}
             title={t.recentIncomes}
             empty={t.noRecentIncomes}
             entries={latestIncomes}
@@ -402,9 +421,11 @@ function NetSparkline({ months }: { months: MonthRow[] }) {
 // zero-spend days included, so a quiet stretch reads as a real gap rather
 // than a shorter chart.
 function DailyTrendCard({
+  loading,
   daily,
   categories,
 }: {
+  loading: boolean
   daily: DailyCategoryTotal[]
   categories: Category[]
 }) {
@@ -417,8 +438,10 @@ function DailyTrendCard({
       <CardHeader>
         <CardTitle>{t.dailyTrend}</CardTitle>
       </CardHeader>
-      <CardContent elevated={daily.length === 0}>
-        {daily.length === 0 ? (
+      <CardContent elevated={!loading && daily.length === 0}>
+        {loading ? (
+          <Skeleton className="h-64 w-full" />
+        ) : daily.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t.noDailyTrend}</p>
         ) : (
           <CategoryTrendChart
@@ -435,9 +458,11 @@ function DailyTrendCard({
 // same preview Dashboard always drew, just fewer of them and next to a real
 // calendar instead of only a heading.
 function UpcomingCard({
+  loading,
   upcoming,
   categories,
 }: {
+  loading: boolean
   upcoming: { r: Recurring; date: string }[]
   categories: Category[]
 }) {
@@ -455,50 +480,56 @@ function UpcomingCard({
         <CardTitle>{t.upcomingRecurring}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 @[28rem]:flex-row @[28rem]:items-start">
-        <Calendar
-          mode="single"
-          selected={selected}
-          onSelect={setSelected}
-          dayColors={dayColors}
-          className="mx-auto shrink-0 @[28rem]:mx-0"
-        />
-        {upcoming.length === 0 ? (
-          <p className="text-sm text-muted-foreground @[28rem]:mt-2 @[28rem]:flex-1">
-            {t.noUpcomingRecurring}
-          </p>
+        {loading ? (
+          <Skeleton className="h-64 w-full" />
         ) : (
-          <ul className="flex flex-col divide-y divide-border @[28rem]:mt-2 @[28rem]:min-w-0 @[28rem]:flex-1">
-            {upcoming.map(({ r, date }) => (
-              <li
-                key={r.id}
-                className="flex items-baseline justify-between gap-3 py-2"
-              >
-                <span className="flex min-w-0 items-baseline gap-1.5">
-                  <span
-                    aria-hidden
-                    className="size-1.5 shrink-0 -translate-y-px rounded-full"
-                    style={{
-                      backgroundColor: paletteVar(
-                        colorOf(categories, r.category_id),
-                        "primary"
-                      ),
-                    }}
-                  />
-                  <span className="min-w-0">
-                    <span className="truncate">
-                      {nameOf(categories, r.category_id)}
-                    </span>{" "}
-                    <span className="text-xs text-muted-foreground">
-                      {t.dueIn(daysUntil(date))}
+          <>
+            <Calendar
+              mode="single"
+              selected={selected}
+              onSelect={setSelected}
+              dayColors={dayColors}
+              className="mx-auto shrink-0 @[28rem]:mx-0"
+            />
+            {upcoming.length === 0 ? (
+              <p className="text-sm text-muted-foreground @[28rem]:mt-2 @[28rem]:flex-1">
+                {t.noUpcomingRecurring}
+              </p>
+            ) : (
+              <ul className="flex flex-col divide-y divide-border @[28rem]:mt-2 @[28rem]:min-w-0 @[28rem]:flex-1">
+                {upcoming.map(({ r, date }) => (
+                  <li
+                    key={r.id}
+                    className="flex items-baseline justify-between gap-3 py-2"
+                  >
+                    <span className="flex min-w-0 items-baseline gap-1.5">
+                      <span
+                        aria-hidden
+                        className="size-1.5 shrink-0 -translate-y-px rounded-full"
+                        style={{
+                          backgroundColor: paletteVar(
+                            colorOf(categories, r.category_id),
+                            "primary"
+                          ),
+                        }}
+                      />
+                      <span className="min-w-0">
+                        <span className="truncate">
+                          {nameOf(categories, r.category_id)}
+                        </span>{" "}
+                        <span className="text-xs text-muted-foreground">
+                          {t.dueIn(daysUntil(date))}
+                        </span>
+                      </span>
                     </span>
-                  </span>
-                </span>
-                <span className="whitespace-nowrap tabular-nums">
-                  € {formatCents(r.amount_cents)}
-                </span>
-              </li>
-            ))}
-          </ul>
+                    <span className="whitespace-nowrap tabular-nums">
+                      € {formatCents(r.amount_cents)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </CardContent>
     </Card>
@@ -731,7 +762,7 @@ const reminderModes = [
 // By default the card is only the list: the toggles are what gets read every
 // day, and the managing controls hide behind the header menu so they are not
 // three chances to mistap next to them.
-function RemindersCard() {
+function RemindersCard({ loading }: { loading: boolean }) {
   const [reminders, setReminders] = useState<Reminder[]>([])
   const [mode, setMode] = useState<ReminderMode | null>(null)
   const [label, setLabel] = useState("")
@@ -827,7 +858,7 @@ function RemindersCard() {
         </CardAction>
       </CardHeader>
       <CardContent
-        elevated={reminders.length === 0}
+        elevated={!loading && reminders.length === 0}
         className="flex flex-col gap-3"
       >
         {error && (
@@ -835,7 +866,9 @@ function RemindersCard() {
             {error}
           </p>
         )}
-        {reminders.length === 0 ? (
+        {loading ? (
+          <Skeleton className="h-32 w-full" />
+        ) : reminders.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t.noRemindersYet}</p>
         ) : (
           <ul className="flex flex-col divide-y divide-border">
@@ -938,10 +971,12 @@ function RemindersCard() {
 // list (TanStack Virtual) would start paying for itself over a plain
 // scrolling <ul>.
 function RecentList({
+  loading,
   title,
   empty,
   entries,
 }: {
+  loading: boolean
   title: string
   empty: string
   entries: RecentEntry[]
@@ -951,8 +986,10 @@ function RecentList({
       <CardHeader>
         <CardTitle>{title}</CardTitle>
       </CardHeader>
-      <CardContent elevated={entries.length === 0}>
-        {entries.length === 0 ? (
+      <CardContent elevated={!loading && entries.length === 0}>
+        {loading ? (
+          <Skeleton className="h-48 w-full" />
+        ) : entries.length === 0 ? (
           <p className="text-sm text-muted-foreground">{empty}</p>
         ) : (
           <ul className="flex max-h-96 flex-col divide-y divide-border overflow-y-auto">

@@ -1,7 +1,20 @@
 import { useCallback, useEffect, useState } from "react"
-import { RiEditLine } from "@remixicon/react"
+import { RiEditLine, RiEyeLine, RiMoneyEuroCircleLine, RiMoreLine } from "@remixicon/react"
 
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
@@ -16,6 +29,7 @@ import {
 } from "@/components/ui/table"
 import { api } from "@/lib/api"
 import { FormSidebar } from "@/components/form-sidebar"
+import { ViewRow } from "@/components/ViewRow"
 import { toast } from "@/lib/toast"
 import { formatCents, toCents, toTyped } from "@/lib/money"
 import { t } from "@/lib/strings"
@@ -29,26 +43,45 @@ const typeLabels: Record<HoldingType, string> = {
   other: t.holdingTypeOther,
 }
 
-// The optional current price, in cents, travels through the form as a typed
-// euro string like the amount fields elsewhere ("" is unset, never "0").
-type Draft = { name: string; type: HoldingType; currentPrice: string }
+type Draft = { name: string; type: HoldingType }
 
-const blankDraft = (): Draft => ({
-  name: "",
-  type: "etf",
-  currentPrice: "",
-})
+const blankDraft = (): Draft => ({ name: "", type: "etf" })
+
+// The price/quantity-adjustment form travels as typed strings, the same
+// bargain every euro/quantity input in this app makes: "" is unset, never
+// "0". Unlike the quantity fields on Expense/Income, the adjustment is
+// signed, so it does not go through toQuantity (which refuses anything not
+// positive) — parseAdjustment below is its own, looser parser.
+type PricingDraft = { currentPrice: string; quantityAdjustment: string }
+
+function parseAdjustment(typed: string): number {
+  const n = Number(typed.trim().replace(",", "."))
+  return Number.isFinite(n) ? n : 0
+}
 
 // The Holding management screen: add and rename, the fixed list ticket 03's
-// Buy/Sell form and portfolio breakdown will read from. No hide or delete in
-// this version — a fully-sold Holding simply nets to zero (spec's Out of
-// Scope) — so unlike Categories and Clients this list is add-and-edit only.
+// Buy/Sell form and portfolio breakdown read from. No hide or delete in this
+// version — a fully-sold Holding simply nets to zero (spec's Out of Scope) —
+// so unlike Categories and Clients this list is add-and-edit only.
+//
+// Value now and gain/loss sit behind a Dettagli view dialog rather than in
+// the table itself (the same simplification Expenses/Incomes' own view
+// dialogs made), and current_price_cents/quantity_adjustment — the two
+// hand-typed corrections — are edited through their own small dialog, the
+// same shape Categories.tsx uses for a Subcategory's colour: a focused edit,
+// separate from the Name/Type sidebar form.
 export function Holdings() {
   const [holdings, setHoldings] = useState<Holding[] | null>(null)
   const [error, setError] = useState("")
   const [draft, setDraft] = useState(blankDraft)
   const [editing, setEditing] = useState<number | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [viewing, setViewing] = useState<Holding | null>(null)
+  const [pricing, setPricing] = useState<Holding | null>(null)
+  const [pricingDraft, setPricingDraft] = useState<PricingDraft>({
+    currentPrice: "",
+    quantityAdjustment: "",
+  })
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
@@ -86,39 +119,46 @@ export function Holdings() {
   // form updates whether it is on screen or not.
   function selectHolding(h: Holding) {
     setEditing(h.id)
-    setDraft({
-      name: h.name,
-      type: h.type,
-      currentPrice:
-        h.current_price_cents === null ? "" : toTyped(h.current_price_cents),
-    })
+    setDraft({ name: h.name, type: h.type })
     setSidebarOpen(true)
   }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
-    // Name, type and price travel together in one PATCH — the API has no
-    // endpoint that changes just one of them, so there is nothing to leave
-    // out here.
     const ok = await write(
       editing === null ? "/api/holdings" : `/api/holdings/${editing}`,
-      {
-        method: editing === null ? "POST" : "PATCH",
-        body: JSON.stringify({
-          name: draft.name,
-          type: draft.type,
-          current_price_cents: toCents(draft.currentPrice),
-        }),
-      }
+      { method: editing === null ? "POST" : "PATCH", body: JSON.stringify(draft) }
     )
     if (!ok) return
-    const wasEditing = editing !== null
-    if (!wasEditing) toast(t.added)
+    if (editing === null) toast(t.added)
     setEditing(null)
     // Adding several similar Holdings in a row is common (a handful of ETFs
-    // set up at once) — the type stays, only the name clears. Finishing an
-    // edit is a one-off, so it resets fully.
-    setDraft((d) => (wasEditing ? blankDraft() : { ...d, name: "" }))
+    // set up at once) — the type stays, only the name clears.
+    setDraft((d) => ({ ...d, name: "" }))
+  }
+
+  function openPricing(h: Holding) {
+    setPricing(h)
+    setPricingDraft({
+      currentPrice:
+        h.current_price_cents === null ? "" : toTyped(h.current_price_cents),
+      quantityAdjustment:
+        h.quantity_adjustment === 0 ? "" : String(h.quantity_adjustment).replace(".", ","),
+    })
+  }
+
+  async function submitPricing(event: React.FormEvent) {
+    event.preventDefault()
+    if (!pricing) return
+    const id = pricing.id
+    setPricing(null)
+    await write(`/api/holdings/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        current_price_cents: toCents(pricingDraft.currentPrice),
+        quantity_adjustment: parseAdjustment(pricingDraft.quantityAdjustment),
+      }),
+    })
   }
 
   return (
@@ -144,8 +184,6 @@ export function Holdings() {
                 <TableHead>{t.holdingType}</TableHead>
                 <TableHead className="text-right">{t.quantityOwned}</TableHead>
                 <TableHead className="text-right">{t.paid}</TableHead>
-                <TableHead className="text-right">{t.valueNow}</TableHead>
-                <TableHead className="text-right">{t.gainLoss}</TableHead>
                 <TableHead className="w-10">{t.actions}</TableHead>
               </TableRow>
             </TableHeader>
@@ -162,34 +200,30 @@ export function Holdings() {
                   <TableCell className="text-right tabular-nums">
                     € {formatCents(h.paid_cents)}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {h.value_now_cents === null
-                      ? "—"
-                      : `€ ${formatCents(h.value_now_cents)}`}
-                  </TableCell>
-                  <TableCell
-                    className={`text-right tabular-nums ${
-                      (h.gain_loss_cents ?? 0) < 0 ? "text-destructive" : ""
-                    }`}
-                  >
-                    {h.gain_loss_cents === null
-                      ? "—"
-                      : `€ ${formatCents(h.gain_loss_cents)}${
-                          h.gain_loss_percent === null
-                            ? ""
-                            : ` (${h.gain_loss_percent.toFixed(1)}%)`
-                        }`}
-                  </TableCell>
                   <TableCell>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={t.editHolding}
-                      onClick={() => selectHolding(h)}
-                    >
-                      <RiEditLine />
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={t.actions}
+                        >
+                          <RiMoreLine />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setViewing(h)}>
+                          <RiEyeLine /> {t.viewHolding}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openPricing(h)}>
+                          <RiMoneyEuroCircleLine /> {t.editPriceAndQuantity}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => selectHolding(h)}>
+                          <RiEditLine /> {t.editHolding}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))}
@@ -261,26 +295,103 @@ export function Holdings() {
                 </SelectContent>
               </Select>
             </Field>
-
-            <Field>
-              <FieldLabel htmlFor="current-price">{t.currentPrice}</FieldLabel>
-              <InputGroup className="h-10">
-                <InputGroupAddon className="text-sm">€</InputGroupAddon>
-                <InputGroupInput
-                  id="current-price"
-                  type="text"
-                  inputMode="decimal"
-                  value={draft.currentPrice}
-                  onChange={(e) => set("currentPrice", e.target.value)}
-                  placeholder="0,00"
-                />
-              </InputGroup>
-              <FieldDescription>{t.currentPriceHint}</FieldDescription>
-            </Field>
-
           </form>
         </FormSidebar>
       </div>
+
+      <Dialog open={viewing !== null} onOpenChange={(open) => !open && setViewing(null)}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+          {viewing && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{t.holdingDetails}</DialogTitle>
+              </DialogHeader>
+              <dl className="flex flex-col divide-y divide-border text-sm">
+                <ViewRow label={t.holdingType} value={typeLabels[viewing.type]} />
+                <ViewRow
+                  label={t.quantityOwned}
+                  value={String(viewing.quantity_owned)}
+                />
+                <ViewRow label={t.paid} value={`€ ${formatCents(viewing.paid_cents)}`} />
+                {viewing.current_price_cents !== null && (
+                  <ViewRow
+                    label={t.currentPrice}
+                    value={`€ ${formatCents(viewing.current_price_cents)}`}
+                  />
+                )}
+                {viewing.value_now_cents !== null && (
+                  <ViewRow
+                    label={t.valueNow}
+                    value={`€ ${formatCents(viewing.value_now_cents)}`}
+                  />
+                )}
+                {viewing.gain_loss_cents !== null && (
+                  <ViewRow
+                    label={t.gainLoss}
+                    value={`€ ${formatCents(viewing.gain_loss_cents)}${
+                      viewing.gain_loss_percent === null
+                        ? ""
+                        : ` (${viewing.gain_loss_percent.toFixed(1)}%)`
+                    }`}
+                  />
+                )}
+              </dl>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={pricing !== null} onOpenChange={(open) => !open && setPricing(null)}>
+        <DialogContent>
+          {pricing && (
+            <form onSubmit={submitPricing} className="flex flex-col gap-4">
+              <DialogHeader>
+                <DialogTitle>{t.editPriceAndQuantity}</DialogTitle>
+              </DialogHeader>
+
+              <Field>
+                <FieldLabel htmlFor="current-price">{t.currentPrice}</FieldLabel>
+                <InputGroup className="h-10">
+                  <InputGroupAddon className="text-sm">€</InputGroupAddon>
+                  <InputGroupInput
+                    id="current-price"
+                    type="text"
+                    inputMode="decimal"
+                    value={pricingDraft.currentPrice}
+                    onChange={(e) =>
+                      setPricingDraft((d) => ({ ...d, currentPrice: e.target.value }))
+                    }
+                    placeholder="0,00"
+                  />
+                </InputGroup>
+                <FieldDescription>{t.currentPriceHint}</FieldDescription>
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="quantity-adjustment">
+                  {t.quantityAdjustment}
+                </FieldLabel>
+                <Input
+                  id="quantity-adjustment"
+                  type="text"
+                  inputMode="decimal"
+                  value={pricingDraft.quantityAdjustment}
+                  onChange={(e) =>
+                    setPricingDraft((d) => ({ ...d, quantityAdjustment: e.target.value }))
+                  }
+                  placeholder="0"
+                  className="h-10"
+                />
+                <FieldDescription>{t.quantityAdjustmentHint}</FieldDescription>
+              </Field>
+
+              <DialogFooter>
+                <Button type="submit">{t.save}</Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

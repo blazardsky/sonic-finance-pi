@@ -465,6 +465,12 @@ export const t = {
   valueNow: "Valore attuale",
   paid: "Pagato",
   gainLoss: "Guadagno/perdita",
+  viewHolding: "Dettagli",
+  holdingDetails: "Dettagli investimento",
+  editPriceAndQuantity: "Modifica prezzo e quote",
+  quantityAdjustment: "Correzione quote",
+  quantityAdjustmentHint:
+    "Aggiunta (o sottratta) alle quote calcolate da acquisti e vendite — utile perché le quote di un PAC non sono mai precise.",
 
   // Risparmi — read-only recap (ticket 07): total Savings, starting balance,
   // and the portfolio breakdown from GET /api/reports/savings. No entries are
