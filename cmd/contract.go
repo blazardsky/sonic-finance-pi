@@ -361,27 +361,36 @@ type clientContractDue struct {
 	DueCents int64  `json:"due_cents"`
 }
 
-// contractsDueThisMonth answers, per Client, the remaining shortfall
-// (TotalCents - AccountedCents) for whichever Contract is currently inside
-// its own range — start_month <= current <= end_month. A Contract not yet
-// begun, or already past end_month, is left out entirely: neither is "an
-// active one" in the sense the card asks about. A Client whose active
-// Contract is already fully invoiced (or invoiced beyond its total) is left
-// out too — there is nothing left to say it owes, regardless of how this
-// month's own pace-based target happens to sit (that finer question is
-// Clients.tsx's own per-Contract detail, not this nudge's). A hidden Client
-// is left out regardless of its Contract's figures, same as
-// readNotYetInvoiced: hiding is how a Client is retired, and this card is a
-// prompt to act, not a record of history.
+// contractsDueThisMonth answers, per Client, this month's own straight-line
+// share (InvoiceTargetCents, ADR-0012) for whichever Contract is currently
+// inside its own range — start_month <= current <= end_month. A Contract not
+// yet begun, or already past end_month, is left out entirely: neither is "an
+// active one" in the sense the card asks about. A hidden Client is left out
+// regardless of its Contract's figures, same as readNotYetInvoiced: hiding is
+// how a Client is retired, and this card is a prompt to act, not a record of
+// history.
+//
+// A Client already invoiced this calendar month for this Contract — an
+// invoice_sent_date within it, whatever its amount or payment status — is
+// left out too: the prompt is "send this month's invoice," and one already
+// went out. A Client whose Contract is fully accounted for (invoiced at or
+// past its total, this month or any other) is left out on the same terms
+// InvoiceTargetCents already floors shortfall at zero for.
 //
 // Two Contracts for the same Client never overlap in range (contractOverlaps
 // enforces it at write time), so this is at most one row per Client.
 func contractsDueThisMonth(db *sql.DB, now func() time.Time) ([]clientContractDue, error) {
 	current := now().Format(monthLayout)
-	rows, err := db.Query(`SELECT `+contractColumns+`, client.name
+	rows, err := db.Query(`SELECT `+contractColumns+`, client.name,
+			EXISTS (
+				SELECT 1 FROM income
+				WHERE income.contract_id = contract.id
+					AND substr(income.invoice_sent_date, 1, 7) = ?
+			)
 		FROM contract
 		JOIN client ON client.id = contract.client_id
-		WHERE contract.start_month <= ? AND contract.end_month >= ? AND client.hidden = 0`, current, current)
+		WHERE contract.start_month <= ? AND contract.end_month >= ? AND client.hidden = 0`,
+		current, current, current)
 	if err != nil {
 		return nil, err
 	}
@@ -391,16 +400,22 @@ func contractsDueThisMonth(db *sql.DB, now func() time.Time) ([]clientContractDu
 	for rows.Next() {
 		var c contract
 		var clientName string
+		var invoicedThisMonth bool
 		if err := rows.Scan(&c.ID, &c.ClientID, &c.StartMonth, &c.EndMonth, &c.TotalCents,
-			&c.ReceivedCents, &c.AccountedCents, &clientName); err != nil {
+			&c.ReceivedCents, &c.AccountedCents, &clientName, &invoicedThisMonth); err != nil {
 			return nil, err
 		}
-		remaining := c.TotalCents - c.AccountedCents
-		if remaining <= 0 {
+		if invoicedThisMonth {
+			continue
+		}
+		if err := computeContractFigures(&c, current); err != nil {
+			return nil, err
+		}
+		if c.InvoiceTargetCents <= 0 {
 			continue
 		}
 		out = append(out, clientContractDue{
-			ClientID: c.ClientID, Client: clientName, DueCents: remaining,
+			ClientID: c.ClientID, Client: clientName, DueCents: c.InvoiceTargetCents,
 		})
 	}
 	return out, rows.Err()

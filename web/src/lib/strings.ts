@@ -347,7 +347,7 @@ export const t = {
   // The Dashboard's own version of the nudge — contract-based rather than
   // notYetInvoicedHint's billing-recency guess.
   contractsDueHint:
-    "Clienti con un contratto attivo non ancora fatturato per intero.",
+    "Clienti con un contratto attivo a cui manca ancora la fattura di questo mese.",
 
   // Recurring expenses — the rent, defined once
   recurring: "Ricorrenti",

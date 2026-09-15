@@ -487,6 +487,8 @@ export type Pending = {
 export type ClientContractDue = {
   client_id: number
   client: string
+  // This month's own straight-line share of what the Contract still owes
+  // (ADR-0012), not the whole remaining total.
   due_cents: number
 }
 
