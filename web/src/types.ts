@@ -64,13 +64,31 @@ export type Client = {
 export type HoldingType = "etf" | "crypto" | "stock" | "bond" | "other"
 
 // A specific stock, ETF, crypto asset, bond or other investment vehicle the
-// household buys and sells — never priced or revalued by the app. Named and
-// typed from this fixed list rather than free text, because the portfolio
-// percentage breakdown (ticket 03) groups by it exactly (CONTEXT.md).
+// household buys and sells. Named and typed from this fixed list rather than
+// free text, because the portfolio percentage breakdown (ticket 03) groups by
+// it exactly (CONTEXT.md).
 export type Holding = {
   id: number
   name: string
   type: HoldingType
+  // Per-unit price, in cents, the household typed in by hand — never fetched
+  // by the app (CONTEXT.md). Null until one is set, in which case value/
+  // gain-loss below stay null too.
+  current_price_cents: number | null
+  // Net units still held: quantity bought minus quantity sold from paid
+  // Incomes only (ADR-0003), computed at read time and never stored.
+  quantity_owned: number
+  // Net of what was spent buying this Holding minus what was received
+  // selling it (paid Incomes only), computed at read time.
+  paid_cents: number
+  // quantity_owned × current_price_cents, rounded to the nearest cent. Null
+  // whenever current_price_cents is.
+  value_now_cents: number | null
+  // value_now_cents − paid_cents. Null on the same terms as value_now_cents.
+  gain_loss_cents: number | null
+  // gain_loss_cents as a percentage of paid_cents. Null whenever paid_cents
+  // is zero — a percentage of nothing spent is undefined, not zero.
+  gain_loss_percent: number | null
 }
 
 export type Expense = {
@@ -101,6 +119,9 @@ export type Expense = {
   // A second, independent tag alongside category_id, or null on most
   // Expenses — see Subcategory.
   subcategory_id: number | null
+  // How many units of holding_id this Expense bought, or null. Meaningless
+  // without a holding_id alongside it — nothing enforces that pairing.
+  quantity: number | null
 }
 
 // A part of an Expense under its own Category. No id: an Item is saved as one
@@ -184,6 +205,9 @@ export type Income = {
   // stays inside amount_cents (it did arrive), but a linked Contract's
   // received/accounted figures exclude it since it isn't real revenue.
   bollo_fattura: boolean
+  // How many units of holding_id this Income sold, or null — the sell-side
+  // twin of Expense.quantity.
+  quantity: number | null
 }
 
 // A total the household expects from a Client over a date range (ticket 05).

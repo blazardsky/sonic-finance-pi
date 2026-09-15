@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from "react"
 import { RiEditLine } from "@remixicon/react"
 
 import { Button } from "@/components/ui/button"
-import { Field, FieldLabel } from "@/components/ui/field"
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Table,
@@ -16,6 +17,7 @@ import {
 import { api } from "@/lib/api"
 import { FormSidebar } from "@/components/form-sidebar"
 import { toast } from "@/lib/toast"
+import { formatCents, toCents, toTyped } from "@/lib/money"
 import { t } from "@/lib/strings"
 import type { Holding, HoldingType } from "@/types"
 
@@ -27,9 +29,14 @@ const typeLabels: Record<HoldingType, string> = {
   other: t.holdingTypeOther,
 }
 
-const blankDraft = (): { name: string; type: HoldingType } => ({
+// The optional current price, in cents, travels through the form as a typed
+// euro string like the amount fields elsewhere ("" is unset, never "0").
+type Draft = { name: string; type: HoldingType; currentPrice: string }
+
+const blankDraft = (): Draft => ({
   name: "",
   type: "etf",
+  currentPrice: "",
 })
 
 // The Holding management screen: add and rename, the fixed list ticket 03's
@@ -43,10 +50,8 @@ export function Holdings() {
   const [editing, setEditing] = useState<number | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
-  const set = <K extends keyof ReturnType<typeof blankDraft>>(
-    key: K,
-    value: ReturnType<typeof blankDraft>[K]
-  ) => setDraft((d) => ({ ...d, [key]: value }))
+  const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
+    setDraft((d) => ({ ...d, [key]: value }))
 
   // Returns its promise so a write can wait for the reload it triggers, and
   // sets state from a callback rather than an awaited line, which is what
@@ -81,19 +86,29 @@ export function Holdings() {
   // form updates whether it is on screen or not.
   function selectHolding(h: Holding) {
     setEditing(h.id)
-    setDraft({ name: h.name, type: h.type })
+    setDraft({
+      name: h.name,
+      type: h.type,
+      currentPrice:
+        h.current_price_cents === null ? "" : toTyped(h.current_price_cents),
+    })
     setSidebarOpen(true)
   }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
-    // Name and type travel together in one PATCH — the API has no endpoint
-    // that changes just one of them, so there is nothing to leave out here.
+    // Name, type and price travel together in one PATCH — the API has no
+    // endpoint that changes just one of them, so there is nothing to leave
+    // out here.
     const ok = await write(
       editing === null ? "/api/holdings" : `/api/holdings/${editing}`,
       {
         method: editing === null ? "POST" : "PATCH",
-        body: JSON.stringify(draft),
+        body: JSON.stringify({
+          name: draft.name,
+          type: draft.type,
+          current_price_cents: toCents(draft.currentPrice),
+        }),
       }
     )
     if (!ok) return
@@ -127,6 +142,10 @@ export function Holdings() {
               <TableRow>
                 <TableHead>{t.holdingName}</TableHead>
                 <TableHead>{t.holdingType}</TableHead>
+                <TableHead className="text-right">{t.quantityOwned}</TableHead>
+                <TableHead className="text-right">{t.paid}</TableHead>
+                <TableHead className="text-right">{t.valueNow}</TableHead>
+                <TableHead className="text-right">{t.gainLoss}</TableHead>
                 <TableHead className="w-10">{t.actions}</TableHead>
               </TableRow>
             </TableHeader>
@@ -136,6 +155,30 @@ export function Holdings() {
                   <TableCell>{h.name}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {typeLabels[h.type]}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {h.quantity_owned}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    € {formatCents(h.paid_cents)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {h.value_now_cents === null
+                      ? "—"
+                      : `€ ${formatCents(h.value_now_cents)}`}
+                  </TableCell>
+                  <TableCell
+                    className={`text-right tabular-nums ${
+                      (h.gain_loss_cents ?? 0) < 0 ? "text-destructive" : ""
+                    }`}
+                  >
+                    {h.gain_loss_cents === null
+                      ? "—"
+                      : `€ ${formatCents(h.gain_loss_cents)}${
+                          h.gain_loss_percent === null
+                            ? ""
+                            : ` (${h.gain_loss_percent.toFixed(1)}%)`
+                        }`}
                   </TableCell>
                   <TableCell>
                     <Button
@@ -217,6 +260,22 @@ export function Holdings() {
                   ))}
                 </SelectContent>
               </Select>
+            </Field>
+
+            <Field>
+              <FieldLabel htmlFor="current-price">{t.currentPrice}</FieldLabel>
+              <InputGroup className="h-10">
+                <InputGroupAddon className="text-sm">€</InputGroupAddon>
+                <InputGroupInput
+                  id="current-price"
+                  type="text"
+                  inputMode="decimal"
+                  value={draft.currentPrice}
+                  onChange={(e) => set("currentPrice", e.target.value)}
+                  placeholder="0,00"
+                />
+              </InputGroup>
+              <FieldDescription>{t.currentPriceHint}</FieldDescription>
             </Field>
 
           </form>

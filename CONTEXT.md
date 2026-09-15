@@ -45,11 +45,11 @@ A Category, applying to both Expenses and Incomes, for money spent buying someth
 _Avoid_: present
 
 **Holding**:
-A specific stock, ETF, crypto asset, bond, or other investment vehicle the household buys and sells, named and typed from a short fixed list rather than free text — unlike Store, it must match exactly, because the portfolio percentage breakdown groups by it. Money moving in or out of one is recorded as an ordinary Expense or Income under the Investments base category; a Holding is never priced or revalued by the app.
+A specific stock, ETF, crypto asset, bond, or other investment vehicle the household buys and sells, named and typed from a short fixed list rather than free text — unlike Store, it must match exactly, because the portfolio percentage breakdown groups by it. Money moving in or out of one is recorded as an ordinary Expense or Income under the Investments base category. Quantity (on the Expense/Income) and current price (on the Holding itself) are both optional and always hand-typed — the app never fetches a price on its own — and drive the Titoli page's Quote possedute / Valore attuale / Pagato / Guadagno-perdita figures, computed at read time and never stored. A Holding with no current price set shows no value or gain/loss, only quantity and paid.
 _Avoid_: asset, position, security, ticker, investment
 
 **PAC**:
-A Recurring expense whose Category is Investments and which also names a Holding — a fixed amount moved into the same investment on the same schedule every month. Both are required: naming Investments without a Holding, or a Holding without Investments, is not a PAC. It does not track how many units or shares that money bought, consistent with a Holding never being priced or revalued — a PAC is a cash-flow habit, not a position size.
+A Recurring expense whose Category is Investments and which also names a Holding — a fixed amount moved into the same investment on the same schedule every month. Both are required: naming Investments without a Holding, or a Holding without Investments, is not a PAC. The Recurring template itself does not carry a quantity — only the Holding rides along to each generated Expense — so a PAC's monthly Expenses start with no quantity until someone hand-types one on each; a PAC is a cash-flow habit, not a position size by default.
 _Avoid_: recurring investment, DCA, dollar-cost averaging, subscription
 
 **Tracker**:

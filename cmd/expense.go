@@ -63,6 +63,13 @@ type expense struct {
 	// Decisions). A pointer, like income.ClientID, because "no Holding" is a
 	// real answer for every non-Investments Expense.
 	HoldingID *int64 `json:"holding_id"`
+
+	// How many units of HoldingID this buy paid for — optional (schema step
+	// 17), typed by hand same as an Item's own Quantity, and meaningless
+	// without a HoldingID alongside it (nothing enforces that pairing the way
+	// ticket 01 enforces quantity/unit on an Item; a stray value on a non-buy
+	// Expense is simply never read by anything).
+	Quantity *float64 `json:"quantity"`
 }
 
 // The fixed list a quantity's unit is picked from, the same one-of-a-fixed-
@@ -293,10 +300,10 @@ func handleCreateExpense(db *sql.DB, now func() time.Time) http.HandlerFunc {
 
 		res, err := tx.Exec(`INSERT INTO expense
 			(occurred_on, amount_cents, category_id, store, payer, payment_method, note,
-			 tax_year, holding_id, subcategory_id, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 tax_year, holding_id, subcategory_id, quantity, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			e.OccurredOn, e.AmountCents, e.CategoryID, e.Store, e.Payer, e.PaymentMethod,
-			e.Note, nullYear(e.TaxYear), e.HoldingID, e.SubcategoryID, now().Format(time.RFC3339))
+			e.Note, nullYear(e.TaxYear), e.HoldingID, e.SubcategoryID, e.Quantity, now().Format(time.RFC3339))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -322,14 +329,14 @@ func handleCreateExpense(db *sql.DB, now func() time.Time) http.HandlerFunc {
 }
 
 const expenseSelect = `SELECT id, occurred_on, amount_cents, category_id,
-	store, payer, payment_method, note, COALESCE(tax_year, 0), holding_id, subcategory_id FROM expense`
+	store, payer, payment_method, note, COALESCE(tax_year, 0), holding_id, subcategory_id, quantity FROM expense`
 
 func scanExpense(row interface{ Scan(...any) error }) (expense, error) {
 	// The frontend maps over the breakdown, so an Expense without one has to
 	// marshal as [] rather than null. The caller fills in any Items there are.
 	e := expense{Items: []item{}}
 	err := row.Scan(&e.ID, &e.OccurredOn, &e.AmountCents, &e.CategoryID,
-		&e.Store, &e.Payer, &e.PaymentMethod, &e.Note, &e.TaxYear, &e.HoldingID, &e.SubcategoryID)
+		&e.Store, &e.Payer, &e.PaymentMethod, &e.Note, &e.TaxYear, &e.HoldingID, &e.SubcategoryID, &e.Quantity)
 	return e, err
 }
 
@@ -474,9 +481,9 @@ func handlePatchExpense(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		if _, err := tx.Exec(`UPDATE expense SET occurred_on = ?, amount_cents = ?, category_id = ?,
-			store = ?, payer = ?, payment_method = ?, note = ?, tax_year = ?, holding_id = ?, subcategory_id = ? WHERE id = ?`,
+			store = ?, payer = ?, payment_method = ?, note = ?, tax_year = ?, holding_id = ?, subcategory_id = ?, quantity = ? WHERE id = ?`,
 			e.OccurredOn, e.AmountCents, e.CategoryID, e.Store, e.Payer, e.PaymentMethod,
-			e.Note, nullYear(e.TaxYear), e.HoldingID, e.SubcategoryID, e.ID); err != nil {
+			e.Note, nullYear(e.TaxYear), e.HoldingID, e.SubcategoryID, e.Quantity, e.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}

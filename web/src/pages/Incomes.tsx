@@ -97,6 +97,7 @@ type Draft = Omit<
   | "client_id"
   | "holding_id"
   | "contract_id"
+  | "quantity"
 > & {
   amount: string
   category_id: number | ""

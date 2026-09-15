@@ -454,6 +454,17 @@ export const t = {
   recordBuy: "Registra acquisto",
   recordSell: "Registra vendita",
   noBuysSellsYet: "Nessun acquisto o vendita registrato.",
+  quantityOptionalHint: "Facoltativo: quante quote ha mosso questa operazione.",
+
+  // Titoli — the per-Holding quantity/value/gain-loss summary (Holding.*
+  // computed figures), and the manual current-price input that drives it.
+  currentPrice: "Prezzo attuale",
+  currentPriceHint:
+    "Per quota, inserito a mano. Determina valore attuale e guadagno/perdita.",
+  quantityOwned: "Quote possedute",
+  valueNow: "Valore attuale",
+  paid: "Pagato",
+  gainLoss: "Guadagno/perdita",
 
   // Risparmi — read-only recap (ticket 07): total Savings, starting balance,
   // and the portfolio breakdown from GET /api/reports/savings. No entries are

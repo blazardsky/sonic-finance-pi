@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
@@ -16,7 +17,7 @@ import { api, apiJSON } from "@/lib/api"
 import { DatePicker } from "@/components/date-picker"
 import { FormSidebar } from "@/components/form-sidebar"
 import { toast } from "@/lib/toast"
-import { formatCents, formatDate, toCents, today } from "@/lib/money"
+import { formatCents, formatDate, toCents, toQuantity, today } from "@/lib/money"
 import { nameOf, withSaved } from "@/lib/pickers"
 import { t } from "@/lib/strings"
 import type { Category, Expense, Holding, Income, Lists } from "@/types"
@@ -30,6 +31,9 @@ type Draft = {
   amount: string
   date: string
   payer: string
+  // Optional: how many units this buy/sell moved, for the Titoli page's
+  // quantity tracking. "" means not tracked for this transaction.
+  quantity: string
 }
 
 const blankDraft = (): Draft => ({
@@ -37,6 +41,7 @@ const blankDraft = (): Draft => ({
   amount: "",
   date: today(),
   payer: "",
+  quantity: "",
 })
 
 // One row of the confirmation list below the form — a buy is an Expense, a
@@ -146,6 +151,12 @@ export function Investments() {
     }
     if (draft.holding_id === "" || !investments) return
 
+    const quantity = draft.quantity === "" ? null : toQuantity(draft.quantity)
+    if (draft.quantity !== "" && quantity === null) {
+      setError(t.invalidItemQuantityUnit)
+      return
+    }
+
     try {
       await api(kind === "buy" ? "/api/expenses" : "/api/incomes", {
         method: "POST",
@@ -159,6 +170,7 @@ export function Investments() {
           category_id: investments.id,
           payer: draft.payer,
           holding_id: draft.holding_id,
+          quantity,
         }),
       })
     } catch {
@@ -167,8 +179,9 @@ export function Investments() {
     }
     toast(t.added)
     // The Holding and Payer are often the same for the next entry — a PAC
-    // contribution split across a few lines, say — so only the amount clears.
-    setDraft((d) => ({ ...d, amount: "" }))
+    // contribution split across a few lines, say — so only the amount and
+    // quantity clear.
+    setDraft((d) => ({ ...d, amount: "", quantity: "" }))
     await load()
   }
 
@@ -272,6 +285,20 @@ export function Investments() {
                   className="text-2xl"
                 />
               </InputGroup>
+            </Field>
+
+            <Field>
+              <FieldLabel htmlFor="quantity">{t.itemQuantity}</FieldLabel>
+              <Input
+                id="quantity"
+                type="text"
+                inputMode="decimal"
+                value={draft.quantity}
+                onChange={(e) => set("quantity", e.target.value)}
+                placeholder="0"
+                className="h-10"
+              />
+              <FieldDescription>{t.quantityOptionalHint}</FieldDescription>
             </Field>
 
             <Field>

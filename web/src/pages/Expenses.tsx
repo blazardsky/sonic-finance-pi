@@ -180,7 +180,7 @@ const NO_CATEGORY = "__none__"
 // some other reason, e.g. its amount.
 type Draft = Omit<
   Expense,
-  "id" | "amount_cents" | "category_id" | "items" | "holding_id"
+  "id" | "amount_cents" | "category_id" | "items" | "holding_id" | "quantity"
 > & {
   amount: string
   // "" is the unchosen picker, which the required select refuses to submit.
