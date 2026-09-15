@@ -111,7 +111,23 @@ ${colorConfig
   )
 }
 
-const ChartTooltip = RechartsPrimitive.Tooltip
+// A plain re-export used to render below the legend: neither has an explicit
+// z-index, so <ChartLegend> — declared after this in every chart that uses
+// both — won a plain DOM-order stacking fight whenever the two visually
+// overlapped. Defaulting a z-index here (merged with, not clobbering, a
+// caller's own wrapperStyle) fixes every call site at once rather than each
+// one repeating the same override.
+function ChartTooltip({
+  wrapperStyle,
+  ...props
+}: React.ComponentProps<typeof RechartsPrimitive.Tooltip>) {
+  return (
+    <RechartsPrimitive.Tooltip
+      wrapperStyle={{ zIndex: 10, ...wrapperStyle }}
+      {...props}
+    />
+  )
+}
 
 function ChartTooltipContent({
   active,

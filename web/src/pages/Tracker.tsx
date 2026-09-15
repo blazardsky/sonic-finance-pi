@@ -75,6 +75,20 @@ export function Tracker() {
     return (id: number) => byId.get(id) ?? t.notSet
   }, [categories])
 
+  // Grouped by Category first, product name second, rather than the flat
+  // per-product order /api/tracker returns them in — a household tracking
+  // dozens of grocery items reads this page by "what did Alimentari cost",
+  // not by hunting for one name interleaved with every other Category's.
+  const sortedItems = useMemo(() => {
+    if (!items) return items
+    return [...items].sort((a, b) => {
+      const byCategory = categoryName(a.category_id).localeCompare(
+        categoryName(b.category_id)
+      )
+      return byCategory !== 0 ? byCategory : a.name.localeCompare(b.name)
+    })
+  }, [items, categoryName])
+
   // Defaults to the first group once the data is in, and falls back the same
   // way if the previously selected one ever stopped existing.
   const selectedItem =
@@ -114,7 +128,7 @@ export function Tracker() {
                   <SelectValue placeholder={t.trackerChooseItem} />
                 </SelectTrigger>
                 <SelectContent>
-                  {items.map((item) => (
+                  {sortedItems?.map((item) => (
                     <SelectItem key={itemKey(item)} value={itemKey(item)}>
                       <span className="capitalize">{item.name}</span>
                       {" · "}
@@ -164,7 +178,7 @@ export function Tracker() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.map((item) => (
+                {sortedItems?.map((item) => (
                   <Fragment key={itemKey(item)}>
                     {item.stores.map((s, i) => (
                       <TableRow key={s.store}>

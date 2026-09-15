@@ -14,10 +14,10 @@
 - [x] Togliere la scritta rossa "da fatturare questo mese" per i contratti dove l'ammontare è > al pattuito nel contratto
 
 ## v1.2.2
-- [ ] Aggregare le spese nel tracker per categoria prima che per singolo prodotto
+- [x] Aggregare le spese nel tracker per categoria prima che per singolo prodotto
 - [ ] aggiungere skeletons alla homepage
-- [ ] mettere il tooltip che appare nelle chart come z-index superiore alla legenda
-- [ ] card su report annuale più visibili (stile dashboard)
+- [x] mettere il tooltip che appare nelle chart come z-index superiore alla legenda
+- [x] card su report annuale più visibili (stile dashboard)
 
 ## v1.2.3
 - [ ] Aggiungere il tema Alta visibilità / Alto contrasto

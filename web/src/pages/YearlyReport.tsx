@@ -12,6 +12,7 @@ import {
 } from "recharts"
 
 import { PeriodLabel, PeriodStepper } from "@/components/PeriodStepper"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   type ChartConfig,
   ChartContainer,
@@ -207,17 +208,24 @@ export function YearlyReport() {
 }
 
 // Exported for Month's income/expense/difference card (ticket 01), the same
-// small-box reading both report pages already use.
+// stat-tile reading both report pages already use — restyled to the
+// Dashboard's own Card/CardHeader/CardContent pattern (its first stat card,
+// e.g.) rather than a plain bordered div, so a figure reads with the same
+// weight wherever it shows up.
 export function Figure({ label, cents }: { label: string; cents: number }) {
   return (
-    <div className="rounded-md border border-border p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p
-        className={`text-lg font-medium tabular-nums ${cents < 0 ? "text-destructive" : ""}`}
-      >
-        € {formatCents(cents)}
-      </p>
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">{label}</CardTitle>
+      </CardHeader>
+      <CardContent elevated>
+        <p
+          className={`text-2xl font-medium tabular-nums ${cents < 0 ? "text-destructive" : ""}`}
+        >
+          € {formatCents(cents)}
+        </p>
+      </CardContent>
+    </Card>
   )
 }
 
