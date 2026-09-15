@@ -105,7 +105,20 @@ function ComboboxContent({
         align={align}
         alignOffset={alignOffset}
         anchor={anchor}
-        className="isolate z-50"
+        // Every other overlay in this file tree (Sheet, Dialog, Select,
+        // DropdownMenu) is radix-ui; Combobox is @base-ui/react — a
+        // different library Radix knows nothing about. Opening this from
+        // inside a Sheet (the mobile form panel) was unclickable because
+        // Radix's Dialog sets `pointer-events: none` on <body> while open,
+        // re-enabling `auto` only on its own Content div — a sibling of
+        // this Positioner, not an ancestor, so nothing exempts a foreign
+        // portal from it. Every option here inherited `none` straight from
+        // body, so a tap fell through to whatever real element was
+        // underneath (a sibling field's <label>, in the report that found
+        // this). pointer-events-auto overrides the inheritance; z-[100]
+        // guards the same scenario for plain stacking order too, since nothing
+        // in this cross-library pairing coordinates that either.
+        className="isolate z-[100] pointer-events-auto"
       >
         <ComboboxPrimitive.Popup
           data-slot="combobox-content"
