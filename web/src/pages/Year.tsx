@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { Bar, BarChart, XAxis, YAxis } from "recharts"
 
 import { Row } from "@/pages/Month"
+import { PeriodLabel, PeriodStepper } from "@/components/PeriodStepper"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -84,32 +85,21 @@ export function Year({ onOpenYearReport }: { onOpenYearReport: () => void }) {
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={t.previousYear}
-            onClick={() => step(-1)}
-          >
-            ‹
-          </Button>
-          {/* The year itself, as a heading rather than an input: there is no
-              native year picker, and a household comparing against 2019 taps
-              seven times rather than learning a control. */}
-          <h1 className="text-2xl font-medium tabular-nums">{year}</h1>
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={t.nextYear}
-            // String comparison is a date comparison here too: four digits
-            // sort correctly, which is why a year is text everywhere but the
-            // column.
-            disabled={year >= thisYear()}
-            onClick={() => step(1)}
-          >
-            ›
-          </Button>
-        </div>
+        {/* The year itself, as a heading rather than an input: there is no
+            native year picker, and a household comparing against 2019 taps
+            seven times rather than learning a control. */}
+        <PeriodStepper
+          previousLabel={t.previousYear}
+          onPrevious={() => step(-1)}
+          nextLabel={t.nextYear}
+          // String comparison is a date comparison here too: four digits
+          // sort correctly, which is why a year is text everywhere but the
+          // column.
+          nextDisabled={year >= thisYear()}
+          onNext={() => step(1)}
+        >
+          <PeriodLabel as="h1">{year}</PeriodLabel>
+        </PeriodStepper>
         <Button variant="outline" size="sm" onClick={onOpenYearReport}>
           {t.yearReport}
         </Button>

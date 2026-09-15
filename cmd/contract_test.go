@@ -418,3 +418,147 @@ func TestContractWritesAreValidated(t *testing.T) {
 		t.Errorf("creating a Contract for an unknown Client = %d, want 404", res.StatusCode)
 	}
 }
+
+// A Contract invoiced for its full total (or beyond) before its own end
+// month is not overdue just for having ended — there is nothing left it
+// still owes, which is the opposite of what "overdue" means. Only a real
+// shortfall past end_month earns the flag (the "past end" case in
+// TestExpectedAndInvoiceTargetAtSeveralPointsInTheSpan, where nothing at all
+// had been invoiced, already covers the shortfall-remains half).
+func TestAFullyInvoicedContractIsNotOverdueOnceItsEnded(t *testing.T) {
+	a := newTestApp(t)
+	freelance := a.freelance(t)
+	c := a.createClient(t, "Studio Rossi")
+	contract := a.createContract(t, c.ID, yearContract(120000))
+
+	a.addIncome(t, map[string]any{
+		"amount_cents": 120000, "category_id": freelance.ID, "client_id": c.ID,
+		"contract_id": contract.ID, "invoice_sent_date": "2026-06-01", "bollo_fattura": false,
+	})
+
+	a.setNow(t, time.Date(2027, 1, 15, 0, 0, 0, 0, time.UTC))
+	got := a.contracts(t, c.ID)[0]
+	if got.Overdue {
+		t.Errorf("overdue = true, want false — the whole total is already accounted for")
+	}
+	if got.InvoiceTargetCents != 0 {
+		t.Errorf("invoice_target_this_month_cents = %d, want 0", got.InvoiceTargetCents)
+	}
+}
+
+// contractPath addresses one Contract the way the API does.
+func contractPath(clientID, contractID int64) string {
+	return fmt.Sprintf("%s/%d", contractsPath(clientID), contractID)
+}
+
+// PATCH is a partial merge, same bargain every other write in this codebase
+// makes: correcting just the total must not require resending dates that
+// were already right.
+func TestPatchingAContractMergesOntoWhatItAlreadyHad(t *testing.T) {
+	a := newTestApp(t)
+	c := a.createClient(t, "Studio Rossi")
+	contract := a.createContract(t, c.ID, yearContract(120000))
+
+	var got contractJSON
+	res := a.patch(t, contractPath(c.ID, contract.ID), map[string]any{"total_cents": 100000}, &got)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH total_cents = %d, want 200", res.StatusCode)
+	}
+	if got.TotalCents != 100000 {
+		t.Errorf("total_cents = %d, want 100000", got.TotalCents)
+	}
+	if got.StartMonth != "2026-01" || got.EndMonth != "2026-12" {
+		t.Errorf("dates = %s..%s, want them left exactly as they were", got.StartMonth, got.EndMonth)
+	}
+
+	list := a.contracts(t, c.ID)
+	if len(list) != 1 || list[0].TotalCents != 100000 {
+		t.Errorf("the list is %v, want the PATCH to have actually landed", list)
+	}
+}
+
+// total_earned-style forgery: received_cents and accounted_cents are
+// computed from linked Incomes, never something a PATCH body gets to set.
+func TestPatchingAContractCannotForgeReceivedOrAccounted(t *testing.T) {
+	a := newTestApp(t)
+	freelance := a.freelance(t)
+	c := a.createClient(t, "Studio Rossi")
+	contract := a.createContract(t, c.ID, yearContract(120000))
+	a.addIncome(t, map[string]any{
+		"amount_cents": 30000, "category_id": freelance.ID, "client_id": c.ID,
+		"contract_id": contract.ID, "invoice_sent_date": "2026-01-10",
+		"payment_date": "2026-01-15", "bollo_fattura": false,
+	})
+
+	var got contractJSON
+	res := a.patch(t, contractPath(c.ID, contract.ID),
+		map[string]any{"total_cents": 120000, "received_cents": 999999999, "accounted_cents": 999999999}, &got)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH = %d, want 200", res.StatusCode)
+	}
+	if got.ReceivedCents != 30000 || got.AccountedCents != 30000 {
+		t.Errorf("received/accounted = %d/%d, want the real 30000/30000, not the forged claim",
+			got.ReceivedCents, got.AccountedCents)
+	}
+}
+
+// Editing a Contract's own dates must not read its own not-yet-updated row
+// as overlapping itself — the reason contractOverlaps takes an excludeID.
+func TestPatchingAContractsDatesDoesNotOverlapItself(t *testing.T) {
+	a := newTestApp(t)
+	c := a.createClient(t, "Studio Rossi")
+	contract := a.createContract(t, c.ID, yearContract(120000))
+
+	// Widen by a month on each end — still itself, not a second Contract.
+	res := a.patch(t, contractPath(c.ID, contract.ID),
+		map[string]any{"start_month": "2025-12", "end_month": "2027-01"}, nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("widening its own range = %d, want 200", res.StatusCode)
+	}
+
+	// A second, real Contract now genuinely overlapping is still refused.
+	other := a.createContract(t, c.ID, map[string]any{
+		"start_month": "2028-01", "end_month": "2028-12", "total_cents": 1000,
+	})
+	res = a.patch(t, contractPath(c.ID, other.ID), map[string]any{"start_month": "2026-06"}, nil)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Errorf("overlapping a different Contract = %d, want 400", res.StatusCode)
+	}
+}
+
+// A Contract addressed under the wrong Client (or one that doesn't exist at
+// all) is a 404 either way — the same "cannot move it" guard checkIncome's
+// Contract check makes for a create, applied here to an edit.
+func TestPatchingAContractUnderTheWrongClientIs404(t *testing.T) {
+	a := newTestApp(t)
+	rossi := a.createClient(t, "Studio Rossi")
+	other := a.createClient(t, "Altro Cliente")
+	contract := a.createContract(t, rossi.ID, yearContract(120000))
+
+	res := a.patch(t, contractPath(other.ID, contract.ID), map[string]any{"total_cents": 500}, nil)
+	if res.StatusCode != http.StatusNotFound {
+		t.Errorf("patching under the wrong client = %d, want 404", res.StatusCode)
+	}
+	res = a.patch(t, contractPath(rossi.ID, contract.ID+999), map[string]any{"total_cents": 500}, nil)
+	if res.StatusCode != http.StatusNotFound {
+		t.Errorf("patching an unknown contract = %d, want 404", res.StatusCode)
+	}
+}
+
+// The same field-level checks a create refuses, refused just as well on an
+// edit — validate() is shared, so this is one test rather than the whole
+// TestContractWritesAreValidated table repeated.
+func TestPatchingAContractIsValidated(t *testing.T) {
+	a := newTestApp(t)
+	c := a.createClient(t, "Studio Rossi")
+	contract := a.createContract(t, c.ID, yearContract(120000))
+
+	res := a.patch(t, contractPath(c.ID, contract.ID), map[string]any{"total_cents": 0}, nil)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Errorf("zero total = %d, want 400", res.StatusCode)
+	}
+	res = a.patch(t, contractPath(c.ID, contract.ID), map[string]any{"end_month": "2025-01"}, nil)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Errorf("end before start = %d, want 400", res.StatusCode)
+	}
+}

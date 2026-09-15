@@ -11,7 +11,7 @@ import {
   XAxis,
 } from "recharts"
 
-import { Button } from "@/components/ui/button"
+import { PeriodLabel, PeriodStepper } from "@/components/PeriodStepper"
 import {
   type ChartConfig,
   ChartContainer,
@@ -92,28 +92,17 @@ export function YearlyReport() {
 
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6">
-      <div className="flex items-center justify-between gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={t.previousYear}
-          onClick={() => step(-1)}
-        >
-          ‹
-        </Button>
-        <h1 className="text-2xl font-medium tabular-nums">
+      <PeriodStepper
+        previousLabel={t.previousYear}
+        onPrevious={() => step(-1)}
+        nextLabel={t.nextYear}
+        nextDisabled={year >= thisYear()}
+        onNext={() => step(1)}
+      >
+        <PeriodLabel as="h1">
           {t.yearReport} · {year}
-        </h1>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={t.nextYear}
-          disabled={year >= thisYear()}
-          onClick={() => step(1)}
-        >
-          ›
-        </Button>
-      </div>
+        </PeriodLabel>
+      </PeriodStepper>
 
       {error && (
         <p role="alert" className="text-sm text-destructive">

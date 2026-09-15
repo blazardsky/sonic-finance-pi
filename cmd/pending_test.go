@@ -23,6 +23,11 @@ type pendingJSON struct {
 		ClientID int64  `json:"client_id"`
 		Client   string `json:"client"`
 	} `json:"not_yet_invoiced"`
+	ContractsDueThisMonth []struct {
+		ClientID int64  `json:"client_id"`
+		Client   string `json:"client"`
+		DueCents int64  `json:"due_cents"`
+	} `json:"contracts_due_this_month"`
 }
 
 func (a *testApp) pending(t *testing.T) pendingJSON {
@@ -329,5 +334,64 @@ func TestAnUnbelievableClockStillAnswersWhatIsOwed(t *testing.T) {
 	if len(got.NotYetInvoiced) != 0 {
 		t.Errorf("not yet invoiced = %+v, want none — 1970's window holds no Income",
 			got.NotYetInvoiced)
+	}
+}
+
+// The Dashboard's nudge, ticket-driven: any Client with an active Contract
+// not yet fully invoiced, full stop — no month-by-month pace to be "ahead"
+// or "behind" on. A Contract invoiced well past this month's own
+// straight-line share still shows up here as long as its total isn't fully
+// accounted for yet.
+func TestContractsDueThisMonthListsAnyActiveContractNotFullyInvoiced(t *testing.T) {
+	a := newTestApp(t)
+	freelance := a.freelance(t)
+	rossi := a.createClient(t, "Studio Rossi")
+	contract := a.createContract(t, rossi.ID, yearContract(120000))
+
+	a.setNow(t, time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC))
+	got := a.pending(t).ContractsDueThisMonth
+	if len(got) != 1 || got[0].ClientID != rossi.ID || got[0].DueCents != 120000 {
+		t.Fatalf("contracts_due_this_month = %+v, want one entry for %d owing 120000", got, rossi.ID)
+	}
+
+	// Invoiced way more than January's own straight-line share (10000) —
+	// the old pacing rule would already call January's own target met and
+	// drop the Client; the new rule only cares that the total isn't fully
+	// accounted for yet, and 100000 < 120000 still isn't.
+	a.addIncome(t, map[string]any{
+		"amount_cents": 100000, "category_id": freelance.ID, "client_id": rossi.ID,
+		"contract_id": contract.ID, "invoice_sent_date": "2026-01-20", "bollo_fattura": false,
+	})
+	got = a.pending(t).ContractsDueThisMonth
+	if len(got) != 1 || got[0].DueCents != 20000 {
+		t.Fatalf("contracts_due_this_month = %+v, want one entry owing the remaining 20000", got)
+	}
+
+	// Fully accounted for now — nothing left to nudge about.
+	a.addIncome(t, map[string]any{
+		"amount_cents": 20000, "category_id": freelance.ID, "client_id": rossi.ID,
+		"contract_id": contract.ID, "invoice_sent_date": "2026-01-21", "bollo_fattura": false,
+	})
+	if got := a.pending(t).ContractsDueThisMonth; len(got) != 0 {
+		t.Errorf("contracts_due_this_month = %+v, want none — the total is fully accounted for", got)
+	}
+}
+
+// A Contract not currently active — not yet begun, or already ended — is
+// left out regardless of its own figures: this nudge is about what to
+// invoice now, not a history of every Contract that ever owed something.
+func TestContractsDueThisMonthExcludesInactiveContracts(t *testing.T) {
+	a := newTestApp(t)
+	rossi := a.createClient(t, "Studio Rossi")
+	a.createContract(t, rossi.ID, yearContract(120000))
+
+	a.setNow(t, time.Date(2025, 12, 15, 0, 0, 0, 0, time.UTC))
+	if got := a.pending(t).ContractsDueThisMonth; len(got) != 0 {
+		t.Errorf("before the Contract starts: contracts_due_this_month = %+v, want none", got)
+	}
+
+	a.setNow(t, time.Date(2027, 1, 15, 0, 0, 0, 0, time.UTC))
+	if got := a.pending(t).ContractsDueThisMonth; len(got) != 0 {
+		t.Errorf("after the Contract ends: contracts_due_this_month = %+v, want none", got)
 	}
 }

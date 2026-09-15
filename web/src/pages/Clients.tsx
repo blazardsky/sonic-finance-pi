@@ -32,7 +32,7 @@ import {
 import { api, apiJSON } from "@/lib/api"
 import { FormSidebar } from "@/components/form-sidebar"
 import { toast } from "@/lib/toast"
-import { formatCents, formatMonth, toCents } from "@/lib/money"
+import { formatCents, formatMonth, toCents, toTyped } from "@/lib/money"
 import { pickableCategories, withSaved } from "@/lib/pickers"
 import { t } from "@/lib/strings"
 import type { Category, Client, Contract, Lists } from "@/types"
@@ -71,9 +71,13 @@ export function Clients() {
   const [defaultCategoryId, setDefaultCategoryId] = useState<number | null>(null)
   const [defaultPayer, setDefaultPayer] = useState("")
 
-  // The Client currently getting a new Contract in the sidebar — its own
-  // mode, entirely separate from the Client form above.
+  // The Client currently getting a new (or edited) Contract in the sidebar —
+  // its own mode, entirely separate from the Client form above.
   const [contractFor, setContractFor] = useState<number | null>(null)
+  // null while adding; the Contract's own id while editing an existing one —
+  // same shape Incomes.tsx's editing/blankDraft split uses, one form serving
+  // both.
+  const [editingContractId, setEditingContractId] = useState<number | null>(null)
   const [newContract, setNewContract] = useState({
     start_month: "",
     end_month: "",
@@ -108,7 +112,24 @@ export function Clients() {
   function startContract(c: Client) {
     resetForm()
     setContractFor(c.id)
+    setEditingContractId(null)
     setNewContract({ start_month: "", end_month: "", amount: "" })
+    setContractError("")
+    setSidebarOpen(true)
+  }
+
+  // Loads an existing Contract into the same form startContract's "add"
+  // mode uses — addContract below tells the two apart by editingContractId,
+  // the same way Incomes.tsx's own form serves add and edit from one draft.
+  function startEditContract(clientId: number, ct: Contract) {
+    resetForm()
+    setContractFor(clientId)
+    setEditingContractId(ct.id)
+    setNewContract({
+      start_month: ct.start_month,
+      end_month: ct.end_month,
+      amount: toTyped(ct.total_cents),
+    })
     setContractError("")
     setSidebarOpen(true)
   }
@@ -223,7 +244,8 @@ export function Clients() {
 
   // Returns whether the Contract was saved, so the sidebar (which alone knows
   // about the mobile Sheet) can close itself only once there is something to
-  // close for.
+  // close for. editingContractId picks POST vs PATCH — the same one draft
+  // serves both, as startEditContract's own comment explains.
   async function addContract(clientId: number, event: React.FormEvent) {
     event.preventDefault()
     const cents = toCents(newContract.amount)
@@ -232,22 +254,31 @@ export function Clients() {
       return false
     }
     setContractError("")
+    const wasEditing = editingContractId !== null
     try {
-      await api(`/api/clients/${clientId}/contracts`, {
-        method: "POST",
-        body: JSON.stringify({
-          start_month: newContract.start_month,
-          end_month: newContract.end_month,
-          total_cents: cents,
-        }),
-      })
+      await api(
+        wasEditing
+          ? `/api/clients/${clientId}/contracts/${editingContractId}`
+          : `/api/clients/${clientId}/contracts`,
+        {
+          method: wasEditing ? "PATCH" : "POST",
+          body: JSON.stringify({
+            start_month: newContract.start_month,
+            end_month: newContract.end_month,
+            total_cents: cents,
+          }),
+        }
+      )
     } catch {
       setContractError(t.contractNotSaved)
       return false
     }
-    toast(t.added)
+    // A correction is finished silently, the same as Incomes.tsx's own edit
+    // path — only a brand new Contract gets the "added" toast.
+    if (!wasEditing) toast(t.added)
     setNewContract({ start_month: "", end_month: "", amount: "" })
     setContractFor(null)
+    setEditingContractId(null)
     setSidebarOpen(false)
     // `contracts` backs whichever row is expanded in the table, which may be
     // a different Client than the one this form is for — only refresh it
@@ -391,13 +422,24 @@ export function Clients() {
                               key={ct.id}
                               className="flex flex-col gap-1 rounded-lg border p-2 text-sm"
                             >
-                              <div className="flex justify-between font-medium">
+                              <div className="flex items-center justify-between gap-2 font-medium">
                                 <span>
                                   {formatMonth(ct.start_month)} –{" "}
                                   {formatMonth(ct.end_month)}
                                 </span>
-                                <span className="tabular-nums">
-                                  € {formatCents(ct.total_cents)}
+                                <span className="flex items-center gap-1">
+                                  <span className="tabular-nums">
+                                    € {formatCents(ct.total_cents)}
+                                  </span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    aria-label={t.editContract}
+                                    onClick={() => startEditContract(c.id, ct)}
+                                  >
+                                    <RiEditLine />
+                                  </Button>
                                 </span>
                               </div>
                               <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
@@ -432,7 +474,9 @@ export function Clients() {
         <FormSidebar
           title={
             contractForClient
-              ? t.addContractFor(contractForClient.name)
+              ? editingContractId === null
+                ? t.addContractFor(contractForClient.name)
+                : t.editContractFor(contractForClient.name)
               : editing === null
                 ? t.addClient
                 : t.editClient
@@ -448,12 +492,15 @@ export function Clients() {
                   size="lg"
                   className="h-12 text-base"
                 >
-                  {t.addContract}
+                  {editingContractId === null ? t.addContract : t.save}
                 </Button>
                 <Button
                   type="button"
                   variant="ghost"
-                  onClick={() => setContractFor(null)}
+                  onClick={() => {
+                    setContractFor(null)
+                    setEditingContractId(null)
+                  }}
                 >
                   {t.cancel}
                 </Button>

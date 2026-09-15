@@ -755,7 +755,11 @@ export function Categories() {
                 </Select>
               </Field>
 
-              <DialogFooter>
+              {/* Three buttons, two of them long Italian phrases — one row
+                  past sm: overflows the dialog's own sm:max-w-sm, so this
+                  footer (unlike every other 2-button one in this file) wraps
+                  onto a second line instead of forcing them all onto one. */}
+              <DialogFooter className="sm:flex-wrap">
                 <Button
                   type="button"
                   variant="outline"

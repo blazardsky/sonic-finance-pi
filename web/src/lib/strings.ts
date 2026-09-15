@@ -344,6 +344,10 @@ export const t = {
   notYetInvoiced: "Forse da fatturare",
   notYetInvoicedHint:
     "Clienti fatturati negli ultimi mesi, ma non ancora questo mese.",
+  // The Dashboard's own version of the nudge — contract-based rather than
+  // notYetInvoicedHint's billing-recency guess.
+  contractsDueHint:
+    "Clienti con un contratto attivo non ancora fatturato per intero.",
 
   // Recurring expenses — the rent, defined once
   recurring: "Ricorrenti",
@@ -404,6 +408,8 @@ export const t = {
   contracts: "Contratti",
   addContract: "Aggiungi contratto",
   addContractFor: (name: string) => `Aggiungi contratto: ${name}`,
+  editContract: "Modifica contratto",
+  editContractFor: (name: string) => `Modifica contratto: ${name}`,
   noContractsYet: "Nessun contratto per questo cliente.",
   contractTotal: "Totale contratto",
   contractNotSaved:

@@ -28,10 +28,12 @@ type pendingPayments struct {
 	// nothing recorded this month.
 	NotYetInvoiced []notYetInvoicedClient `json:"not_yet_invoiced"`
 
-	// One entry per Client with a currently active Contract still owing
-	// something this month (contractsDueThisMonth) — empty when none is
-	// running, which is also the whole of what the Dashboard's Clienti card
-	// needs to decide whether to show this section at all.
+	// One entry per Client with a currently active Contract not yet fully
+	// invoiced (contractsDueThisMonth) — empty when none is running or all
+	// are already accounted for in full, which is also the whole of what the
+	// Dashboard's Clienti card needs to decide whether to show this section
+	// at all. This is what the Dashboard's own invoicing nudge is built from
+	// now, in place of readNotYetInvoiced's billing-recency heuristic.
 	ContractsDueThisMonth []clientContractDue `json:"contracts_due_this_month"`
 }
 

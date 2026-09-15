@@ -3,8 +3,8 @@ import { useEffect, useState } from "react"
 import { PendingPayments } from "@/pages/PendingPayments"
 import { Figure } from "@/pages/YearlyReport"
 import { CategoryTrendChart } from "@/components/CategoryTrendChart"
+import { PeriodStepper } from "@/components/PeriodStepper"
 import { SpoilerAmount } from "@/components/SpoilerAmount"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { apiJSON } from "@/lib/api"
@@ -119,15 +119,15 @@ export function Month() {
 
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6">
-      <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={t.previousMonth}
-          onClick={() => setMonth(shiftMonth(month, -1))}
-        >
-          ‹
-        </Button>
+      <PeriodStepper
+        previousLabel={t.previousMonth}
+        onPrevious={() => setMonth(shiftMonth(month, -1))}
+        nextLabel={t.nextMonth}
+        // String comparison is a date comparison here: YYYY-MM sorts
+        // correctly, which is the whole reason months are stored that way.
+        nextDisabled={month >= thisMonth()}
+        onNext={() => setMonth(shiftMonth(month, 1))}
+      >
         <Input
           type="month"
           aria-label={t.month}
@@ -138,18 +138,7 @@ export function Month() {
           max={thisMonth()}
           className="h-10 w-auto text-center"
         />
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={t.nextMonth}
-          // String comparison is a date comparison here: YYYY-MM sorts
-          // correctly, which is the whole reason months are stored that way.
-          disabled={month >= thisMonth()}
-          onClick={() => setMonth(shiftMonth(month, 1))}
-        >
-          ›
-        </Button>
-      </div>
+      </PeriodStepper>
 
       {error && (
         <p role="alert" className="text-sm text-destructive">

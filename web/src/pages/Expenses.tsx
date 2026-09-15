@@ -50,6 +50,7 @@ import { api, apiJSON } from "@/lib/api"
 import { ColorDot } from "@/components/ColorDot"
 import { DatePicker } from "@/components/date-picker"
 import { FormSidebar } from "@/components/form-sidebar"
+import { PeriodLabel, PeriodStepper } from "@/components/PeriodStepper"
 import { SpoilerAmount } from "@/components/SpoilerAmount"
 import { ViewRow } from "@/components/ViewRow"
 import { toast } from "@/lib/toast"
@@ -531,30 +532,15 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
       <div className="flex flex-1 flex-wrap gap-6">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                aria-label={t.previousYear}
-                onClick={() => stepYear(-1)}
-              >
-                ‹
-              </Button>
-              <span className="min-w-16 text-center text-sm font-medium tabular-nums">
-                {year ?? t.recentExpenses}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                aria-label={t.nextYear}
-                disabled={year === null}
-                onClick={() => stepYear(1)}
-              >
-                ›
-              </Button>
-            </div>
+            <PeriodStepper
+              previousLabel={t.previousYear}
+              onPrevious={() => stepYear(-1)}
+              nextLabel={t.nextYear}
+              nextDisabled={year === null}
+              onNext={() => stepYear(1)}
+            >
+              <PeriodLabel>{year ?? t.recentExpenses}</PeriodLabel>
+            </PeriodStepper>
             {/* Paging only exists once a year is picked — the recent view is
                 always exactly one page (PAGE_SIZE), by design, so there is
                 never a second page of it to flip to. */}

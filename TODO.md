@@ -7,14 +7,21 @@
 - [x] color coding per le categorie e visualizzazione raggruppata (per ambito di applicazione)
 
 ## v1.2.1
-- [ ] Allineare l'estetica dei pulsanti delle card e dei selettori date
-- [ ] Aggiungere il tema Alta visibilità / Alto contrasto
+- [x] Cambio sistema reminder per "fatture questo mese" in home/dashboard: da clienti con fatture negli ultimi 3 mesi a clienti con un contratto in corso e non completamente pagato 
+- [x] Allineare l'estetica dei pulsanti delle card e dei selettori date
+- [x] sistemare modale per la cancellazione delle sotto-categorie (testo e pulsanti escondo dal modal)
+- [x] Aggiungere possibilità di modificare i contratti già creati
+- [x] Togliere la scritta rossa "da fatturare questo mese" per i contratti dove l'ammontare è > al pattuito nel contratto
 
 ## v1.2.2
-- [ ] Tenere traccia delle quantità di quote acquistate in investimenti usando il tracker che già esiste
 - [ ] Aggregare le spese nel tracker per categoria prima che per singolo prodotto
+- [ ] aggiungere skeletons alla homepage
+- [ ] mettere il tooltip che appare nelle chart come z-index superiore alla legenda
+- [ ] card su report annuale più visibili (stile dashboard)
 
 ## v1.2.3
+- [ ] Aggiungere il tema Alta visibilità / Alto contrasto
+- [ ] Tenere traccia delle quantità di quote acquistate in investimenti usando il tracker che già esiste
 - [ ] Aggiungere nelle ricorrenti anche le entrate, per esempio per uno stipendio fisso
 
 ## v1.3

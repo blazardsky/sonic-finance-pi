@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -164,7 +165,7 @@ func handleCreateClientContract(db *sql.DB, now func() time.Time) http.HandlerFu
 			writeInvalid(w, err)
 			return
 		}
-		switch overlaps, err := contractOverlaps(db, c.ClientID, c.StartMonth, c.EndMonth); {
+		switch overlaps, err := contractOverlaps(db, c.ClientID, c.StartMonth, c.EndMonth, 0); {
 		case err != nil:
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -195,17 +196,23 @@ func handleCreateClientContract(db *sql.DB, now func() time.Time) http.HandlerFu
 }
 
 // contractOverlaps reports whether [start, end] would overlap any existing
-// Contract already on file for this Client. Two inclusive ranges [a,b] and
-// [c,d] overlap iff a<=d && c<=b — the off-by-one trap being that "starts the
-// month straight after another ends" must NOT count as an overlap, and this
-// formula gets that right where a naive `<` / `>` swap would not: with
-// existing = [a,b] and new = [c,d], c straight after b means c > b, so
-// c<=b is false and the two are correctly read as disjoint.
-func contractOverlaps(db *sql.DB, clientID int64, start, end string) (bool, error) {
+// Contract already on file for this Client, other than excludeID itself.
+// Two inclusive ranges [a,b] and [c,d] overlap iff a<=d && c<=b — the
+// off-by-one trap being that "starts the month straight after another ends"
+// must NOT count as an overlap, and this formula gets that right where a
+// naive `<` / `>` swap would not: with existing = [a,b] and new = [c,d], c
+// straight after b means c > b, so c<=b is false and the two are correctly
+// read as disjoint.
+//
+// excludeID is 0 for a create (nothing to exclude — ids start at 1) and the
+// Contract's own id for an edit, so that a PATCH which leaves its own dates
+// unchanged does not find its own not-yet-updated row and read that as
+// overlapping itself.
+func contractOverlaps(db *sql.DB, clientID int64, start, end string, excludeID int64) (bool, error) {
 	var found int
 	err := db.QueryRow(`SELECT 1 FROM contract
-		WHERE client_id = ? AND start_month <= ? AND ? <= end_month LIMIT 1`,
-		clientID, end, start).Scan(&found)
+		WHERE client_id = ? AND id != ? AND start_month <= ? AND ? <= end_month LIMIT 1`,
+		clientID, excludeID, end, start).Scan(&found)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return false, nil
@@ -213,6 +220,89 @@ func contractOverlaps(db *sql.DB, clientID int64, start, end string) (bool, erro
 		return false, err
 	}
 	return true, nil
+}
+
+// findContract loads the Contract the path names, writing the response
+// itself when there is none — an unparseable id and a missing row are both a
+// 404, same as findClient and findIncome.
+func findContract(w http.ResponseWriter, db *sql.DB, rawID string) (contract, bool) {
+	id, err := strconv.ParseInt(rawID, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return contract{}, false
+	}
+	c, err := scanContract(db.QueryRow(contractSelect+` WHERE contract.id = ?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, err)
+		return contract{}, false
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return contract{}, false
+	}
+	return c, true
+}
+
+// handlePatchClientContract edits a Contract's own terms — the total the
+// household agreed with the Client, or the range it covers — for the day one
+// was mistyped or renegotiated. Unlike an Income, every field here is
+// required rather than optional, so a PATCH still merges onto the stored
+// row (decodeJSON's usual partial-update bargain) purely so that correcting
+// just the total does not also require resending dates that were already
+// right.
+//
+// ReceivedCents and AccountedCents are restored after decoding, the same way
+// handlePatchClient protects total_earned_cents: both are computed at read
+// time from linked Incomes, never a PATCH-able field, and leaving a forged
+// value in would corrupt computeContractFigures's own arithmetic below.
+func handlePatchClientContract(db *sql.DB, now func() time.Time) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cl, ok := findClient(w, db, r.PathValue("id"))
+		if !ok {
+			return
+		}
+		c, ok := findContract(w, db, r.PathValue("contractId"))
+		if !ok {
+			return
+		}
+		if c.ClientID != cl.ID {
+			writeError(w, http.StatusNotFound, errors.New("that contract does not belong to this client"))
+			return
+		}
+
+		id, clientID := c.ID, c.ClientID
+		received, accounted := c.ReceivedCents, c.AccountedCents
+		if err := decodeJSON(w, r, &c); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		c.ID, c.ClientID = id, clientID
+		c.ReceivedCents, c.AccountedCents = received, accounted
+
+		if err := c.validate(); err != nil {
+			writeInvalid(w, err)
+			return
+		}
+		switch overlaps, err := contractOverlaps(db, c.ClientID, c.StartMonth, c.EndMonth, c.ID); {
+		case err != nil:
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		case overlaps:
+			writeInvalid(w, errors.New("this contract's dates overlap another contract already on file for this client"))
+			return
+		}
+
+		if _, err := db.Exec(`UPDATE contract SET start_month = ?, end_month = ?, total_cents = ? WHERE id = ?`,
+			c.StartMonth, c.EndMonth, c.TotalCents, c.ID); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if err := computeContractFigures(&c, now().Format(monthLayout)); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, c)
+	}
 }
 
 // contractClientID reports the client_id a Contract belongs to, and whether
@@ -271,15 +361,18 @@ type clientContractDue struct {
 	DueCents int64  `json:"due_cents"`
 }
 
-// contractsDueThisMonth answers, per Client, InvoiceTargetCents for whichever
-// Contract is currently inside its own range — start_month <= current <=
-// end_month. A Contract not yet begun, or already past end_month (Overdue),
-// is left out entirely: neither is "an active one" in the sense the card
-// asks about. A Client whose active Contract is already fully invoiced this
-// month (InvoiceTargetCents zero) is left out too — there is nothing left to
-// say it owes. A hidden Client is left out regardless of its Contract's
-// figures, same as readNotYetInvoiced: hiding is how a Client is retired, and
-// this card is a prompt to act, not a record of history.
+// contractsDueThisMonth answers, per Client, the remaining shortfall
+// (TotalCents - AccountedCents) for whichever Contract is currently inside
+// its own range — start_month <= current <= end_month. A Contract not yet
+// begun, or already past end_month, is left out entirely: neither is "an
+// active one" in the sense the card asks about. A Client whose active
+// Contract is already fully invoiced (or invoiced beyond its total) is left
+// out too — there is nothing left to say it owes, regardless of how this
+// month's own pace-based target happens to sit (that finer question is
+// Clients.tsx's own per-Contract detail, not this nudge's). A hidden Client
+// is left out regardless of its Contract's figures, same as
+// readNotYetInvoiced: hiding is how a Client is retired, and this card is a
+// prompt to act, not a record of history.
 //
 // Two Contracts for the same Client never overlap in range (contractOverlaps
 // enforces it at write time), so this is at most one row per Client.
@@ -302,14 +395,12 @@ func contractsDueThisMonth(db *sql.DB, now func() time.Time) ([]clientContractDu
 			&c.ReceivedCents, &c.AccountedCents, &clientName); err != nil {
 			return nil, err
 		}
-		if err := computeContractFigures(&c, current); err != nil {
-			return nil, err
-		}
-		if c.InvoiceTargetCents <= 0 {
+		remaining := c.TotalCents - c.AccountedCents
+		if remaining <= 0 {
 			continue
 		}
 		out = append(out, clientContractDue{
-			ClientID: c.ClientID, Client: clientName, DueCents: c.InvoiceTargetCents,
+			ClientID: c.ClientID, Client: clientName, DueCents: remaining,
 		})
 	}
 	return out, rows.Err()
@@ -354,10 +445,12 @@ func computeContractFigures(c *contract, current string) error {
 	if current > c.EndMonth {
 		// Past the end month there is no "months remaining" to divide the
 		// shortfall by — the ticket's explicit edge case. The whole shortfall
-		// is what's owed, shown as overdue rather than as a divide-by-zero or
-		// a negative month count.
-		c.Overdue = true
+		// is what's owed, shown as overdue — but only when something actually
+		// still is: a Contract invoiced for its full total (or beyond) before
+		// its own end month is not overdue just for having ended, and showing
+		// it as such would flag a Client who owes nothing further.
 		c.InvoiceTargetCents = shortfall
+		c.Overdue = shortfall > 0
 		return nil
 	}
 

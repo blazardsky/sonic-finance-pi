@@ -505,14 +505,22 @@ function UpcomingCard({
   )
 }
 
-// Unpaid invoiced Incomes (any month), and habitual Clients with nothing
-// billed this month — the two lists pendingPayments already computes
+// Unpaid invoiced Incomes (any month), and Clients with an active Contract
+// not yet fully invoiced — the two lists pendingPayments already computes
 // (cmd/pending.go), as names rather than the full rows Month.tsx shows. Each
 // name gets a HoverCard with the detail the badge itself has no room for —
 // amount_cents/days_waiting are already in this same response (ticket 13);
 // total_earned_cents is deliberately left out, since it lives on /api/clients,
 // a request this card has never made and shouldn't start making just for a
 // hover detail.
+//
+// The second list used to be readNotYetInvoiced's own billing-recency guess
+// (habitually billed lately, nothing yet this month) — too easy to both miss
+// a Client who invoices irregularly and nudge one who is simply ahead of
+// schedule. contracts_due_this_month is a plain fact instead: an active
+// Contract whose total isn't fully accounted for yet. Month.tsx's own
+// PendingPayments section is untouched — the old heuristic still answers
+// there, since nothing asked to change it.
 function ClientsCard({
   pending,
   clockOK,
@@ -530,19 +538,9 @@ function ClientsCard({
   // says what is owed. category fills in for a name when there is no Client,
   // matching how PendingPayments.tsx (Month.tsx) already reads this list.
   const waiting = pending.outstanding
-  const unbilled = pending.not_yet_invoiced
   const dueThisMonth = pending.contracts_due_this_month
   const totalDueCents = dueThisMonth.reduce((sum, c) => sum + c.due_cents, 0)
-  const dueByClient = new Map(dueThisMonth.map((c) => [c.client_id, c.due_cents]))
-  // Every Client this month's invoicing touches: the nudge (unbilled) and
-  // whoever has an active Contract still owing something, deduped by id —
-  // a Client can be in both, and then gets one badge carrying the amount.
-  const invoicesToDo = [
-    ...unbilled,
-    ...dueThisMonth.filter(
-      (c) => !unbilled.some((u) => u.client_id === c.client_id)
-    ),
-  ]
+  const invoicesToDo = dueThisMonth
   const [error, setError] = useState("")
 
   // clockOK false means the Pi's own clock cannot be trusted, and today()
@@ -595,20 +593,17 @@ function ClientsCard({
             okText={t.noPendingClients}
             clients={waiting.map((o) => ({
               key: o.id,
-              name: o.client || o.category,
+              name: `${o.client || o.category}: € ${formatCents(o.amount_cents)}`,
               date: formatDate(o.waiting_since),
               amountCents: o.amount_cents,
               daysWaiting: o.days_waiting,
             }))}
+            // The amount is inline in the name itself now — this HoverCard's
+            // only job left is the one thing that name has no room for.
             hoverContent={(c) => (
-              <div className="flex flex-col gap-1">
-                <p className="font-medium tabular-nums">
-                  € {formatCents(c.amountCents)}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {t.waitingDays(c.daysWaiting)}
-                </p>
-              </div>
+              <p className="text-xs text-muted-foreground">
+                {t.waitingDays(c.daysWaiting)}
+              </p>
             )}
             action={(c) => (
               <Button
@@ -625,23 +620,17 @@ function ClientsCard({
           <ClientAlert
             title={t.invoicesSentTitle}
             okText={t.invoicesAllSent}
-            clients={invoicesToDo.map((c) => {
-              const dueCents = dueByClient.get(c.client_id)
-              return {
-                key: c.client_id,
-                name:
-                  dueCents != null
-                    ? `${c.client}: € ${formatCents(dueCents)}`
-                    : c.client,
-              }
-            })}
+            clients={invoicesToDo.map((c) => ({
+              key: c.client_id,
+              name: `${c.client}: € ${formatCents(c.due_cents)}`,
+            }))}
             // Nothing else travels with this list — the HoverCard surfaces
             // why the Client is listed at all, the same explanation
             // Month.tsx's own pending-payments section gives once for the
             // whole list.
             hoverContent={() => (
               <p className="text-xs text-muted-foreground">
-                {t.notYetInvoicedHint}
+                {t.contractsDueHint}
               </p>
             )}
           />

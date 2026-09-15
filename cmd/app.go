@@ -80,6 +80,7 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 
 	mux.HandleFunc("GET /api/clients/{id}/contracts", handleListClientContracts(db, now))
 	mux.HandleFunc("POST /api/clients/{id}/contracts", handleCreateClientContract(db, now))
+	mux.HandleFunc("PATCH /api/clients/{id}/contracts/{contractId}", handlePatchClientContract(db, now))
 
 	mux.HandleFunc("GET /api/expenses", handleListExpenses(db))
 	mux.HandleFunc("POST /api/expenses", handleCreateExpense(db, now))
