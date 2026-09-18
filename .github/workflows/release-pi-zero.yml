@@ -17,24 +17,24 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends ca-certificates curl git
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # actions/checkout in a container writes files as a different user than
       # git expects to own them; git 2.35.2+ refuses to touch such a
       # repository (VCS status, e.g.) unless it's marked safe.
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 9
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -45,7 +45,7 @@ jobs:
         run: cp build/api-armv6 build/sonic-finance-armv6
 
       - name: Upload to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: build/sonic-finance-armv6
 
@@ -64,18 +64,24 @@ jobs:
       # The Pi is on a private LAN with no public inbound port — Tailscale is
       # already running on it for other reasons (see README), so joining the
       # tailnet here is what lets this runner reach it at all.
+      # A 403 "calling actor does not have enough permissions" at tailscale up
+      # means the OAuth client is missing the Devices Core scope, or
+      # tag:ci-deploy in tagOwners is not self-owned. Both are admin-console
+      # settings (see docs/guides/PI_DEPLOY_GUIDE.md). `ping` surfaces a
+      # failure against the Pi here rather than later as an ssh timeout.
       - name: Join the tailnet
         uses: tailscale/github-action@v4
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
           tags: tag:ci-deploy
+          ping: 100.74.171.49
 
       # PI_DEPLOY_SSH_KEY is restricted server-side (see authorized_keys on
       # the Pi) to running exactly one forced command — even a leaked key
       # (this repo is public) can't do anything beyond that.
       - name: Load the deploy key
-        uses: webfactory/ssh-agent@v0.9.0
+        uses: webfactory/ssh-agent@v0.10.0
         with:
           ssh-private-key: ${{ secrets.PI_DEPLOY_SSH_KEY }}
 

@@ -32,10 +32,20 @@ Watch it happen with `gh run watch`, or check the Actions tab.
   | Devices Core | Write | `tag:ci-deploy` |
   | Keys / Auth Keys | Write | `tag:ci-deploy` |
 
-  The tailnet policy also needs `tag:ci-deploy` in `tagOwners` (either
-  policy-file format — `acls`/rules or the newer `grants` — works, and most
-  tailnets' default wide-open rule already covers reachability with no
-  further change).
+  The tailnet policy also needs `tag:ci-deploy` in `tagOwners`, owned by the
+  tag itself (`"tag:ci-deploy": ["tag:ci-deploy"]`). Tailscale lets an OAuth
+  client apply a tag in exactly two ways: the requested tags equal the
+  client's full tag set (then `tagOwners` ownership is not consulted), or
+  each requested tag is owned by one of the client's own tags. A plain
+  `["autogroup:admin"]` owner is neither, so it only works while the client
+  carries no tag beyond this one. Either policy-file format (`acls`/rules or
+  the newer `grants`) works for the tagOwners key itself, and most tailnets'
+  default wide-open rule already covers reachability with no further change.
+
+- **Troubleshooting: `403: calling actor does not have enough permissions`**
+  at `tailscale up` in the deploy job: the OAuth client is missing the
+  Devices Core (`devices:core`) scope, or `tag:ci-deploy` isn't self-owned in
+  `tagOwners`. Both are admin-console settings; no code change is needed.
 - **`scripts/ci-deploy.sh`** — lives on the Pi at `/opt/sonic-finance/ci-deploy.sh`
   (copy it there by hand; it can't deploy itself). A dedicated SSH key on the
   Pi is restricted, via a forced command in `~/.ssh/authorized_keys`, to
