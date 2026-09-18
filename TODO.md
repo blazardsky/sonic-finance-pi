@@ -26,10 +26,20 @@
 - [x] "Fatture da fare" in dashboard: mostrare la quota del mese invece del totale rimanente del contratto, ed escludere i clienti già fatturati questo mese (anche se non ancora pagati)
 
 ## v1.2.4
+- [ ] Fix: aprire in automatico la sidebar da mobile su "modifica"
+- [ ] Pulsanti "pagina precedente" e "pagina successiva" da trasformare in frecce su mobile
+- [ ] pagina successiva / pagina precedente ripetuti anche in fondo alla lista
+- [ ] usare badge con color coding per le categorie nelle liste spese / entrate
+- [ ] nelle entrate da freelance, aggiungere due campi opzionali: numero fattura (che potrebbe anche essere calcolato in automatico, diviso per persona – es. nicco/sofi) e se parte di un contratto aggiungere un campo "importo extra" es per rimborso spesa, mora, indennizzo... che conta ai fini dell'importo incassato ma non ai fini del totale del contratto
+- [ ] FIX UI: nel dettaglio spesa, impostare un limite di larghezza max (che da mobile sia inferiore al 100% - padding per evitare che le note siano su una sola riga)
+- [ ] Miglioramento UX su mobile: chiusura automatica una volta inserito un record della action bar
+- [ ] Aggiunta funzionalità spese: nel prezzo delle voci aggiungere la possibilità di scrivere il valore per costo e quantità come moltiplicazione o sottrazione o somma "x*y" / "x-y", "x+y" e calcolare automaticamente "z" in modo da inserire in una voce due prodotti identici o degli sconti / aggiunte con facilità senza fare il calcolo a mano
+- [ ] FIX UI: il combobox non fa cliccare sul selettore del testo consigliato
+
+## v1.2.5
 - [ ] Aggiungere il tema Alta visibilità / Alto contrasto
 - [ ] card su report annuale da spostare su anno
 - [ ] Aggiungere nelle ricorrenti anche le entrate, per esempio per uno stipendio fisso
-- [ ] pagina successiva / pagina precedente ripetuti anche in fondo alla lista
 
 ## v1.3
 - [ ] usare tabelle reali (datatable tanstack table) con filtri per colonna
@@ -49,3 +59,4 @@
 
 ## v1.7
 - [ ] drag & drop di widget nella home con possibilità di salvare più profili di visualizzazione
+- [ ] aggiungere config (con effetto solo locale, indexeddb) per piccole personalizzazioni a livello di tema (es grandezza del font, larghezza contenuti cliccabili, chiusura automatica una volta inserite i vari record)

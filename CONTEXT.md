@@ -107,3 +107,6 @@ _Avoid_: retainer, agreement, invoice schedule
 **Reminder**:
 A short household-labeled toggle for a manual action done outside the app — a bank transfer, a payment made by hand — and not tied to any Expense or Recurring expense. Turned on once it's done; reads as off again from the first of the next calendar month.
 _Avoid_: alert, notification, task
+
+**Record**
+Anything that is recorded in the app (expenses, incomes, clients, categories)
