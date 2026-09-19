@@ -331,10 +331,12 @@ func contractClientID(db *sql.DB, id int64) (int64, bool, error) {
 // netOfBolloFattura is what an Income actually counts toward a Contract:
 // AmountCents itself is never adjusted (it is still the amount that arrived),
 // but a qualifying Income's 2€ marca da bollo (bolloThresholdCents,
-// bolloFatturaCents) is not real freelance revenue, so it is subtracted here
-// rather than at the source.
+// bolloFatturaCents) is not real freelance revenue, and neither is the
+// optional extra_cents portion (reimbursement / late fee / indemnity —
+// ticket 05): both are subtracted here rather than at the source. Collected
+// money elsewhere still sees the full AmountCents.
 var netOfBolloFattura = fmt.Sprintf(
-	`(amount_cents - CASE WHEN bollo_fattura = 1 AND amount_cents > %d THEN %d ELSE 0 END)`,
+	`(amount_cents - extra_cents - CASE WHEN bollo_fattura = 1 AND amount_cents > %d THEN %d ELSE 0 END)`,
 	bolloThresholdCents, bolloFatturaCents)
 
 var contractColumns = `contract.id, contract.client_id, contract.start_month, contract.end_month, contract.total_cents,

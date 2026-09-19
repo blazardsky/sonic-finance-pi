@@ -502,6 +502,28 @@ func TestPatchingAContractCannotForgeReceivedOrAccounted(t *testing.T) {
 	}
 }
 
+// Ticket 05: extra_cents is part of the money that arrived (AmountCents) but
+// must not consume the Contract's agreed total — accounted/received subtract
+// it the same way they subtract the marca da bollo.
+func TestContractFiguresExcludeIncomeExtraCents(t *testing.T) {
+	a := newTestApp(t)
+	freelance := a.freelance(t)
+	c := a.createClient(t, "Studio Rossi")
+	contract := a.createContract(t, c.ID, yearContract(120000))
+	a.addIncome(t, map[string]any{
+		"amount_cents": 32000, "extra_cents": 2000,
+		"category_id": freelance.ID, "client_id": c.ID,
+		"contract_id": contract.ID, "invoice_sent_date": "2026-01-10",
+		"payment_date": "2026-01-15", "bollo_fattura": false,
+	})
+
+	got := a.contracts(t, c.ID)[0]
+	if got.ReceivedCents != 30000 || got.AccountedCents != 30000 {
+		t.Errorf("received/accounted = %d/%d, want 30000/30000 — the 2000 extra stays out of the Contract",
+			got.ReceivedCents, got.AccountedCents)
+	}
+}
+
 // Editing a Contract's own dates must not read its own not-yet-updated row
 // as overlapping itself — the reason contractOverlaps takes an excludeID.
 func TestPatchingAContractsDatesDoesNotOverlapItself(t *testing.T) {

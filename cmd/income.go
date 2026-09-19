@@ -66,6 +66,17 @@ type income struct {
 	// counting the Income toward the agreed total.
 	BolloFattura bool `json:"bollo_fattura"`
 
+	// Optional invoice number on a Freelance Income (schema step 19) — free
+	// text, often split per person (Nicco/Sofi). Empty when unset.
+	InvoiceNumber string `json:"invoice_number"`
+
+	// Portion of AmountCents that is "extra" against a linked Contract
+	// (schema step 19): reimbursement, late fee, indemnity. The money did
+	// arrive (AmountCents includes it; yearly totals count it), but
+	// contractColumns subtracts it so it does not consume the agreed total.
+	// Zero when unset or when the Income is unlinked ("Extra").
+	ExtraCents int64 `json:"extra_cents"`
+
 	// How many units of HoldingID this sell gave up — optional (schema step
 	// 17), the sell-side twin of expense.Quantity, and meaningless without a
 	// HoldingID alongside it for the same reason.
@@ -115,6 +126,18 @@ func migrateIncomes(tx *sql.Tx) error {
 // received/accounted figures once this ships.
 func migrateBolloFattura(tx *sql.Tx) error {
 	_, err := tx.Exec(`ALTER TABLE income ADD COLUMN bollo_fattura INTEGER NOT NULL DEFAULT 1 CHECK (bollo_fattura IN (0, 1))`)
+	return err
+}
+
+// migrateIncomeInvoiceAndExtra is schema step 19: optional invoice_number
+// (free text, often per-person) and extra_cents (the portion of amount_cents
+// that must not count toward a linked Contract's total — ticket 05). Both
+// default empty/zero so every existing Income reads as "no number, no extra".
+func migrateIncomeInvoiceAndExtra(tx *sql.Tx) error {
+	if _, err := tx.Exec(`ALTER TABLE income ADD COLUMN invoice_number TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	_, err := tx.Exec(`ALTER TABLE income ADD COLUMN extra_cents INTEGER NOT NULL DEFAULT 0 CHECK (extra_cents >= 0)`)
 	return err
 }
 
@@ -208,10 +231,10 @@ func handleCreateIncome(db *sql.DB, now func() time.Time) http.HandlerFunc {
 		}
 
 		res, err := db.Exec(`INSERT INTO income
-			(amount_cents, category_id, client_id, payer, payment_date, invoice_sent_date, note, holding_id, contract_id, bollo_fattura, quantity, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			(amount_cents, category_id, client_id, payer, payment_date, invoice_sent_date, note, holding_id, contract_id, bollo_fattura, invoice_number, extra_cents, quantity, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			in.AmountCents, in.CategoryID, in.ClientID, in.Payer,
-			nullDate(in.PaymentDate), nullDate(in.InvoiceSentDate), in.Note, in.HoldingID, in.ContractID, in.BolloFattura, in.Quantity,
+			nullDate(in.PaymentDate), nullDate(in.InvoiceSentDate), in.Note, in.HoldingID, in.ContractID, in.BolloFattura, in.InvoiceNumber, in.ExtraCents, in.Quantity,
 			now().Format(time.RFC3339))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
@@ -250,9 +273,9 @@ func handlePatchIncome(db *sql.DB) http.HandlerFunc {
 		}
 
 		if _, err := db.Exec(`UPDATE income SET amount_cents = ?, category_id = ?, client_id = ?,
-			payer = ?, payment_date = ?, invoice_sent_date = ?, note = ?, holding_id = ?, contract_id = ?, bollo_fattura = ?, quantity = ? WHERE id = ?`,
+			payer = ?, payment_date = ?, invoice_sent_date = ?, note = ?, holding_id = ?, contract_id = ?, bollo_fattura = ?, invoice_number = ?, extra_cents = ?, quantity = ? WHERE id = ?`,
 			in.AmountCents, in.CategoryID, in.ClientID, in.Payer,
-			nullDate(in.PaymentDate), nullDate(in.InvoiceSentDate), in.Note, in.HoldingID, in.ContractID, in.BolloFattura, in.Quantity, in.ID); err != nil {
+			nullDate(in.PaymentDate), nullDate(in.InvoiceSentDate), in.Note, in.HoldingID, in.ContractID, in.BolloFattura, in.InvoiceNumber, in.ExtraCents, in.Quantity, in.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -300,12 +323,12 @@ func findIncome(w http.ResponseWriter, db *sql.DB, rawID string) (income, bool) 
 // it. The two nullable dates are flattened to ” on the way out, because that
 // is the shape the API publishes and the shape a PATCH merges onto.
 const incomeSelect = `SELECT id, amount_cents, category_id, client_id, payer,
-	COALESCE(payment_date, ''), COALESCE(invoice_sent_date, ''), note, holding_id, contract_id, bollo_fattura, quantity FROM income`
+	COALESCE(payment_date, ''), COALESCE(invoice_sent_date, ''), note, holding_id, contract_id, bollo_fattura, invoice_number, extra_cents, quantity FROM income`
 
 func scanIncome(row interface{ Scan(...any) error }) (income, error) {
 	var in income
 	err := row.Scan(&in.ID, &in.AmountCents, &in.CategoryID, &in.ClientID, &in.Payer,
-		&in.PaymentDate, &in.InvoiceSentDate, &in.Note, &in.HoldingID, &in.ContractID, &in.BolloFattura, &in.Quantity)
+		&in.PaymentDate, &in.InvoiceSentDate, &in.Note, &in.HoldingID, &in.ContractID, &in.BolloFattura, &in.InvoiceNumber, &in.ExtraCents, &in.Quantity)
 	return in, err
 }
 
@@ -327,9 +350,16 @@ func (in *income) validate() error {
 	in.Note = strings.TrimSpace(in.Note)
 	in.PaymentDate = strings.TrimSpace(in.PaymentDate)
 	in.InvoiceSentDate = strings.TrimSpace(in.InvoiceSentDate)
+	in.InvoiceNumber = strings.TrimSpace(in.InvoiceNumber)
 
 	if in.AmountCents <= 0 {
 		return errors.New("an income needs an amount above zero")
+	}
+	if in.ExtraCents < 0 {
+		return errors.New("extra_cents cannot be negative")
+	}
+	if in.ExtraCents > in.AmountCents {
+		return errors.New("extra_cents cannot exceed the income amount")
 	}
 	// Ticket 08: "whose money was it" is never left unanswered going forward.
 	// Checked after trimming, so " " is caught as the empty string it is —

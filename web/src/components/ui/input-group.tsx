@@ -55,7 +55,14 @@ function InputGroupAddon({
       data-align={align}
       className={cn(inputGroupAddonVariants({ align }), className)}
       onClick={(e) => {
-        if ((e.target as HTMLElement).closest("button")) {
+        // Don't steal clicks meant for the Combobox trigger/clear (ticket
+        // 09) or any other control living in the addon — only bare addon
+        // chrome should focus the input.
+        if (
+          (e.target as HTMLElement).closest(
+            "button, [data-slot=input-group-button], [data-slot=combobox-trigger], [data-slot=combobox-clear]"
+          )
+        ) {
           return
         }
         e.currentTarget.parentElement?.querySelector("input")?.focus()

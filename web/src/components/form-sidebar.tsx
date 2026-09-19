@@ -60,6 +60,7 @@ function FormSidebar({
   open,
   onOpenChange,
   openMobile,
+  openMobileWhen,
 }: {
   title?: React.ReactNode
   children: React.ReactNode
@@ -79,6 +80,11 @@ function FormSidebar({
   // shortcut). `open`/`onOpenChange` can't do this themselves: they only
   // reach the desktop panel.
   openMobile?: boolean
+  // Opens the mobile Sheet whenever this value is non-null (ticket 01) —
+  // typically the id of the row being edited. `open` alone cannot do this:
+  // pages default it to true for the desktop panel, so setSidebarOpen(true)
+  // on "Modifica" is a no-op while the Sheet stays closed.
+  openMobileWhen?: number | null
 }) {
   // The measured content-edge (viewport px), reported by the `contained`
   // Sidebar below — read by FormSidebarTrigger, which stays genuinely
@@ -105,6 +111,7 @@ function FormSidebar({
       // wider version of this in-flow width.
       style={{ "--sidebar-width": DEFAULT_SIDEBAR_WIDTH } as React.CSSProperties}
     >
+      <OpenMobileWhen value={openMobileWhen} />
       <Sidebar
         side="right"
         collapsible="offcanvas"
@@ -136,6 +143,17 @@ function FormSidebar({
       <FormSidebarTrigger edge={edge} expanded={expanded} />
     </SidebarProvider>
   )
+}
+
+// Ticket 01: pages pass the editing id as `openMobileWhen`. Whenever it is a
+// real id the Sheet opens, including when swapping from one row to another
+// (the dependency is the id itself, not a boolean that would stay true).
+function OpenMobileWhen({ value }: { value?: number | null }) {
+  const { setOpenMobile } = useSidebar()
+  React.useEffect(() => {
+    if (value != null) setOpenMobile(true)
+  }, [value, setOpenMobile])
+  return null
 }
 
 // Mobile's dedicated close control, sat in the header next to the title

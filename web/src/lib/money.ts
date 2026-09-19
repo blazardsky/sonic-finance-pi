@@ -45,6 +45,26 @@ export function toTyped(cents: number): string {
   return `${Math.trunc(cents / 100)},${String(cents % 100).padStart(2, "0")}`
 }
 
+// toCentsExpr is toCents, but first checks for a simple two-operand
+// expression — "12*3", "10-2", "5+5" — so an item price at the till can be
+// typed as the math that produced it rather than done by hand first. Each
+// operand is read with toCents (so it stays whole cents, not a float), and
+// + / - combine those cents directly, exact by construction. * doesn't stay
+// exact in general (quantity × unit price, e.g. "1,5*3,33"), so it rounds to
+// the nearest cent rather than carry a fractional one nothing else expects.
+export function toCentsExpr(typed: string): number | null {
+  const m = typed
+    .trim()
+    .match(/^(\d+(?:[.,]\d{1,2})?)\s*([*+-])\s*(\d+(?:[.,]\d{1,2})?)$/)
+  if (!m) return toCents(typed)
+  const a = toCents(m[1])
+  const b = toCents(m[3])
+  if (a === null || b === null) return null
+  if (m[2] === "+") return a + b
+  if (m[2] === "-") return a - b
+  return Math.round((a * b) / 100)
+}
+
 // toQuantity reads what was typed for an Item's Quantity (ticket 01) — the
 // same comma an Italian keypad offers, accepted the way toCents accepts it,
 // but with no cents-style scaling or digit cap: "0,5" is half a kilo. ""

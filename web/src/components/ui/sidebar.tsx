@@ -91,6 +91,11 @@ function SidebarProvider({
         _setOpen(openState)
       }
 
+      // A request to open the panel also opens the mobile Sheet (ticket 01).
+      // Pages call setOpen(true) on edit; without this the desktop-only
+      // `open` flag can already be true while the Sheet stays closed.
+      if (openState) setOpenMobile(true)
+
       // This sets the cookie to keep the sidebar state.
       document.cookie = `${cookieName}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
     },

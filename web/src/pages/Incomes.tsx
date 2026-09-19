@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
 import {
+  RiArrowLeftSLine,
+  RiArrowRightSLine,
   RiCheckLine,
   RiDeleteBinLine,
   RiEditLine,
@@ -31,6 +33,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Field, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
@@ -43,9 +46,10 @@ import {
 } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/lib/api"
-import { ColorDot } from "@/components/ColorDot"
+import { CategoryBadge, ColorDot } from "@/components/ColorDot"
 import { DatePicker } from "@/components/date-picker"
 import { FormSidebar } from "@/components/form-sidebar"
+import { useSidebar } from "@/components/ui/sidebar"
 import { PeriodLabel, PeriodStepper } from "@/components/PeriodStepper"
 import { ViewRow } from "@/components/ViewRow"
 import { toast } from "@/lib/toast"
@@ -98,8 +102,12 @@ type Draft = Omit<
   | "holding_id"
   | "contract_id"
   | "quantity"
+  | "extra_cents"
 > & {
   amount: string
+  // Typed euros for ticket 05's optional "importo extra" — same bargain as
+  // amount, converted to extra_cents on submit.
+  extra: string
   category_id: number | ""
   client_id: number | ""
   contract_id: number | ""
@@ -111,12 +119,14 @@ type Draft = Omit<
 // the till is what the app is for.
 const blankDraft = (): Draft => ({
   amount: "",
+  extra: "",
   category_id: "",
   client_id: "",
   contract_id: "",
   payer: "",
   payment_date: "",
   invoice_sent_date: "",
+  invoice_number: "",
   note: "",
   bollo_fattura: true,
 })
@@ -126,12 +136,14 @@ const blankDraft = (): Draft => ({
 // should have to defend against.
 const draftOf = (income: Income): Draft => ({
   amount: toTyped(income.amount_cents),
+  extra: income.extra_cents > 0 ? toTyped(income.extra_cents) : "",
   category_id: income.category_id,
   client_id: income.client_id ?? "",
   contract_id: income.contract_id ?? "",
   payer: income.payer,
   payment_date: income.payment_date,
   invoice_sent_date: income.invoice_sent_date,
+  invoice_number: income.invoice_number,
   note: income.note,
   bollo_fattura: income.bollo_fattura,
 })
@@ -281,7 +293,7 @@ export function Incomes({
     }
   }
 
-  async function submit(event: React.FormEvent) {
+  async function submit(event: FormEvent): Promise<boolean> {
     event.preventDefault()
     setError("")
 
@@ -291,7 +303,23 @@ export function Incomes({
     const cents = toCents(draft.amount)
     if (cents === null || cents <= 0) {
       setError(t.invalidAmount)
-      return
+      return false
+    }
+
+    // Optional extra (ticket 05): empty means 0; a typed value must parse
+    // and stay within the Income's own amount (the extra is a portion of it).
+    let extraCents = 0
+    if (draft.extra.trim() !== "") {
+      const parsed = toCents(draft.extra)
+      if (parsed === null || parsed < 0) {
+        setError(t.invalidAmount)
+        return false
+      }
+      if (parsed > cents) {
+        setError(t.invalidAmount)
+        return false
+      }
+      extraCents = parsed
     }
 
     // Caught here rather than left to the server's opaque failure: a Select
@@ -300,7 +328,7 @@ export function Incomes({
     // submit "" for category_id.
     if (draft.category_id === "") {
       setError(t.invalidCategory)
-      return
+      return false
     }
 
     // Freelance is billed work: "whose money was it" (ticket 08's Payer rule)
@@ -310,7 +338,7 @@ export function Incomes({
     // Client on any Category.
     if (isFreelance && draft.client_id === "") {
       setError(t.invalidIncomeClient)
-      return
+      return false
     }
 
     // The server refuses an Income with no Payer, but Payer lives inside the
@@ -320,7 +348,7 @@ export function Incomes({
     if (draft.payer.trim() === "") {
       setError(t.invalidIncomePayer)
       setDetailsOpen(true)
-      return
+      return false
     }
 
     try {
@@ -332,14 +360,16 @@ export function Incomes({
         body: JSON.stringify({
           ...draft,
           amount: undefined,
+          extra: undefined,
           amount_cents: cents,
+          extra_cents: draft.contract_id === "" ? 0 : extraCents,
           client_id: draft.client_id === "" ? null : draft.client_id,
           contract_id: draft.contract_id === "" ? null : draft.contract_id,
         }),
       })
     } catch {
       setError(t.incomeNotSaved)
-      return
+      return false
     }
     // A correction is finished. A new Income is often one of several invoices
     // in a sitting, so the reason, Client and Payer stay where they are.
@@ -352,13 +382,16 @@ export function Incomes({
         : {
             ...d,
             amount: "",
+            extra: "",
             note: "",
             payment_date: "",
             invoice_sent_date: "",
+            invoice_number: "",
           }
     )
     if (wasEditing) setDetailsOpen(false)
     await load()
+    return true
   }
 
   // A quick way to record that the money landed today, for an invoiced
@@ -438,6 +471,7 @@ export function Incomes({
     // picked would otherwise dangle: unlinked is the only safe carry-over,
     // never a guess at the new Client's own.
     set("contract_id", "")
+    set("extra", "")
     // A one-time prefill, not a lock (ticket 04): picking a Client with
     // defaults set loads them into the reason and Payer pickers, both of
     // which stay freely editable from here.
@@ -446,6 +480,58 @@ export function Incomes({
       set("category_id", client.default_category_id)
     if (client?.default_payer) set("payer", client.default_payer)
   }
+
+  // Best-effort next invoice number for the picked Payer this year (ticket
+  // 05), off whatever the current list page already holds — not a server
+  // counter, just a suggestion the household can edit or clear.
+  const suggestedInvoiceNumber = (() => {
+    if (!isFreelance || draft.payer.trim() === "") return ""
+    const year = thisYear()
+    const prefix = `${year}/`
+    let max = 0
+    for (const income of incomes ?? []) {
+      if (income.payer !== draft.payer) continue
+      if (!income.invoice_number.startsWith(prefix)) continue
+      const n = Number(income.invoice_number.slice(prefix.length))
+      if (Number.isFinite(n) && n > max) max = n
+    }
+    return `${prefix}${String(max + 1).padStart(3, "0")}`
+  })()
+
+  // Rendered above and below the table (ticket 03) — same controls both
+  // times, so a household that scrolled the list never has to scroll back up
+  // to page it. Ticket 02: the label collapses to just the arrow past the
+  // sm breakpoint's own width, where a text button no longer fits two per
+  // row comfortably; the aria-label carries the word either way.
+  const pageControls = year !== null && (
+    <div className="flex items-center gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-label={t.previousPage}
+        disabled={page === 0}
+        onClick={() => setPage((p) => p - 1)}
+      >
+        <RiArrowLeftSLine className="sm:hidden" />
+        <span className="hidden sm:inline">{t.previousPage}</span>
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-label={t.nextPage}
+        // A full page might not be the last one — cheaper than a
+        // separate count query, at the cost of one possible extra
+        // (empty) page click at the true end.
+        disabled={(incomes?.length ?? 0) < PAGE_SIZE}
+        onClick={() => setPage((p) => p + 1)}
+      >
+        <RiArrowRightSLine className="sm:hidden" />
+        <span className="hidden sm:inline">{t.nextPage}</span>
+      </Button>
+    </div>
+  )
 
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
@@ -464,43 +550,21 @@ export function Incomes({
             {/* Paging only exists once a year is picked — the recent view is
                 always exactly one page (PAGE_SIZE), by design, so there is
                 never a second page of it to flip to. */}
-            {year !== null && (
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={page === 0}
-                  onClick={() => setPage((p) => p - 1)}
-                >
-                  {t.previousPage}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  // A full page might not be the last one — cheaper than a
-                  // separate count query, at the cost of one possible extra
-                  // (empty) page click at the true end.
-                  disabled={(incomes?.length ?? 0) < PAGE_SIZE}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  {t.nextPage}
-                </Button>
-              </div>
-            )}
+            {pageControls}
           </div>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>{t.date}</TableHead>
                 <TableHead className="text-right">{t.amount}</TableHead>
-                <TableHead>{t.client}</TableHead>
+                <TableHead>{t.incomeReason}</TableHead>
                 <TableHead className="w-10">{t.actions}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {incomes?.map((income) => (
+              {incomes?.map((income) => {
+                const category = categories.find((c) => c.id === income.category_id)
+                return (
                 <TableRow
                   key={income.id}
                   className={editing === income.id ? "opacity-50" : ""}
@@ -531,8 +595,22 @@ export function Incomes({
                   <TableCell className="text-right font-medium tabular-nums">
                     € {formatCents(income.amount_cents)}
                   </TableCell>
-                  <TableCell className="truncate text-xs text-muted-foreground">
-                    {nameOf(clients, income.client_id)}
+                  <TableCell>
+                    <div className="flex flex-col gap-0.5">
+                      {category ? (
+                        <CategoryBadge
+                          name={category.name}
+                          color={category.color}
+                        />
+                      ) : (
+                        nameOf(categories, income.category_id)
+                      )}
+                      {income.client_id !== null && (
+                        <span className="truncate text-xs text-muted-foreground">
+                          {nameOf(clients, income.client_id)}
+                        </span>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -571,18 +649,20 @@ export function Incomes({
                     </DropdownMenu>
                   </TableCell>
                 </TableRow>
-              ))}
+              )})}
             </TableBody>
           </Table>
           {incomes?.length === 0 && (
             <p className="text-sm text-muted-foreground">{t.noIncomesYet}</p>
           )}
+          {pageControls}
         </div>
 
         <FormSidebar
           title={editing === null ? t.addIncome : t.editIncome}
           open={sidebarOpen}
           onOpenChange={setSidebarOpen}
+          openMobileWhen={editing}
           footer={
             <div className="flex flex-col gap-2">
               <Button
@@ -609,11 +689,7 @@ export function Incomes({
             </div>
           }
         >
-          <form
-            id="income-form"
-            onSubmit={submit}
-            className="flex flex-col gap-3"
-          >
+          <MobileClosingForm id="income-form" onSubmit={submit} className="flex flex-col gap-3">
             <Field>
               <FieldLabel htmlFor="amount">{t.amount}</FieldLabel>
               <InputGroup className="h-12">
@@ -698,9 +774,10 @@ export function Incomes({
                       ? EXTRA_CONTRACT
                       : String(draft.contract_id)
                   }
-                  onValueChange={(v) =>
+                  onValueChange={(v) => {
                     set("contract_id", v === EXTRA_CONTRACT ? "" : Number(v))
-                  }
+                    if (v === EXTRA_CONTRACT) set("extra", "")
+                  }}
                 >
                   <SelectTrigger id="contract" className="h-10 w-full">
                     <SelectValue />
@@ -716,6 +793,26 @@ export function Incomes({
                     ))}
                   </SelectContent>
                 </Select>
+              </Field>
+            )}
+
+            {/* Ticket 05: optional extra against a linked Contract — part of
+                amount_cents for what was collected, excluded from the
+                Contract's own accounted/received figures. */}
+            {draft.contract_id !== "" && (
+              <Field>
+                <FieldLabel htmlFor="extra">{t.ofWhichExtra}</FieldLabel>
+                <InputGroup>
+                  <InputGroupAddon>€</InputGroupAddon>
+                  <InputGroupInput
+                    id="extra"
+                    type="text"
+                    inputMode="decimal"
+                    value={draft.extra}
+                    onChange={(e) => set("extra", e.target.value)}
+                    placeholder="0,00"
+                  />
+                </InputGroup>
               </Field>
             )}
 
@@ -737,6 +834,25 @@ export function Incomes({
                   value={draft.invoice_sent_date}
                   onValueChange={(v) => set("invoice_sent_date", v)}
                   className="w-full"
+                />
+              </Field>
+            )}
+            {/* Ticket 05: optional invoice number, with a per-payer/year
+                suggestion filled in on first focus when still blank. */}
+            {isFreelance && (
+              <Field>
+                <FieldLabel htmlFor="invoice_number">N. fattura</FieldLabel>
+                <Input
+                  id="invoice_number"
+                  value={draft.invoice_number}
+                  onChange={(e) => set("invoice_number", e.target.value)}
+                  onFocus={() => {
+                    if (draft.invoice_number === "" && suggestedInvoiceNumber) {
+                      set("invoice_number", suggestedInvoiceNumber)
+                    }
+                  }}
+                  placeholder={suggestedInvoiceNumber || undefined}
+                  className="h-10"
                 />
               </Field>
             )}
@@ -816,7 +932,7 @@ export function Incomes({
               </p>
             )}
 
-          </form>
+          </MobileClosingForm>
         </FormSidebar>
       </div>
 
@@ -840,6 +956,12 @@ export function Incomes({
                   label={t.amount}
                   value={`€ ${formatCents(viewing.amount_cents)}`}
                 />
+                {viewing.extra_cents > 0 && (
+                  <ViewRow
+                    label={t.ofWhichExtra}
+                    value={`€ ${formatCents(viewing.extra_cents)}`}
+                  />
+                )}
                 <ViewRow
                   label={t.incomeReason}
                   value={nameOf(categories, viewing.category_id)}
@@ -849,6 +971,9 @@ export function Incomes({
                 )}
                 {viewing.payer && (
                   <ViewRow label={t.incomePayer} value={viewing.payer} />
+                )}
+                {viewing.invoice_number && (
+                  <ViewRow label="N. fattura" value={viewing.invoice_number} />
                 )}
                 {viewing.invoice_sent_date && (
                   <ViewRow
@@ -871,5 +996,38 @@ export function Incomes({
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+// Its own component only so it can reach useSidebar(): closing the desktop
+// panel (the page's own sidebarOpen state) says nothing about the mobile
+// Sheet, which is self-managed by the Sidebar primitive itself and only
+// reachable from inside its Provider — form-sidebar.tsx's own documented
+// escape hatch for exactly this case (ticket 07, same pattern as Clients).
+function MobileClosingForm({
+  id,
+  className,
+  onSubmit,
+  children,
+}: {
+  id: string
+  className?: string
+  onSubmit: (event: FormEvent) => Promise<boolean>
+  children: ReactNode
+}) {
+  const { setOpenMobile } = useSidebar()
+
+  async function handleSubmit(event: FormEvent) {
+    if (await onSubmit(event)) setOpenMobile(false)
+  }
+
+  return (
+    <form
+      id={id}
+      onSubmit={(e) => void handleSubmit(e)}
+      className={className}
+    >
+      {children}
+    </form>
   )
 }

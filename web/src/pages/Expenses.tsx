@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import {
+  RiArrowLeftSLine,
+  RiArrowRightSLine,
   RiDeleteBinLine,
   RiEditLine,
   RiEyeLine,
@@ -46,8 +48,9 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
+import { useSidebar } from "@/components/ui/sidebar"
 import { api, apiJSON } from "@/lib/api"
-import { ColorDot } from "@/components/ColorDot"
+import { CategoryBadge, ColorDot } from "@/components/ColorDot"
 import { DatePicker } from "@/components/date-picker"
 import { FormSidebar } from "@/components/form-sidebar"
 import { PeriodLabel, PeriodStepper } from "@/components/PeriodStepper"
@@ -62,6 +65,7 @@ import {
   quantityTyped,
   thisYear,
   toCents,
+  toCentsExpr,
   toQuantity,
   today,
   toTyped,
@@ -247,11 +251,40 @@ const draftOf = (e: Expense): Draft => ({
   })),
 })
 
+// Wraps the expense form's own <form> tag only, so it can call useSidebar()
+// (ticket 07) — that hook only resolves inside FormSidebar's own
+// SidebarProvider, which is an ancestor of this element in the rendered
+// tree but not of Expenses() itself, the same split Clients.tsx's own
+// ContractForm uses for the same reason. Closes the mobile Sheet once
+// onSubmit reports the Expense actually saved; unconditional on desktop too,
+// harmlessly, since setOpenMobile there has nothing to close.
+function AutoCloseForm({
+  id,
+  onSubmit,
+  className,
+  children,
+}: {
+  id: string
+  onSubmit: (event: React.FormEvent) => Promise<boolean>
+  className?: string
+  children: React.ReactNode
+}) {
+  const { setOpenMobile } = useSidebar()
+  async function handleSubmit(event: React.FormEvent) {
+    if (await onSubmit(event)) setOpenMobile(false)
+  }
+  return (
+    <form id={id} onSubmit={(e) => void handleSubmit(e)} className={className}>
+      {children}
+    </form>
+  )
+}
+
 // itemsCents sums a draft breakdown, skipping what is not yet an amount. The
 // Expense's own total is never computed from this — ADR-0002 — it is only what
 // the form checks the total against and shows the remainder from.
 const itemsCents = (items: ItemDraft[]) =>
-  items.reduce((sum, it) => sum + (toCents(it.amount) ?? 0), 0)
+  items.reduce((sum, it) => sum + (toCentsExpr(it.amount) ?? 0), 0)
 
 // How many Expenses a page (the default recent view, or one page of a
 // selected year) holds — see the backend's own `limit` ceiling on
@@ -349,7 +382,11 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
     void load()
   }, [load])
 
-  async function submit(event: React.FormEvent) {
+  // Returns whether the Expense was actually saved, so the form (which alone
+  // knows about the mobile Sheet, via AutoCloseForm below) can close it only
+  // once there is something to close for — the same split Clients.tsx's own
+  // addContract/ContractForm uses.
+  async function submit(event: React.FormEvent): Promise<boolean> {
     event.preventDefault()
     // Cents are computed here and sent as an integer: the API refuses a
     // fractional amount_cents outright, so a bad parse cannot become a
@@ -357,7 +394,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
     const cents = toCents(draft.amount)
     if (cents === null || cents <= 0) {
       toast(t.invalidAmount)
-      return
+      return false
     }
 
     // Caught here rather than left to the server's opaque failure: a Select
@@ -366,7 +403,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
     // submit "" for category_id.
     if (draft.category_id === "") {
       toast(t.invalidCategory)
-      return
+      return false
     }
 
     // The server refuses an Expense with no Payer, but Payer lives inside the
@@ -376,7 +413,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
     if (draft.payer.trim() === "") {
       toast(t.invalidPayer)
       setDetailsOpen(true)
-      return
+      return false
     }
 
     // A row added and then left alone is not an Item, so it is dropped rather
@@ -388,7 +425,11 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
       const quantity = toQuantity(it.quantity)
       return {
         name: it.name.trim(),
-        amount_cents: toCents(it.amount) ?? 0,
+        // Ticket 08: the amount may be a typed "x*y"/"x-y"/"x+y" rather than
+        // a plain number — evaluated the same way itemsCents already reads
+        // it back, so what gets sent matches what the remainder was checked
+        // against.
+        amount_cents: toCentsExpr(it.amount) ?? 0,
         category_id: it.category_id,
         // A unit typed against a quantity that failed to parse is not a real
         // pair either, so it is dropped along with it rather than sent alone.
@@ -403,20 +444,20 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
       )
     ) {
       toast(t.invalidItem)
-      return
+      return false
     }
     // Ticket 01: quantity and unit are a pair, the same rule the server
     // enforces — checked here too so the household gets it in Italian rather
     // than as a bare failed save.
     if (items.some((it) => (it.quantity === null) !== (it.unit === ""))) {
       toast(t.invalidItemQuantityUnit)
-      return
+      return false
     }
     // The server refuses this too, and in English: checking here is what gets
     // the household an Italian sentence rather than a bare failed save.
     if (itemsCents(filled) > cents) {
       toast(t.itemsOverTotal)
-      return
+      return false
     }
 
     try {
@@ -437,7 +478,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
       )
     } catch {
       toast(t.expenseNotSaved)
-      return
+      return false
     }
     // A correction is finished; a new Expense is often one of several from the
     // same trip, so the date, Category, Payer and method stay where they are.
@@ -449,6 +490,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
     )
     if (wasEditing) setDetailsOpen(true)
     await load()
+    return true
   }
 
   async function removeExpense(e: Expense) {
@@ -527,6 +569,41 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
     })
   }
 
+  // Rendered above and below the table (ticket 03) — same controls both
+  // times, so a household that scrolled the list never has to scroll back up
+  // to page it. Ticket 02: the label collapses to just the arrow past the
+  // sm breakpoint's own width, where a text button no longer fits two per
+  // row comfortably; the aria-label carries the word either way.
+  const pageControls = year !== null && (
+    <div className="flex items-center gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-label={t.previousPage}
+        disabled={page === 0}
+        onClick={() => setPage((p) => p - 1)}
+      >
+        <RiArrowLeftSLine className="sm:hidden" />
+        <span className="hidden sm:inline">{t.previousPage}</span>
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-label={t.nextPage}
+        // A full page might not be the last one — cheaper than a separate
+        // count query, at the cost of one possible extra (empty) page click
+        // at the true end.
+        disabled={(expenses?.length ?? 0) < PAGE_SIZE}
+        onClick={() => setPage((p) => p + 1)}
+      >
+        <RiArrowRightSLine className="sm:hidden" />
+        <span className="hidden sm:inline">{t.nextPage}</span>
+      </Button>
+    </div>
+  )
+
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
       <div className="flex flex-1 flex-wrap gap-6">
@@ -544,31 +621,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
             {/* Paging only exists once a year is picked — the recent view is
                 always exactly one page (PAGE_SIZE), by design, so there is
                 never a second page of it to flip to. */}
-            {year !== null && (
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={page === 0}
-                  onClick={() => setPage((p) => p - 1)}
-                >
-                  {t.previousPage}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  // A full page might not be the last one — cheaper than a
-                  // separate count query, at the cost of one possible extra
-                  // (empty) page click at the true end.
-                  disabled={(expenses?.length ?? 0) < PAGE_SIZE}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  {t.nextPage}
-                </Button>
-              </div>
-            )}
+            {pageControls}
           </div>
           <Table>
             <TableHeader>
@@ -594,7 +647,21 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                       gift={isGiftCategory(categories, e.category_id)}
                     />
                   </TableCell>
-                  <TableCell>{nameOf(categories, e.category_id)}</TableCell>
+                  <TableCell>
+                    {(() => {
+                      const category = categories.find(
+                        (c) => c.id === e.category_id
+                      )
+                      return category ? (
+                        <CategoryBadge
+                          name={category.name}
+                          color={category.color}
+                        />
+                      ) : (
+                        nameOf(categories, e.category_id)
+                      )
+                    })()}
+                  </TableCell>
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -630,6 +697,9 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
           {expenses?.length === 0 && (
             <p className="text-sm text-muted-foreground">{t.noExpensesYet}</p>
           )}
+          {/* Ticket 03: the same controls again, so paging past the first
+              screen never means scrolling back up to reach them. */}
+          {pageControls}
         </div>
 
         <FormSidebar
@@ -663,7 +733,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
             </div>
           }
         >
-          <form
+          <AutoCloseForm
             id="expense-form"
             onSubmit={submit}
             className="flex flex-col gap-3"
@@ -879,7 +949,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                       // typed, purely for feedback — quantity/unit are all
                       // that is ever sent back.
                       const quantity = toQuantity(it.quantity)
-                      const cents = toCents(it.amount)
+                      const cents = toCentsExpr(it.amount)
                       const pricePerUnit =
                         quantity !== null && cents !== null && cents > 0
                           ? cents / quantity
@@ -937,12 +1007,23 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                               <Input
                                 id={`item-amount-${i}`}
                                 type="text"
-                                inputMode="decimal"
+                                inputMode="text"
                                 value={it.amount}
                                 onChange={(e) =>
                                   setItem(i, { amount: e.target.value })
                                 }
-                                placeholder="0,00"
+                                // Ticket 08: an expression like "2*3,50" is
+                                // typed to save doing the math by hand, but
+                                // read back as itself, not as €2,00 — so it
+                                // is swapped for its own computed value on
+                                // blur, the same way the household would
+                                // cross it out and write the total instead.
+                                onBlur={() => {
+                                  const computed = toCentsExpr(it.amount)
+                                  if (computed !== null)
+                                    setItem(i, { amount: toTyped(computed) })
+                                }}
+                                placeholder="0,00 oppure 2*3,50"
                                 className="h-9"
                               />
                             </Field>
@@ -1077,7 +1158,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
-          </form>
+          </AutoCloseForm>
         </FormSidebar>
       </div>
 

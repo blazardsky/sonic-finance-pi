@@ -210,6 +210,15 @@ export type Income = {
   // stays inside amount_cents (it did arrive), but a linked Contract's
   // received/accounted figures exclude it since it isn't real revenue.
   bollo_fattura: boolean
+  // Optional invoice number on a Freelance Income (ticket 05) — free text,
+  // often per-person (Nicco/Sofi). "" when unset.
+  invoice_number: string
+  // Portion of amount_cents that is "extra" (reimbursement, late fee, …)
+  // when the Income is linked to a Contract (ticket 05). Counts toward what
+  // was collected (amount_cents includes it) but is subtracted from the
+  // Contract's received/accounted figures so it does not eat into the
+  // agreed total. 0 when unset or when unlinked.
+  extra_cents: number
   // How many units of holding_id this Income sold, or null — the sell-side
   // twin of Expense.quantity.
   quantity: number | null

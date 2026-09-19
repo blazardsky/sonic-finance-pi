@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- shadcn-style barrel: primitives + useComboboxAnchor */
 import * as React from "react"
 import { Combobox as ComboboxPrimitive } from "@base-ui/react"
 import { cn } from "cn"
@@ -65,17 +66,27 @@ function ComboboxInput({
         {...props}
       />
       <InputGroupAddon align="inline-end">
+        {/* render= (same pattern as ComboboxClear) rather than Button
+            asChild wrapping ComboboxTrigger: the asChild Slot + Base UI
+            Trigger composition left the chevron unclickable — the
+            "selettore del testo consigliato" ticket 09 names. */}
         {showTrigger && (
-          <InputGroupButton
-            size="icon-xs"
-            variant="ghost"
-            asChild
-            data-slot="input-group-button"
-            className="group-has-data-[slot=combobox-clear]/input-group:hidden data-pressed:bg-transparent"
+          <ComboboxPrimitive.Trigger
             disabled={disabled}
+            data-slot="combobox-trigger"
+            render={
+              <InputGroupButton
+                size="icon-xs"
+                variant="ghost"
+                data-slot="input-group-button"
+                className="group-has-data-[slot=combobox-clear]/input-group:hidden data-pressed:bg-transparent"
+                disabled={disabled}
+              />
+            }
+            className="[&_svg:not([class*='size-'])]:size-4"
           >
-            <ComboboxTrigger />
-          </InputGroupButton>
+            <RiArrowDownSLine className="pointer-events-none size-4 text-muted-foreground" />
+          </ComboboxPrimitive.Trigger>
         )}
         {showClear && <ComboboxClear disabled={disabled} />}
       </InputGroupAddon>
