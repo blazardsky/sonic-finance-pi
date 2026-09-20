@@ -95,6 +95,28 @@
     --credit: oklch(0.78 0.12 155);
 }
 
+/* Outdoor-readability toggle (ticket 02, .scratch/v1.2.5): starker
+   background/foreground/border/muted-text/focus-ring, layered on top of
+   whichever of :root/.dark is already resolved via the "high-contrast" class
+   ThemeProvider adds independently of the light/dark class. Foreground,
+   background, card and card-foreground are already >18:1 in both themes and
+   are deliberately left alone — only the tokens that were actually weak
+   (muted-foreground, border, input, ring) move, all along the app's existing
+   blue hue (259.815, the header/sidebar/chart family) rather than a new one. */
+.high-contrast {
+    --muted-foreground: oklch(0.437 0.06 259.815);
+    --border: oklch(0.568 0.06 259.815);
+    --input: oklch(0.568 0.06 259.815);
+    --ring: oklch(0.521 0.06 259.815);
+}
+
+.dark.high-contrast {
+    --muted-foreground: oklch(0.779 0.06 259.815);
+    --border: oklch(0.582 0.06 259.815);
+    --input: oklch(0.582 0.06 259.815);
+    --ring: oklch(0.653 0.06 259.815);
+}
+
 @theme inline {
     --font-sans: 'Geist Variable', sans-serif;
     --font-heading: 'Noto Serif Variable', serif;
