@@ -38,8 +38,7 @@
 
 ## v1.2.5
 - [ ] Aggiungere il tema Alta visibilità / Alto contrasto
-- [ ] card su report annuale da spostare su anno
-- [ ] Aggiungere nelle ricorrenti anche le entrate, per esempio per uno stipendio fisso
+- ~~card su report annuale da spostare su anno~~ **RIFIUTATO**
 
 ## v1.3
 - [ ] usare tabelle reali (datatable tanstack table) con filtri per colonna
@@ -60,3 +59,6 @@
 ## v1.7
 - [ ] drag & drop di widget nella home con possibilità di salvare più profili di visualizzazione
 - [ ] aggiungere config (con effetto solo locale, indexeddb) per piccole personalizzazioni a livello di tema (es grandezza del font, larghezza contenuti cliccabili, chiusura automatica una volta inserite i vari record)
+
+## Maybe
+- [ ] Aggiungere nelle ricorrenti anche le entrate, per esempio per uno stipendio fisso (in contrasto con la decisione attuale in CONTEXT.md secondo cui le entrate non ricorrono — da ripensare se si procede)
