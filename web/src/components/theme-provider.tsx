@@ -8,12 +8,15 @@ type ThemeProviderProps = {
   children: React.ReactNode
   defaultTheme?: Theme
   storageKey?: string
+  contrastStorageKey?: string
   disableTransitionOnChange?: boolean
 }
 
 type ThemeProviderState = {
   theme: Theme
   setTheme: (theme: Theme) => void
+  highContrast: boolean
+  setHighContrast: (highContrast: boolean) => void
 }
 
 const COLOR_SCHEME_QUERY = "(prefers-color-scheme: dark)"
@@ -81,6 +84,7 @@ export function ThemeProvider({
   children,
   defaultTheme = "system",
   storageKey = "theme",
+  contrastStorageKey = "high-contrast",
   disableTransitionOnChange = true,
   ...props
 }: ThemeProviderProps) {
@@ -93,12 +97,27 @@ export function ThemeProvider({
     return defaultTheme
   })
 
+  // Independent of theme: a household member outdoors wants starker contrast
+  // on top of whichever of light/dark is already resolved, not a third color
+  // scheme to pick between.
+  const [highContrast, setHighContrastState] = React.useState<boolean>(
+    () => localStorage.getItem(contrastStorageKey) === "true"
+  )
+
   const setTheme = React.useCallback(
     (nextTheme: Theme) => {
       localStorage.setItem(storageKey, nextTheme)
       setThemeState(nextTheme)
     },
     [storageKey]
+  )
+
+  const setHighContrast = React.useCallback(
+    (next: boolean) => {
+      localStorage.setItem(contrastStorageKey, String(next))
+      setHighContrastState(next)
+    },
+    [contrastStorageKey]
   )
 
   const applyTheme = React.useCallback(
@@ -138,6 +157,12 @@ export function ThemeProvider({
       mediaQuery.removeEventListener("change", handleChange)
     }
   }, [theme, applyTheme])
+
+  // Additive to whatever applyTheme put on the root — never removes "light"
+  // or "dark", so the two independent choices never clobber each other.
+  React.useEffect(() => {
+    document.documentElement.classList.toggle("high-contrast", highContrast)
+  }, [highContrast])
 
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -185,6 +210,11 @@ export function ThemeProvider({
         return
       }
 
+      if (event.key === contrastStorageKey) {
+        setHighContrastState(event.newValue === "true")
+        return
+      }
+
       if (event.key !== storageKey) {
         return
       }
@@ -202,14 +232,16 @@ export function ThemeProvider({
     return () => {
       window.removeEventListener("storage", handleStorageChange)
     }
-  }, [defaultTheme, storageKey])
+  }, [defaultTheme, storageKey, contrastStorageKey])
 
   const value = React.useMemo(
     () => ({
       theme,
       setTheme,
+      highContrast,
+      setHighContrast,
     }),
-    [theme, setTheme]
+    [theme, setTheme, highContrast, setHighContrast]
   )
 
   return (

@@ -1,6 +1,8 @@
 import {
   RiAddLine,
   RiComputerLine,
+  RiContrast2Line,
+  RiContrastLine,
   RiMoonLine,
   RiShoppingBasketLine,
   RiSunLine,
@@ -45,6 +47,24 @@ function ThemeToggle() {
   )
 }
 
+// Independent of ThemeToggle: on/off, layered over whichever theme is
+// already picked, not a state in the same cycle.
+function HighContrastToggle() {
+  const { highContrast, setHighContrast } = useTheme()
+  const Icon = highContrast ? RiContrast2Line : RiContrastLine
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-label={highContrast ? "high-contrast" : "normal-contrast"}
+      className={headerButton}
+      onClick={() => setHighContrast(!highContrast)}
+    >
+      <Icon />
+    </Button>
+  )
+}
+
 export function SiteHeader({
   screen,
   onQuickAddExpense,
@@ -75,6 +95,7 @@ export function SiteHeader({
             </span>
           </Button>
         )}
+        <HighContrastToggle />
         <ThemeToggle />
       </div>
     </header>
