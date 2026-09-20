@@ -370,6 +370,10 @@ export const t = {
   endMonth: "Fino al mese",
   ongoing: "in corso",
   endedIn: (month: string) => `terminata a ${month}`,
+  // The same "ended" state as endedIn, without the month — used only as a
+  // Status filter's facet value (DataTable ticket 08), where the cell itself
+  // still shows endedIn's fuller text.
+  endedGeneric: "terminata",
   // Whether this row is a PAC (Investments category + a Holding, both
   // required — CONTEXT.md) or an ordinary recurring expense.
   pacBadge: "PAC",
