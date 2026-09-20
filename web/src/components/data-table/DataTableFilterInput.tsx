@@ -18,6 +18,15 @@ const NO_FILTER = "__all__"
 type NumberRange = [number | undefined, number | undefined]
 type DateRange = [string | undefined, string | undefined]
 
+// Collapses a fully-cleared [undefined, undefined] tuple down to plain
+// undefined, so getFilterValue() !== undefined (what the mobile sheet's
+// active-filter count, and TanStack's own "has a filter" checks, both read)
+// isn't left thinking a range/date-range column is still filtering on
+// nothing.
+function normalizeRange<T>(range: [T | undefined, T | undefined]): [T | undefined, T | undefined] | undefined {
+  return range[0] === undefined && range[1] === undefined ? undefined : range
+}
+
 // Renders the widget a column's `meta.filterVariant` asks for, reading and
 // writing that column's own filter value — used identically by the desktop
 // inline header (DataTable.tsx) and the mobile filter sheet (ticket 04),
@@ -75,10 +84,12 @@ export function DataTableFilterInput<TData extends RowData>({
           placeholder={t.dataTableFilterMin}
           value={min ?? ""}
           onChange={(e) =>
-            column.setFilterValue((old: NumberRange | undefined): NumberRange => [
-              e.target.value === "" ? undefined : Number(e.target.value),
-              old?.[1],
-            ])
+            column.setFilterValue((old: NumberRange | undefined) =>
+              normalizeRange<number>([
+                e.target.value === "" ? undefined : Number(e.target.value),
+                old?.[1],
+              ])
+            )
           }
           className="h-8 w-1/2"
         />
@@ -88,10 +99,12 @@ export function DataTableFilterInput<TData extends RowData>({
           placeholder={t.dataTableFilterMax}
           value={max ?? ""}
           onChange={(e) =>
-            column.setFilterValue((old: NumberRange | undefined): NumberRange => [
-              old?.[0],
-              e.target.value === "" ? undefined : Number(e.target.value),
-            ])
+            column.setFilterValue((old: NumberRange | undefined) =>
+              normalizeRange<number>([
+                old?.[0],
+                e.target.value === "" ? undefined : Number(e.target.value),
+              ])
+            )
           }
           className="h-8 w-1/2"
         />
@@ -106,7 +119,9 @@ export function DataTableFilterInput<TData extends RowData>({
         <DatePicker
           value={from ?? ""}
           onValueChange={(v) =>
-            column.setFilterValue((old: DateRange | undefined): DateRange => [v, old?.[1]])
+            column.setFilterValue((old: DateRange | undefined) =>
+              normalizeRange<string>([v || undefined, old?.[1]])
+            )
           }
           placeholder={t.dataTableFilterMin}
           className="h-8 w-1/2 px-2 text-xs"
@@ -114,7 +129,9 @@ export function DataTableFilterInput<TData extends RowData>({
         <DatePicker
           value={to ?? ""}
           onValueChange={(v) =>
-            column.setFilterValue((old: DateRange | undefined): DateRange => [old?.[0], v])
+            column.setFilterValue((old: DateRange | undefined) =>
+              normalizeRange<string>([old?.[0], v || undefined])
+            )
           }
           placeholder={t.dataTableFilterMax}
           className="h-8 w-1/2 px-2 text-xs"

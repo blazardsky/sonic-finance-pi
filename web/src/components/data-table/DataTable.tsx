@@ -23,7 +23,11 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { t } from "@/lib/strings"
-import { dataTableFeatures, type DataTableFeatures } from "./features"
+import {
+  dataTableFeatures,
+  type DataTableFeatures,
+  type FilterVariant,
+} from "./features"
 import { DataTableColumnHeader } from "./DataTableColumnHeader"
 import { DataTableFilterInput } from "./DataTableFilterInput"
 import { DataTableMobileFilters } from "./DataTableMobileFilters"
@@ -33,6 +37,21 @@ import { DataTablePagination } from "./DataTablePagination"
 // DataTable itself when `renderSubRow` is set, always first, never supplied
 // by a page.
 const EXPAND_COLUMN_ID = "__expand__"
+
+// A column's meta.filterVariant picks the *widget* (DataTableFilterInput);
+// this picks the matching *filterFn*, so a page never has to remember to set
+// one by hand. TanStack's own "auto" resolution (used when filterFn is
+// omitted) instead infers from the column's raw cell value type — which
+// happens to land on the right built-in for "range"/"date-range" (numbers
+// and date strings resolve to inNumberRange/inDateRange), but gets "select"
+// wrong: a string value auto-resolves to includesString (substring match),
+// not the exact match a dropdown implies. Explicit beats implicit here.
+const FILTER_FN_BY_VARIANT = {
+  text: "includesString",
+  select: "equalsString",
+  range: "inNumberRange",
+  "date-range": "inDateRange",
+} as const satisfies Record<FilterVariant, string>
 
 export type DataTableColumnDef<TData extends RowData> = ColumnDef<
   DataTableFeatures,
@@ -104,7 +123,18 @@ export function DataTable<TData extends RowData>({
   const [expanded, setExpanded] = React.useState<ExpandedState>({})
 
   const tableColumns = React.useMemo(() => {
-    if (!renderSubRow) return columns
+    // Every filterable column gets its variant's matching filterFn, unless
+    // the page already set its own explicitly.
+    const withFilterFns = columns.map((column) => {
+      const variant = column.meta?.filterVariant
+      if (!variant || column.filterFn) return column
+      return {
+        ...column,
+        filterFn: FILTER_FN_BY_VARIANT[variant],
+      } as unknown as DataTableColumnDef<TData>
+    })
+
+    if (!renderSubRow) return withFilterFns
     const expandColumn: DataTableColumnDef<TData> = {
       id: EXPAND_COLUMN_ID,
       header: () => null,
@@ -121,7 +151,7 @@ export function DataTable<TData extends RowData>({
         </Button>
       ),
     }
-    return [expandColumn, ...columns]
+    return [expandColumn, ...withFilterFns]
   }, [columns, renderSubRow])
 
   const table = useTable({
