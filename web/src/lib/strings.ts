@@ -22,6 +22,18 @@ export const t = {
   status: "Stato",
   actions: "Azioni",
 
+  // DataTable (v1.3.0, web/src/components/data-table/) — shared across every
+  // migrated list. "Tutti" is used as the neutral no-filter option on every
+  // `select` filter regardless of the column's grammatical gender (Tutti i
+  // clienti, Tutte le categorie…) — one household, not worth a per-column
+  // agreement table for a single generic option.
+  dataTableFilterAll: "Tutti",
+  dataTableFilterMin: "Min",
+  dataTableFilterMax: "Max",
+  dataTableFilters: "Filtri",
+  dataTableClearFilters: "Cancella filtri",
+  dataTableNoResults: "Nessun risultato.",
+
   // Date picker (web/src/components/date-picker.tsx) — the one placeholder
   // shown before a date is chosen; the chosen date renders itself.
   chooseDate: "Scegli una data",
