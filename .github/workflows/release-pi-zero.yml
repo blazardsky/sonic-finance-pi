@@ -15,7 +15,10 @@ jobs:
       - name: Install base tools
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates curl git
+          # libatomic1 is not in the debian:13 slim base but the pnpm
+          # standalone executable links against it, so the action's
+          # self-installer fails with exit 127 without it.
+          apt-get install -y --no-install-recommends ca-certificates curl git libatomic1
 
       - uses: actions/checkout@v7
 
