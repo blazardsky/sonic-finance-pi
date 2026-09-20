@@ -1,18 +1,15 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import {
+  createDataTableColumnHelper,
+  DataTable,
+  type DataTableColumnDef,
+} from "@/components/data-table"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { api, apiJSON } from "@/lib/api"
 import { DatePicker } from "@/components/date-picker"
 import { FormSidebar } from "@/components/form-sidebar"
@@ -185,40 +182,60 @@ export function Investments() {
     await load()
   }
 
+  // v1.3.0: DataTable's own sortable headers and per-column filters — same
+  // columns as today (Holding, Date, Amount). The cell text stays
+  // "Holding name · buy/sell"; the filter matches against the holding name
+  // alone, kind stays embedded display text rather than becoming a second
+  // column. No Actions column — these rows aren't editable here (edits
+  // happen via Expenses/Incomes).
+  const columns = useMemo<DataTableColumnDef<Transaction>[]>(() => {
+    const helper = createDataTableColumnHelper<Transaction>()
+    return [
+      helper.accessor((r) => nameOf(holdings, r.holding_id), {
+        id: "holding",
+        header: t.holding,
+        meta: { filterVariant: "select" },
+        cell: ({ row }) => (
+          <>
+            {nameOf(holdings, row.original.holding_id)} ·{" "}
+            {row.original.kind === "buy" ? t.buy : t.sell}
+          </>
+        ),
+      }),
+      helper.accessor("date", {
+        header: t.date,
+        meta: { filterVariant: "date-range" },
+        cell: (info) => (
+          <span className="text-xs text-muted-foreground">
+            {formatDate(info.getValue())}
+          </span>
+        ),
+      }),
+      helper.accessor("amount_cents", {
+        header: t.amount,
+        meta: { filterVariant: "range" },
+        cell: ({ row }) => (
+          <div className="text-right font-medium tabular-nums">
+            {row.original.kind === "sell" ? "+ " : ""}€{" "}
+            {formatCents(row.original.amount_cents)}
+          </div>
+        ),
+      }),
+    ]
+  }, [holdings])
+
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
       <h1 className="font-medium">{t.investments}</h1>
 
       <div className="flex flex-1 flex-wrap gap-6">
         <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t.holding}</TableHead>
-                <TableHead>{t.date}</TableHead>
-                <TableHead className="text-right">{t.amount}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {records.map((r) => (
-                <TableRow key={r.key}>
-                  <TableCell>
-                    {nameOf(holdings, r.holding_id)} ·{" "}
-                    {r.kind === "buy" ? t.buy : t.sell}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {formatDate(r.date)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">
-                    {r.kind === "sell" ? "+ " : ""}€ {formatCents(r.amount_cents)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {records.length === 0 && (
-            <p className="text-sm text-muted-foreground">{t.noBuysSellsYet}</p>
-          )}
+          <DataTable
+            columns={columns}
+            data={records}
+            getRowId={(r) => r.key}
+            initialSorting={[{ id: "date", desc: true }]}
+          />
         </div>
 
         <FormSidebar
