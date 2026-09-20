@@ -2,7 +2,7 @@ import { RiArrowLeftSLine, RiArrowRightSLine } from "@remixicon/react"
 
 import { Button } from "@/components/ui/button"
 import { t } from "@/lib/strings"
-import type { RowData, Table } from "@tanstack/react-table"
+import type { ReactTable, RowData } from "@tanstack/react-table"
 import type { DataTableFeatures } from "./features"
 
 // Extracted from the arrows Expenses.tsx/Incomes.tsx used to copy-paste
@@ -12,7 +12,7 @@ import type { DataTableFeatures } from "./features"
 export function DataTablePagination<TData extends RowData>({
   table,
 }: {
-  table: Table<DataTableFeatures, TData>
+  table: ReactTable<DataTableFeatures, TData>
 }) {
   return (
     <div className="flex items-center gap-2">

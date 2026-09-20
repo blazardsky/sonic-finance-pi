@@ -26,6 +26,7 @@ import { t } from "@/lib/strings"
 import { dataTableFeatures, type DataTableFeatures } from "./features"
 import { DataTableColumnHeader } from "./DataTableColumnHeader"
 import { DataTableFilterInput } from "./DataTableFilterInput"
+import { DataTableMobileFilters } from "./DataTableMobileFilters"
 import { DataTablePagination } from "./DataTablePagination"
 
 // Every column ticket 01 defines is a data column; this one is injected by
@@ -168,6 +169,7 @@ export function DataTable<TData extends RowData>({
 
   return (
     <div className="flex flex-col gap-2">
+      <DataTableMobileFilters table={table} />
       {!groupBy &&
         (paginationPosition === "top" || paginationPosition === "both") &&
         pager}
@@ -183,7 +185,9 @@ export function DataTable<TData extends RowData>({
                         <table.FlexRender header={header} />
                       </DataTableColumnHeader>
                       {header.column.columnDef.meta?.filterVariant && (
-                        <DataTableFilterInput column={header.column} />
+                        <div className="hidden sm:block">
+                          <DataTableFilterInput column={header.column} />
+                        </div>
                       )}
                     </div>
                   )}
