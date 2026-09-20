@@ -98,16 +98,22 @@
 /* Outdoor-readability toggle (ticket 02, .scratch/v1.2.5): starker
    background/foreground/border/muted-text/focus-ring, layered on top of
    whichever of :root/.dark is already resolved via the "high-contrast" class
-   ThemeProvider adds independently of the light/dark class. Foreground,
-   background, card and card-foreground are already >18:1 in both themes and
-   are deliberately left alone — only the tokens that were actually weak
-   (muted-foreground, border, input, ring) move, all along the app's existing
-   blue hue (259.815, the header/sidebar/chart family) rather than a new one. */
+   ThemeProvider adds independently of the light/dark class. Audited every
+   structural text/background/border/focus token in :root/.dark: foreground,
+   background, card, card-foreground, popover (identical to card), ink,
+   sidebar-foreground and sidebar-ring are all already >7:1 in both themes and
+   are deliberately left alone. muted-foreground, border, input, ring, and
+   sidebar-border were the ones actually weak (border/sidebar-border sat
+   around 1.3:1) — those move, all along the app's existing blue hue
+   (259.815, the header/sidebar/chart family) rather than a new one.
+   sidebar-border reuses the same value as border/input since --sidebar's
+   background is nearly identical to --background in both themes. */
 .high-contrast {
     --muted-foreground: oklch(0.437 0.06 259.815);
     --border: oklch(0.568 0.06 259.815);
     --input: oklch(0.568 0.06 259.815);
     --ring: oklch(0.521 0.06 259.815);
+    --sidebar-border: oklch(0.568 0.06 259.815);
 }
 
 .dark.high-contrast {
@@ -115,6 +121,7 @@
     --border: oklch(0.582 0.06 259.815);
     --input: oklch(0.582 0.06 259.815);
     --ring: oklch(0.653 0.06 259.815);
+    --sidebar-border: oklch(0.582 0.06 259.815);
 }
 
 @theme inline {
