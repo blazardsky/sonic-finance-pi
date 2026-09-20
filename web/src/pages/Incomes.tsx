@@ -1,7 +1,5 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react"
 import {
-  RiArrowLeftSLine,
-  RiArrowRightSLine,
   RiCheckLine,
   RiDeleteBinLine,
   RiEditLine,
@@ -36,17 +34,14 @@ import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/lib/api"
 import { CategoryBadge, ColorDot } from "@/components/ColorDot"
+import {
+  createDataTableColumnHelper,
+  DataTable,
+  type DataTableColumnDef,
+} from "@/components/data-table"
 import { DatePicker } from "@/components/date-picker"
 import { FormSidebar } from "@/components/form-sidebar"
 import { useSidebar } from "@/components/ui/sidebar"
@@ -67,10 +62,11 @@ import { nameOf, pickableCategories, withSaved } from "@/lib/pickers"
 import { t } from "@/lib/strings"
 import type { Category, Client, Contract, Income, Lists } from "@/types"
 
-// How many Incomes a page (the default recent view, or one page of a
-// selected year) holds — same ceiling Expenses.tsx uses on GET /api/expenses,
-// mirrored here on GET /api/incomes.
-const PAGE_SIZE = 50
+// How many Incomes the default recent view holds — same ceiling
+// Expenses.tsx uses on GET /api/expenses, mirrored here on GET /api/incomes.
+// A selected year fetches unbounded (v1.3.0: DataTable paginates
+// client-side instead of the old limit/offset page-at-a-time server paging).
+const RECENT_LIMIT = 50
 
 // The Contract picker's default: "Extra" is a real, common choice (unlinked
 // income), never an unset placeholder — so, like the payment-method sentinel
@@ -194,7 +190,6 @@ export function Incomes({
   // time — the same "recent / anno" filter Expenses.tsx offers, off the same
   // invoice-date-or-payment-date the list is ordered by.
   const [year, setYear] = useState<string | null>(null)
-  const [page, setPage] = useState(0)
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
@@ -234,12 +229,12 @@ export function Incomes({
   }
 
   // No year selected: the recent view, `limit` alone. A year selected: that
-  // year's own Incomes, one PAGE_SIZE page at a time — same shape
-  // Expenses.tsx's own expensesPath uses.
+  // whole year's Incomes, unbounded — same shape Expenses.tsx's own
+  // expensesPath uses.
   const incomesPath =
     year === null
-      ? `/api/incomes?limit=${PAGE_SIZE}`
-      : `/api/incomes?year=${year}&limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}`
+      ? `/api/incomes?limit=${RECENT_LIMIT}`
+      : `/api/incomes?year=${year}`
 
   const load = useCallback(
     () =>
@@ -263,7 +258,6 @@ export function Incomes({
   // current year returns to the recent (unfiltered) view — same stepper
   // Expenses.tsx uses, off the same invoice-date-or-payment-date ordering.
   const stepYear = (delta: number) => {
-    setPage(0)
     setYear((y) => {
       if (delta < 0) return y === null ? thisYear() : String(Number(y) - 1)
       return y !== null && y < thisYear() ? String(Number(y) + 1) : null
@@ -498,40 +492,114 @@ export function Incomes({
     return `${prefix}${String(max + 1).padStart(3, "0")}`
   })()
 
-  // Rendered above and below the table (ticket 03) — same controls both
-  // times, so a household that scrolled the list never has to scroll back up
-  // to page it. Ticket 02: the label collapses to just the arrow past the
-  // sm breakpoint's own width, where a text button no longer fits two per
-  // row comfortably; the aria-label carries the word either way.
-  const pageControls = year !== null && (
-    <div className="flex items-center gap-2">
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        aria-label={t.previousPage}
-        disabled={page === 0}
-        onClick={() => setPage((p) => p - 1)}
-      >
-        <RiArrowLeftSLine className="sm:hidden" />
-        <span className="hidden sm:inline">{t.previousPage}</span>
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        aria-label={t.nextPage}
-        // A full page might not be the last one — cheaper than a
-        // separate count query, at the cost of one possible extra
-        // (empty) page click at the true end.
-        disabled={(incomes?.length ?? 0) < PAGE_SIZE}
-        onClick={() => setPage((p) => p + 1)}
-      >
-        <RiArrowRightSLine className="sm:hidden" />
-        <span className="hidden sm:inline">{t.nextPage}</span>
-      </Button>
-    </div>
-  )
+  // v1.3.0: DataTable's own sortable headers, per-column filters (Date,
+  // Amount, Category — the table's only columns today, matching what it
+  // showed before this migration), and client-side pagination. Category
+  // filters/sorts by name via an accessorFn, not the raw category_id — the
+  // cell still renders the badge plus the Client name underneath, same as
+  // today. Date filters/sorts on payment_date (the column's own primary
+  // value); the "not paid yet" line underneath is unaffected. `editing`'s
+  // dimmed row is dropped, same reasoning Expenses.tsx's own migration used.
+  const columns = useMemo<DataTableColumnDef<Income>[]>(() => {
+    const helper = createDataTableColumnHelper<Income>()
+    return [
+      helper.accessor("payment_date", {
+        header: t.date,
+        meta: { filterVariant: "date-range" },
+        cell: ({ row }) => {
+          const income = row.original
+          return (
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs text-muted-foreground">
+                {income.payment_date ? formatDate(income.payment_date) : ""}
+              </span>
+              {!income.payment_date && (
+                <span className="text-xs text-destructive">
+                  {t.notPaidYet}
+                  {income.invoice_sent_date &&
+                    ` · ${t.waitingSince(formatDate(income.invoice_sent_date))}`}
+                </span>
+              )}
+            </div>
+          )
+        },
+      }),
+      helper.accessor("amount_cents", {
+        header: t.amount,
+        meta: { filterVariant: "range" },
+        cell: ({ row }) => (
+          <div className="text-right font-medium tabular-nums">
+            € {formatCents(row.original.amount_cents)}
+          </div>
+        ),
+      }),
+      helper.accessor((income) => nameOf(categories, income.category_id), {
+        id: "category",
+        header: t.incomeReason,
+        meta: { filterVariant: "select" },
+        cell: ({ row }) => {
+          const income = row.original
+          const category = categories.find((c) => c.id === income.category_id)
+          return (
+            <div className="flex flex-col gap-0.5">
+              {category ? (
+                <CategoryBadge name={category.name} color={category.color} />
+              ) : (
+                nameOf(categories, income.category_id)
+              )}
+              {income.client_id !== null && (
+                <span className="truncate text-xs text-muted-foreground">
+                  {nameOf(clients, income.client_id)}
+                </span>
+              )}
+            </div>
+          )
+        },
+      }),
+      helper.display({
+        id: "actions",
+        header: t.actions,
+        enableSorting: false,
+        cell: ({ row }) => {
+          const income = row.original
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t.actions}
+                >
+                  <RiMoreLine />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setViewing(income)}>
+                  <RiEyeLine /> {t.viewIncome}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => selectIncome(income)}>
+                  <RiEditLine /> {t.editIncome}
+                </DropdownMenuItem>
+                {income.invoice_sent_date && !income.payment_date && (
+                  <DropdownMenuItem onClick={() => void markPaid(income)}>
+                    <RiCheckLine /> {t.markPaid}
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => void removeIncome(income)}
+                >
+                  <RiDeleteBinLine /> {t.delete}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
+        },
+      }),
+    ]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories, clients])
 
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
@@ -547,115 +615,14 @@ export function Incomes({
             >
               <PeriodLabel>{year ?? t.incomesYearFilterRecent}</PeriodLabel>
             </PeriodStepper>
-            {/* Paging only exists once a year is picked — the recent view is
-                always exactly one page (PAGE_SIZE), by design, so there is
-                never a second page of it to flip to. */}
-            {pageControls}
           </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t.date}</TableHead>
-                <TableHead className="text-right">{t.amount}</TableHead>
-                <TableHead>{t.incomeReason}</TableHead>
-                <TableHead className="w-10">{t.actions}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {incomes?.map((income) => {
-                const category = categories.find((c) => c.id === income.category_id)
-                return (
-                <TableRow
-                  key={income.id}
-                  className={editing === income.id ? "opacity-50" : ""}
-                >
-                  <TableCell className="whitespace-normal">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-xs text-muted-foreground">
-                        {income.payment_date
-                          ? formatDate(income.payment_date)
-                          : ""}
-                      </span>
-                      {/* An unpaid Income says so, because that is the one thing
-                          the amount does not tell you: this money has not
-                          arrived and counts toward nothing. Ticket 14 turns
-                          these into a list of their own; here they only have to
-                          be recognisable. */}
-                      {!income.payment_date && (
-                        <span className="text-xs text-destructive">
-                          {t.notPaidYet}
-                          {income.invoice_sent_date &&
-                            ` · ${t.waitingSince(
-                              formatDate(income.invoice_sent_date)
-                            )}`}
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">
-                    € {formatCents(income.amount_cents)}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col gap-0.5">
-                      {category ? (
-                        <CategoryBadge
-                          name={category.name}
-                          color={category.color}
-                        />
-                      ) : (
-                        nameOf(categories, income.category_id)
-                      )}
-                      {income.client_id !== null && (
-                        <span className="truncate text-xs text-muted-foreground">
-                          {nameOf(clients, income.client_id)}
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={t.actions}
-                        >
-                          <RiMoreLine />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setViewing(income)}>
-                          <RiEyeLine /> {t.viewIncome}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => selectIncome(income)}>
-                          <RiEditLine /> {t.editIncome}
-                        </DropdownMenuItem>
-                        {/* Only for an invoiced Income still waiting on its
-                            money — nothing to mark paid otherwise, and one
-                            already paid has nothing left to set. */}
-                        {income.invoice_sent_date && !income.payment_date && (
-                          <DropdownMenuItem onClick={() => void markPaid(income)}>
-                            <RiCheckLine /> {t.markPaid}
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => void removeIncome(income)}
-                        >
-                          <RiDeleteBinLine /> {t.delete}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              )})}
-            </TableBody>
-          </Table>
-          {incomes?.length === 0 && (
-            <p className="text-sm text-muted-foreground">{t.noIncomesYet}</p>
-          )}
-          {pageControls}
+          <DataTable
+            columns={columns}
+            data={incomes ?? []}
+            getRowId={(income) => String(income.id)}
+            initialSorting={[{ id: "payment_date", desc: true }]}
+            paginationPosition="both"
+          />
         </div>
 
         <FormSidebar
