@@ -41,7 +41,7 @@
 - ~~card su report annuale da spostare su anno~~ **RIFIUTATO**
 
 ## v1.3
-- [ ] usare tabelle reali (datatable tanstack table) con filtri per colonna
+- [x] usare tabelle reali (datatable tanstack table) con filtri per colonna
 
 ## v1.3.1
 - [ ] aggiungere delle chart per le sotto-categorie in report mensile e annuale
