@@ -68,6 +68,7 @@ export function DataTable<TData extends RowData>({
   getRowId,
   paginationPosition = "bottom",
   renderSubRow,
+  groupBy,
 }: {
   columns: DataTableColumnDef<TData>[]
   data: TData[]
@@ -80,6 +81,18 @@ export function DataTable<TData extends RowData>({
   // "detail panel" pattern (Clients' Contracts, RecurringExpenses' Details),
   // not TanStack's own tree-of-same-shaped-rows expansion.
   renderSubRow?: (row: Row<DataTableFeatures, TData>) => React.ReactNode
+  // Ticket 03: partitions the filtered/sorted rows into named sections in a
+  // fixed order (Categories' Spese/Entrate/Entrambi) — plain partitioning in
+  // this component's own render, not TanStack's grouping feature (that one
+  // aggregates/pivots, the wrong semantics here). An empty section renders no
+  // header at all, matching Categories.tsx's own `bySection` today. Disables
+  // pagination: grouped lists in this app are small, fixed-size, and slicing
+  // a page out of a grouped set would split or hide whole sections.
+  groupBy?: {
+    key: keyof TData
+    order: readonly TData[keyof TData][]
+    label?: (value: TData[keyof TData]) => React.ReactNode
+  }
 }) {
   const [sorting, setSorting] = React.useState<SortingState>(initialSorting ?? [])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
@@ -132,9 +145,32 @@ export function DataTable<TData extends RowData>({
   const leafColumnCount = table.getAllLeafColumns().length
   const pager = <DataTablePagination table={table} />
 
+  const renderDataRow = (row: Row<DataTableFeatures, TData>) => (
+    <React.Fragment key={row.id}>
+      <TableRow>
+        {row.getAllCells().map((cell) => (
+          <TableCell key={cell.id}>
+            <table.FlexRender cell={cell} />
+          </TableCell>
+        ))}
+      </TableRow>
+      {renderSubRow && row.getIsExpanded() && (
+        <TableRow>
+          <TableCell colSpan={leafColumnCount}>{renderSubRow(row)}</TableCell>
+        </TableRow>
+      )}
+    </React.Fragment>
+  )
+
+  // Grouped tables read the sorted-but-not-yet-paginated row model and skip
+  // pagination entirely (see the groupBy prop's own doc comment above).
+  const rows = groupBy ? table.getSortedRowModel().rows : table.getRowModel().rows
+
   return (
     <div className="flex flex-col gap-2">
-      {(paginationPosition === "top" || paginationPosition === "both") && pager}
+      {!groupBy &&
+        (paginationPosition === "top" || paginationPosition === "both") &&
+        pager}
       <Table>
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
@@ -157,7 +193,7 @@ export function DataTable<TData extends RowData>({
           ))}
         </TableHeader>
         <TableBody>
-          {table.getRowModel().rows.length === 0 ? (
+          {rows.length === 0 ? (
             <TableRow>
               <TableCell
                 colSpan={leafColumnCount}
@@ -166,29 +202,34 @@ export function DataTable<TData extends RowData>({
                 {t.dataTableNoResults}
               </TableCell>
             </TableRow>
-          ) : (
-            table.getRowModel().rows.map((row) => (
-              <React.Fragment key={row.id}>
-                <TableRow>
-                  {row.getAllCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      <table.FlexRender cell={cell} />
-                    </TableCell>
-                  ))}
-                </TableRow>
-                {renderSubRow && row.getIsExpanded() && (
-                  <TableRow>
-                    <TableCell colSpan={leafColumnCount}>
-                      {renderSubRow(row)}
+          ) : groupBy ? (
+            groupBy.order.map((sectionValue) => {
+              const sectionRows = rows.filter(
+                (row) => row.original[groupBy.key] === sectionValue
+              )
+              if (sectionRows.length === 0) return null
+              return (
+                <React.Fragment key={String(sectionValue)}>
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell
+                      colSpan={leafColumnCount}
+                      className="bg-muted/50 text-xs font-medium text-muted-foreground"
+                    >
+                      {groupBy.label ? groupBy.label(sectionValue) : String(sectionValue)}
                     </TableCell>
                   </TableRow>
-                )}
-              </React.Fragment>
-            ))
+                  {sectionRows.map(renderDataRow)}
+                </React.Fragment>
+              )
+            })
+          ) : (
+            rows.map(renderDataRow)
           )}
         </TableBody>
       </Table>
-      {(paginationPosition === "bottom" || paginationPosition === "both") && pager}
+      {!groupBy &&
+        (paginationPosition === "bottom" || paginationPosition === "both") &&
+        pager}
     </div>
   )
 }
