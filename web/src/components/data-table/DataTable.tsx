@@ -53,9 +53,14 @@ const FILTER_FN_BY_VARIANT = {
   "date-range": "inDateRange",
 } as const satisfies Record<FilterVariant, string>
 
+// TValue defaults to `any` (not `unknown`) so an array of column defs can mix
+// differently-typed columns (a string-accessor column next to a number one)
+// — the same reason v8's ColumnDef<TData, any> convention exists.
 export type DataTableColumnDef<TData extends RowData> = ColumnDef<
   DataTableFeatures,
-  TData
+  TData,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see comment above
+  any
 >
 
 // A page defines its columns against this rather than raw createColumnHelper,
@@ -138,6 +143,7 @@ export function DataTable<TData extends RowData>({
     const expandColumn: DataTableColumnDef<TData> = {
       id: EXPAND_COLUMN_ID,
       header: () => null,
+      enableSorting: false,
       cell: ({ row }) => (
         <Button
           type="button"

@@ -1,7 +1,5 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
-  RiArrowLeftSLine,
-  RiArrowRightSLine,
   RiDeleteBinLine,
   RiEditLine,
   RiEyeLine,
@@ -39,18 +37,15 @@ import {
 import { Input } from "@/components/ui/input"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { useSidebar } from "@/components/ui/sidebar"
 import { api, apiJSON } from "@/lib/api"
 import { CategoryBadge, ColorDot } from "@/components/ColorDot"
+import {
+  createDataTableColumnHelper,
+  DataTable,
+  type DataTableColumnDef,
+} from "@/components/data-table"
 import { DatePicker } from "@/components/date-picker"
 import { FormSidebar } from "@/components/form-sidebar"
 import { PeriodLabel, PeriodStepper } from "@/components/PeriodStepper"
@@ -286,10 +281,11 @@ function AutoCloseForm({
 const itemsCents = (items: ItemDraft[]) =>
   items.reduce((sum, it) => sum + (toCentsExpr(it.amount) ?? 0), 0)
 
-// How many Expenses a page (the default recent view, or one page of a
-// selected year) holds — see the backend's own `limit` ceiling on
-// GET /api/expenses.
-const PAGE_SIZE = 50
+// How many Expenses the default recent view holds — see the backend's own
+// `limit` ceiling on GET /api/expenses. A selected year fetches unbounded
+// (v1.3.0: DataTable paginates client-side instead of the old limit/offset
+// page-at-a-time server paging).
+const RECENT_LIMIT = 50
 
 // The main screen: log what was just spent in about three taps, and see it
 // land. The form lives in the right-side panel — first and biggest on a
@@ -323,14 +319,11 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
   // closed — Negozio, Pagato da, Metodo di pagamento, Note and the Item
   // breakdown all live only here now, not in the table itself.
   const [viewing, setViewing] = useState<Expense | null>(null)
-  // null is the default view: the most recent PAGE_SIZE Expenses, unfiltered,
-  // no page controls shown — a household with a year or two of history never
-  // needs to think about paging at all. Picking a year switches to that
-  // year's own Expenses, paged PAGE_SIZE at a time, so viewing years of
-  // history never means flipping through however many pages the *whole*
-  // table would take.
+  // null is the default view: the most recent RECENT_LIMIT Expenses,
+  // unfiltered. Picking a year switches to that year's own Expenses,
+  // fetched in full — DataTable's own pagination (and its per-column
+  // filters) take it from there client-side.
   const [year, setYear] = useState<string | null>(null)
-  const [page, setPage] = useState(0)
   // Captured once at mount, not read live — a mobile quick-add shortcut is
   // meant to open the panel on arrival, not force it back open every time
   // App re-renders with the flag still set (see App.tsx's reset-on-navigate-
@@ -351,12 +344,12 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
   }
 
   // No year selected: the recent view, `limit` alone. A year selected: that
-  // year's own Expenses, one PAGE_SIZE page at a time — the ponytail on the
-  // backend's own handler named exactly this need.
+  // whole year's Expenses, unbounded — the backend's own handler already
+  // answers a bare year-scoped GET in full; DataTable pages through it.
   const expensesPath =
     year === null
-      ? `/api/expenses?limit=${PAGE_SIZE}`
-      : `/api/expenses?year=${year}&limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}`
+      ? `/api/expenses?limit=${RECENT_LIMIT}`
+      : `/api/expenses?year=${year}`
 
   const load = useCallback(
     () =>
@@ -560,49 +553,99 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
   // current year is what returns to the recent (unfiltered) view — there is
   // no "current year + 1" to step into instead, since a year that has not
   // happened has no Expenses (Year.tsx's own stepper stops there the same
-  // way). Either direction resets to the new selection's own first page.
+  // way).
   const stepYear = (delta: number) => {
-    setPage(0)
     setYear((y) => {
       if (delta < 0) return y === null ? thisYear() : String(Number(y) - 1)
       return y !== null && y < thisYear() ? String(Number(y) + 1) : null
     })
   }
 
-  // Rendered above and below the table (ticket 03) — same controls both
-  // times, so a household that scrolled the list never has to scroll back up
-  // to page it. Ticket 02: the label collapses to just the arrow past the
-  // sm breakpoint's own width, where a text button no longer fits two per
-  // row comfortably; the aria-label carries the word either way.
-  const pageControls = year !== null && (
-    <div className="flex items-center gap-2">
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        aria-label={t.previousPage}
-        disabled={page === 0}
-        onClick={() => setPage((p) => p - 1)}
-      >
-        <RiArrowLeftSLine className="sm:hidden" />
-        <span className="hidden sm:inline">{t.previousPage}</span>
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        aria-label={t.nextPage}
-        // A full page might not be the last one — cheaper than a separate
-        // count query, at the cost of one possible extra (empty) page click
-        // at the true end.
-        disabled={(expenses?.length ?? 0) < PAGE_SIZE}
-        onClick={() => setPage((p) => p + 1)}
-      >
-        <RiArrowRightSLine className="sm:hidden" />
-        <span className="hidden sm:inline">{t.nextPage}</span>
-      </Button>
-    </div>
-  )
+  // v1.3.0: DataTable's own sortable headers, per-column filters (Date,
+  // Amount, Category — the table's only columns today, matching what it
+  // showed before this migration), and client-side pagination. Depends on
+  // `categories` since Category filters/sorts/renders by name, not the raw
+  // category_id. `editing`'s dimmed row is the one thing this migration
+  // deliberately drops: DataTable has no per-row className hook, and a
+  // household editing a row already sees it live in the open form sidebar.
+  const columns = useMemo<DataTableColumnDef<Expense>[]>(() => {
+    const helper = createDataTableColumnHelper<Expense>()
+    return [
+      helper.accessor("occurred_on", {
+        header: t.date,
+        meta: { filterVariant: "date-range" },
+        cell: (info) => (
+          <span className="text-xs text-muted-foreground">
+            {formatDate(info.getValue())}
+          </span>
+        ),
+      }),
+      helper.accessor("amount_cents", {
+        header: t.amount,
+        meta: { filterVariant: "range" },
+        cell: ({ row }) => (
+          <div className="text-right font-medium tabular-nums">
+            <SpoilerAmount
+              cents={row.original.amount_cents}
+              gift={isGiftCategory(categories, row.original.category_id)}
+            />
+          </div>
+        ),
+      }),
+      helper.accessor((e) => nameOf(categories, e.category_id), {
+        id: "category",
+        header: t.category,
+        meta: { filterVariant: "select" },
+        cell: ({ row }) => {
+          const category = categories.find(
+            (c) => c.id === row.original.category_id
+          )
+          return category ? (
+            <CategoryBadge name={category.name} color={category.color} />
+          ) : (
+            nameOf(categories, row.original.category_id)
+          )
+        },
+      }),
+      helper.display({
+        id: "actions",
+        header: t.actions,
+        enableSorting: false,
+        cell: ({ row }) => {
+          const e = row.original
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t.actions}
+                >
+                  <RiMoreLine />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setViewing(e)}>
+                  <RiEyeLine /> {t.viewExpense}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => selectExpense(e)}>
+                  <RiEditLine /> {t.editExpense}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => void removeExpense(e)}
+                >
+                  <RiDeleteBinLine /> {t.delete}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
+        },
+      }),
+    ]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories])
 
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
@@ -618,88 +661,14 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
             >
               <PeriodLabel>{year ?? t.recentExpenses}</PeriodLabel>
             </PeriodStepper>
-            {/* Paging only exists once a year is picked — the recent view is
-                always exactly one page (PAGE_SIZE), by design, so there is
-                never a second page of it to flip to. */}
-            {pageControls}
           </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t.date}</TableHead>
-                <TableHead className="text-right">{t.amount}</TableHead>
-                <TableHead>{t.category}</TableHead>
-                <TableHead className="w-10">{t.actions}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {expenses?.map((e) => (
-                <TableRow
-                  key={e.id}
-                  className={editing === e.id ? "opacity-50" : ""}
-                >
-                  <TableCell className="text-xs text-muted-foreground">
-                    {formatDate(e.occurred_on)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">
-                    <SpoilerAmount
-                      cents={e.amount_cents}
-                      gift={isGiftCategory(categories, e.category_id)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    {(() => {
-                      const category = categories.find(
-                        (c) => c.id === e.category_id
-                      )
-                      return category ? (
-                        <CategoryBadge
-                          name={category.name}
-                          color={category.color}
-                        />
-                      ) : (
-                        nameOf(categories, e.category_id)
-                      )
-                    })()}
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={t.actions}
-                        >
-                          <RiMoreLine />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setViewing(e)}>
-                          <RiEyeLine /> {t.viewExpense}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => selectExpense(e)}>
-                          <RiEditLine /> {t.editExpense}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => void removeExpense(e)}
-                        >
-                          <RiDeleteBinLine /> {t.delete}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {expenses?.length === 0 && (
-            <p className="text-sm text-muted-foreground">{t.noExpensesYet}</p>
-          )}
-          {/* Ticket 03: the same controls again, so paging past the first
-              screen never means scrolling back up to reach them. */}
-          {pageControls}
+          <DataTable
+            columns={columns}
+            data={expenses ?? []}
+            getRowId={(e) => String(e.id)}
+            initialSorting={[{ id: "occurred_on", desc: true }]}
+            paginationPosition="both"
+          />
         </div>
 
         <FormSidebar
