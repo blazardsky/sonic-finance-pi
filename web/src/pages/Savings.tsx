@@ -5,20 +5,17 @@ import { RiEditLine } from "@remixicon/react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  createDataTableColumnHelper,
+  DataTable,
+  type DataTableColumnDef,
+} from "@/components/data-table"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Progress } from "@/components/ui/progress"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { apiJSON } from "@/lib/api"
 import { formatCents, thisYear, toCents, toTyped } from "@/lib/money"
 import { t } from "@/lib/strings"
-import type { HoldingType, Lists, SavingsReport } from "@/types"
+import type { HoldingBreakdown, HoldingType, Lists, SavingsReport } from "@/types"
 
 // Same labels Holdings.tsx uses for the fixed type list — each screen keeps
 // its own copy rather than sharing one, the existing convention here.
@@ -182,39 +179,51 @@ export function Savings() {
 
       <div className="flex flex-col gap-2">
         <h2 className="text-sm font-medium">{t.portfolio}</h2>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t.holding}</TableHead>
-              <TableHead>{t.holdingType}</TableHead>
-              <TableHead className="text-right">{t.amount}</TableHead>
-              <TableHead className="text-right">%</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(savings?.holdings ?? []).map((h) => (
-              <TableRow key={h.holding_id}>
-                <TableCell>{h.name}</TableCell>
-                <TableCell>{typeLabels[h.type]}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  € {formatCents(h.net_cents)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {h.percent.toFixed(1)}%
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {(savings?.holdings ?? []).length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            {t.noHoldingsInPortfolio}
-          </p>
-        )}
+        <DataTable
+          columns={portfolioColumns}
+          data={savings?.holdings ?? []}
+          getRowId={(h) => String(h.holding_id)}
+        />
       </div>
     </div>
   )
 }
+
+// v1.3.0: DataTable's own sortable headers and per-column filters — same
+// columns as today (Holding, Type, Amount, %). Read-only, same as
+// Investments.tsx: no Actions column, this is a derived recap.
+const portfolioColumns: DataTableColumnDef<HoldingBreakdown>[] = (() => {
+  const helper = createDataTableColumnHelper<HoldingBreakdown>()
+  return [
+    helper.accessor("name", {
+      header: t.holding,
+      meta: { filterVariant: "select" },
+    }),
+    helper.accessor((h): string => typeLabels[h.type], {
+      id: "type",
+      header: t.holdingType,
+      meta: { filterVariant: "select" },
+    }),
+    helper.accessor("net_cents", {
+      header: t.amount,
+      meta: { filterVariant: "range" },
+      cell: ({ row }) => (
+        <div className="text-right tabular-nums">
+          € {formatCents(row.original.net_cents)}
+        </div>
+      ),
+    }),
+    helper.accessor("percent", {
+      header: "%",
+      meta: { filterVariant: "range" },
+      cell: ({ row }) => (
+        <div className="text-right tabular-nums">
+          {row.original.percent.toFixed(1)}%
+        </div>
+      ),
+    }),
+  ]
+})()
 
 // percentOf is a share of the target as a 0–100 Progress value: negative
 // Savings is 0% rather than a bar running backwards, and a figure past the
