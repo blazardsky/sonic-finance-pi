@@ -1,15 +1,19 @@
 /* eslint-disable react-refresh/only-export-components */
 import * as React from "react"
+import { RiArrowDownSLine, RiArrowRightSLine } from "@remixicon/react"
 import {
   createColumnHelper,
   useTable,
   type ColumnDef,
   type ColumnFiltersState,
+  type ExpandedState,
   type PaginationState,
+  type Row,
   type RowData,
   type SortingState,
 } from "@tanstack/react-table"
 
+import { Button } from "@/components/ui/button"
 import {
   Table,
   TableBody,
@@ -23,6 +27,11 @@ import { dataTableFeatures, type DataTableFeatures } from "./features"
 import { DataTableColumnHeader } from "./DataTableColumnHeader"
 import { DataTableFilterInput } from "./DataTableFilterInput"
 import { DataTablePagination } from "./DataTablePagination"
+
+// Every column ticket 01 defines is a data column; this one is injected by
+// DataTable itself when `renderSubRow` is set, always first, never supplied
+// by a page.
+const EXPAND_COLUMN_ID = "__expand__"
 
 export type DataTableColumnDef<TData extends RowData> = ColumnDef<
   DataTableFeatures,
@@ -58,6 +67,7 @@ export function DataTable<TData extends RowData>({
   pageSize = DEFAULT_PAGE_SIZE,
   getRowId,
   paginationPosition = "bottom",
+  renderSubRow,
 }: {
   columns: DataTableColumnDef<TData>[]
   data: TData[]
@@ -65,6 +75,11 @@ export function DataTable<TData extends RowData>({
   pageSize?: number
   getRowId?: (row: TData, index: number) => string
   paginationPosition?: "top" | "bottom" | "both"
+  // Ticket 02: when set, an expand-toggle column is auto-injected as the
+  // first column and an expanded row renders this directly beneath it — the
+  // "detail panel" pattern (Clients' Contracts, RecurringExpenses' Details),
+  // not TanStack's own tree-of-same-shaped-rows expansion.
+  renderSubRow?: (row: Row<DataTableFeatures, TData>) => React.ReactNode
 }) {
   const [sorting, setSorting] = React.useState<SortingState>(initialSorting ?? [])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
@@ -72,13 +87,36 @@ export function DataTable<TData extends RowData>({
     pageIndex: 0,
     pageSize,
   })
+  const [expanded, setExpanded] = React.useState<ExpandedState>({})
+
+  const tableColumns = React.useMemo(() => {
+    if (!renderSubRow) return columns
+    const expandColumn: DataTableColumnDef<TData> = {
+      id: EXPAND_COLUMN_ID,
+      header: () => null,
+      cell: ({ row }) => (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t.details}
+          aria-expanded={row.getIsExpanded()}
+          onClick={() => row.toggleExpanded()}
+        >
+          {row.getIsExpanded() ? <RiArrowDownSLine /> : <RiArrowRightSLine />}
+        </Button>
+      ),
+    }
+    return [expandColumn, ...columns]
+  }, [columns, renderSubRow])
 
   const table = useTable({
     features: dataTableFeatures,
-    columns,
+    columns: tableColumns,
     data,
     getRowId,
-    state: { sorting, columnFilters, pagination },
+    getRowCanExpand: renderSubRow ? () => true : undefined,
+    state: { sorting, columnFilters, pagination, expanded },
     onSortingChange: setSorting,
     // Resets to the first page whenever the active filters change — a filter
     // narrowing the result set to fewer than the current page index's worth
@@ -88,6 +126,7 @@ export function DataTable<TData extends RowData>({
       setPagination((p) => ({ ...p, pageIndex: 0 }))
     },
     onPaginationChange: setPagination,
+    onExpandedChange: setExpanded,
   })
 
   const leafColumnCount = table.getAllLeafColumns().length
@@ -129,13 +168,22 @@ export function DataTable<TData extends RowData>({
             </TableRow>
           ) : (
             table.getRowModel().rows.map((row) => (
-              <TableRow key={row.id}>
-                {row.getAllCells().map((cell) => (
-                  <TableCell key={cell.id}>
-                    <table.FlexRender cell={cell} />
-                  </TableCell>
-                ))}
-              </TableRow>
+              <React.Fragment key={row.id}>
+                <TableRow>
+                  {row.getAllCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      <table.FlexRender cell={cell} />
+                    </TableCell>
+                  ))}
+                </TableRow>
+                {renderSubRow && row.getIsExpanded() && (
+                  <TableRow>
+                    <TableCell colSpan={leafColumnCount}>
+                      {renderSubRow(row)}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </React.Fragment>
             ))
           )}
         </TableBody>

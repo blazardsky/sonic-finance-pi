@@ -1,11 +1,13 @@
 import {
   columnFacetingFeature,
   columnFilteringFeature,
+  createExpandedRowModel,
   createFacetedUniqueValues,
   createFilteredRowModel,
   createPaginatedRowModel,
   createSortedRowModel,
   metaHelper,
+  rowExpandingFeature,
   rowPaginationFeature,
   rowSortingFeature,
   tableFeatures,
@@ -23,8 +25,10 @@ export interface DataTableColumnMeta {
 }
 
 // One shared feature set for every DataTable instance in the app (ticket 01:
-// core sorting/filtering/pagination/faceting; expansion and grouping are
-// layered on top of rendering, not registered here — see tickets 02/03).
+// core sorting/filtering/pagination/faceting; ticket 02 adds expansion.
+// Grouping (ticket 03) is plain partitioning done in DataTable's own render,
+// not a TanStack feature — TanStack's built-in grouping is an aggregation/
+// pivot feature, the wrong semantics for "sort rows into named sections").
 export const dataTableFeatures = tableFeatures({
   columnFilteringFeature,
   filteredRowModel: createFilteredRowModel(),
@@ -34,6 +38,8 @@ export const dataTableFeatures = tableFeatures({
   paginatedRowModel: createPaginatedRowModel(),
   columnFacetingFeature,
   facetedUniqueValues: createFacetedUniqueValues(),
+  rowExpandingFeature,
+  expandedRowModel: createExpandedRowModel(),
   columnMeta: metaHelper<DataTableColumnMeta>(),
 })
 
