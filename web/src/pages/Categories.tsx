@@ -375,6 +375,10 @@ export function Categories() {
           )
         },
       }),
+      // Kept as its own display column for visual parity with today's table
+      // (which shows it per-row, on top of the section header) even though
+      // it's no longer filterable on its own — the grouping key already
+      // narrows by it.
       helper.accessor("applies_to", {
         header: t.appliesTo,
         enableSorting: false,
@@ -481,6 +485,8 @@ export function Categories() {
           )
         },
       }),
+      // Same visual-parity reasoning as the Categories table's own
+      // applies_to column above.
       helper.accessor("applies_to", {
         header: t.appliesTo,
         enableSorting: false,

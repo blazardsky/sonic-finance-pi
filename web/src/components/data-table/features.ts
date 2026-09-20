@@ -22,6 +22,11 @@ export type FilterVariant = "text" | "select" | "range" | "date-range"
 
 export interface DataTableColumnMeta {
   filterVariant?: FilterVariant
+  // Matches the `hidden md:table-cell` treatment several pages already gave
+  // a column before migrating (RecurringExpenses' Note, hidden on mobile
+  // since its content is repeated in the expand panel there) — applied to
+  // both the header and body cell.
+  hiddenOnMobile?: boolean
 }
 
 // One shared feature set for every DataTable instance in the app (ticket 01:

@@ -23,6 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { t } from "@/lib/strings"
+import { cn } from "@/lib/utils"
 import {
   dataTableFeatures,
   type DataTableFeatures,
@@ -186,7 +187,12 @@ export function DataTable<TData extends RowData>({
     <React.Fragment key={row.id}>
       <TableRow>
         {row.getAllCells().map((cell) => (
-          <TableCell key={cell.id}>
+          <TableCell
+            key={cell.id}
+            className={cn(
+              cell.column.columnDef.meta?.hiddenOnMobile && "hidden md:table-cell"
+            )}
+          >
             <table.FlexRender cell={cell} />
           </TableCell>
         ))}
@@ -214,7 +220,13 @@ export function DataTable<TData extends RowData>({
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
-                <TableHead key={header.id}>
+                <TableHead
+                  key={header.id}
+                  className={cn(
+                    header.column.columnDef.meta?.hiddenOnMobile &&
+                      "hidden md:table-cell"
+                  )}
+                >
                   {header.isPlaceholder ? null : (
                     <div className="flex flex-col gap-1.5 py-1">
                       <DataTableColumnHeader column={header.column}>

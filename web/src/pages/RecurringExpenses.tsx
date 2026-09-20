@@ -386,7 +386,7 @@ export function RecurringExpenses() {
       ),
       helper.accessor("note", {
         header: t.note,
-        meta: { filterVariant: "text" },
+        meta: { filterVariant: "text", hiddenOnMobile: true },
         cell: (info) => (
           <span className="truncate text-xs text-muted-foreground">
             {info.getValue()}
