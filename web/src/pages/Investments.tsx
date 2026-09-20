@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import {
   createDataTableColumnHelper,
   DataTable,
+  DEFAULT_PAGE_SIZE,
   type DataTableColumnDef,
 } from "@/components/data-table"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
@@ -18,8 +19,51 @@ import { formatCents, formatDate, toCents, toQuantity, today } from "@/lib/money
 import { nameOf, withSaved } from "@/lib/pickers"
 import { t } from "@/lib/strings"
 import type { Category, Expense, Holding, Income, Lists } from "@/types"
+import type { PaginationState, Updater } from "@tanstack/react-table"
 
 type Kind = "buy" | "sell"
+
+// Reads/writes `page` (1-based, for a readable URL) and `pageSize` in the
+// query string via history.replaceState — no navigation library in this app,
+// and a plain replaceState is enough since this never needs to be a real
+// back/forward-stack entry. Root cause of the reset-on-save this fixes is
+// DataTable's own default autoResetPageIndex, turned off there; this is the
+// separate, explicit ask — surviving a hard reload too, not just a refetch.
+function paginationFromURL(): PaginationState {
+  const params = new URLSearchParams(window.location.search)
+  const page = Number(params.get("page"))
+  const pageSize = Number(params.get("pageSize"))
+  return {
+    pageIndex: Number.isInteger(page) && page > 0 ? page - 1 : 0,
+    pageSize: Number.isInteger(pageSize) && pageSize > 0 ? pageSize : DEFAULT_PAGE_SIZE,
+  }
+}
+
+function writePaginationToURL(pagination: PaginationState) {
+  const params = new URLSearchParams(window.location.search)
+  params.set("page", String(pagination.pageIndex + 1))
+  params.set("pageSize", String(pagination.pageSize))
+  window.history.replaceState(
+    null,
+    "",
+    `${window.location.pathname}?${params.toString()}`
+  )
+}
+
+// Sources DataTable's pagination from (and keeps it synced to) the URL query
+// string instead of the component-local state DataTable defaults to — so a
+// reload, not just a same-session save, comes back to the same page.
+function useUrlPagination() {
+  const [pagination, setPaginationState] = useState<PaginationState>(paginationFromURL)
+  const setPagination = useCallback((updater: Updater<PaginationState>) => {
+    setPaginationState((old) => {
+      const next = typeof updater === "function" ? updater(old) : updater
+      writePaginationToURL(next)
+      return next
+    })
+  }, [])
+  return [pagination, setPagination] as const
+}
 
 // What the form holds while typing: a Holding not yet chosen is "", the same
 // bargain an unchosen Category makes on Expenses.tsx.
@@ -59,6 +103,7 @@ type Transaction = {
 // is no buy/sell endpoint of its own, and nothing here is excluded from the
 // ordinary Month/Year/Dashboard/Recent totals (ADR-0009).
 export function Investments() {
+  const [pagination, setPagination] = useUrlPagination()
   const [holdings, setHoldings] = useState<Holding[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [lists, setLists] = useState<Lists>({
@@ -235,6 +280,8 @@ export function Investments() {
             data={records}
             getRowId={(r) => r.key}
             initialSorting={[{ id: "date", desc: true }]}
+            pagination={pagination}
+            onPaginationChange={setPagination}
           />
         </div>
 

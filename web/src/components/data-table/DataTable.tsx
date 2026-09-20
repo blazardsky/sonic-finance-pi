@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import * as React from "react"
-import { RiArrowDownSLine, RiArrowRightSLine } from "@remixicon/react"
+import { RiArrowDownSLine, RiArrowRightSLine, RiFilter3Line } from "@remixicon/react"
 import {
   createColumnHelper,
   useTable,
@@ -11,8 +11,10 @@ import {
   type Row,
   type RowData,
   type SortingState,
+  type Updater,
 } from "@tanstack/react-table"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Table,
@@ -72,7 +74,7 @@ export function createDataTableColumnHelper<TData extends RowData>() {
   return createColumnHelper<DataTableFeatures, TData>()
 }
 
-const DEFAULT_PAGE_SIZE = 10
+export const DEFAULT_PAGE_SIZE = 25
 
 // The shared table every migrated list page renders through: sortable
 // headers, a per-column filter widget for any column carrying
@@ -95,6 +97,8 @@ export function DataTable<TData extends RowData>({
   paginationPosition = "bottom",
   renderSubRow,
   groupBy,
+  pagination: controlledPagination,
+  onPaginationChange: controlledOnPaginationChange,
 }: {
   columns: DataTableColumnDef<TData>[]
   data: TData[]
@@ -102,6 +106,13 @@ export function DataTable<TData extends RowData>({
   pageSize?: number
   getRowId?: (row: TData, index: number) => string
   paginationPosition?: "top" | "bottom" | "both"
+  // Optionally-controlled, same shape as e.g. a Dialog's open/onOpenChange:
+  // omit both and DataTable manages pageIndex/pageSize itself (the default,
+  // and what every page but Investments uses); pass both to source them from
+  // outside instead — Investments does this to keep pagination in the URL,
+  // surviving a reload/back-forward, not just a data refetch.
+  pagination?: PaginationState
+  onPaginationChange?: (updater: Updater<PaginationState>) => void
   // Ticket 02: when set, an expand-toggle column is auto-injected as the
   // first column and an expanded row renders this directly beneath it — the
   // "detail panel" pattern (Clients' Contracts, RecurringExpenses' Details),
@@ -122,11 +133,20 @@ export function DataTable<TData extends RowData>({
 }) {
   const [sorting, setSorting] = React.useState<SortingState>(initialSorting ?? [])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
-  const [pagination, setPagination] = React.useState<PaginationState>({
+  const [internalPagination, setInternalPagination] = React.useState<PaginationState>({
     pageIndex: 0,
     pageSize,
   })
+  const pagination = controlledPagination ?? internalPagination
+  const setPagination = controlledOnPaginationChange ?? setInternalPagination
   const [expanded, setExpanded] = React.useState<ExpandedState>({})
+  // Desktop's inline header filters start hidden, revealed by the toggle
+  // button below — mobile's own Sheet (DataTableMobileFilters) already
+  // starts closed the same way, via its own independent open state; the two
+  // aren't the same boolean (a shared one would pop the Sheet open on
+  // desktop too, since Radix doesn't know about breakpoints), just the same
+  // closed-by-default, click-to-reveal pattern.
+  const [filtersOpen, setFiltersOpen] = React.useState(false)
 
   const tableColumns = React.useMemo(() => {
     // Every filterable column gets its variant's matching filterFn, unless
@@ -168,6 +188,14 @@ export function DataTable<TData extends RowData>({
     getRowId,
     getRowCanExpand: renderSubRow ? () => true : undefined,
     state: { sorting, columnFilters, pagination, expanded },
+    // TanStack's own default resets pageIndex to 0 whenever the row model
+    // recomputes for *any* reason, including `data` simply getting a new
+    // array reference from a reload after an unrelated save — which is what
+    // was silently bouncing every page back to page 1 after every edit.
+    // Filtering still explicitly resets the page itself, below, since a
+    // narrower result set landing on a now-out-of-range page is a real
+    // problem this doesn't otherwise guard against.
+    autoResetPageIndex: false,
     onSortingChange: setSorting,
     // Resets to the first page whenever the active filters change — a filter
     // narrowing the result set to fewer than the current page index's worth
@@ -182,6 +210,13 @@ export function DataTable<TData extends RowData>({
 
   const leafColumnCount = table.getAllLeafColumns().length
   const pager = <DataTablePagination table={table} />
+
+  const filterableColumns = table
+    .getAllLeafColumns()
+    .filter((column) => column.columnDef.meta?.filterVariant)
+  const activeFilterCount = filterableColumns.filter(
+    (column) => column.getFilterValue() !== undefined
+  ).length
 
   const renderDataRow = (row: Row<DataTableFeatures, TData>) => (
     <React.Fragment key={row.id}>
@@ -212,6 +247,24 @@ export function DataTable<TData extends RowData>({
   return (
     <div className="flex flex-col gap-2">
       <DataTableMobileFilters table={table} />
+      {filterableColumns.length > 0 && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="hidden w-fit gap-1.5 sm:inline-flex"
+          aria-pressed={filtersOpen}
+          onClick={() => setFiltersOpen((v) => !v)}
+        >
+          <RiFilter3Line className="size-4" />
+          {t.dataTableFilters}
+          {activeFilterCount > 0 && (
+            <Badge variant="secondary" className="px-1.5">
+              {activeFilterCount}
+            </Badge>
+          )}
+        </Button>
+      )}
       {!groupBy &&
         (paginationPosition === "top" || paginationPosition === "both") &&
         pager}
@@ -232,7 +285,7 @@ export function DataTable<TData extends RowData>({
                       <DataTableColumnHeader column={header.column}>
                         <table.FlexRender header={header} />
                       </DataTableColumnHeader>
-                      {header.column.columnDef.meta?.filterVariant && (
+                      {filtersOpen && header.column.columnDef.meta?.filterVariant && (
                         <div className="hidden sm:block">
                           <DataTableFilterInput column={header.column} />
                         </div>

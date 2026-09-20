@@ -434,6 +434,10 @@ export const t = {
   contractReceived: "Incassato",
   invoiceTarget: "Da fatturare questo mese",
   contractOverdue: "scaduto",
+  // A contract past its end month, fully invoiced and fully paid — de-
+  // emphasised behind this toggle rather than removed from view.
+  showCompletedContracts: (count: number) => `Mostra contratti completati (${count})`,
+  hideCompletedContracts: "Nascondi contratti completati",
   // The Income form's Contract picker, scoped to the selected Client's own
   // Contracts. Unlinked is the default and stays a real, common choice — an
   // Income from a Client with a Contract is not automatically that
