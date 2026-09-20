@@ -37,7 +37,7 @@
 - [x] FIX UI: il combobox non fa cliccare sul selettore del testo consigliato
 
 ## v1.2.5
-- [ ] Aggiungere il tema Alta visibilità / Alto contrasto
+- [x] Aggiungere il tema Alta visibilità / Alto contrasto
 - ~~card su report annuale da spostare su anno~~ **RIFIUTATO**
 
 ## v1.3
@@ -60,5 +60,5 @@
 - [ ] drag & drop di widget nella home con possibilità di salvare più profili di visualizzazione
 - [ ] aggiungere config (con effetto solo locale, indexeddb) per piccole personalizzazioni a livello di tema (es grandezza del font, larghezza contenuti cliccabili, chiusura automatica una volta inserite i vari record)
 
-## Maybe
-- [ ] Aggiungere nelle ricorrenti anche le entrate, per esempio per uno stipendio fisso (in contrasto con la decisione attuale in CONTEXT.md secondo cui le entrate non ricorrono — da ripensare se si procede)
+# Da Valutare
+- [ ] Aggiungere nelle ricorrenti anche le entrate, per esempio per uno stipendio fisso
