@@ -1,7 +1,12 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { RiEditLine, RiEyeLine, RiMoneyEuroCircleLine, RiMoreLine } from "@remixicon/react"
 
 import { Button } from "@/components/ui/button"
+import {
+  createDataTableColumnHelper,
+  DataTable,
+  type DataTableColumnDef,
+} from "@/components/data-table"
 import {
   Dialog,
   DialogContent,
@@ -19,14 +24,6 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { api } from "@/lib/api"
 import { FormSidebar } from "@/components/form-sidebar"
 import { ViewRow } from "@/components/ViewRow"
@@ -161,6 +158,75 @@ export function Holdings() {
     })
   }
 
+  // v1.3.0: DataTable's own sortable headers and per-column filters — same
+  // columns as today (Name, Type, Quantity Owned, Paid, Actions).
+  const columns = useMemo<DataTableColumnDef<Holding>[]>(() => {
+    const helper = createDataTableColumnHelper<Holding>()
+    return [
+      helper.accessor("name", {
+        header: t.holdingName,
+        meta: { filterVariant: "text" },
+      }),
+      helper.accessor((h) => typeLabels[h.type], {
+        id: "type",
+        header: t.holdingType,
+        meta: { filterVariant: "select" },
+        cell: (info) => (
+          <span className="text-xs text-muted-foreground">{info.getValue()}</span>
+        ),
+      }),
+      helper.accessor("quantity_owned", {
+        header: t.quantityOwned,
+        meta: { filterVariant: "range" },
+        cell: (info) => (
+          <div className="text-right tabular-nums">{info.getValue()}</div>
+        ),
+      }),
+      helper.accessor("paid_cents", {
+        header: t.paid,
+        meta: { filterVariant: "range" },
+        cell: ({ row }) => (
+          <div className="text-right tabular-nums">
+            € {formatCents(row.original.paid_cents)}
+          </div>
+        ),
+      }),
+      helper.display({
+        id: "actions",
+        header: t.actions,
+        enableSorting: false,
+        cell: ({ row }) => {
+          const h = row.original
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t.actions}
+                >
+                  <RiMoreLine />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setViewing(h)}>
+                  <RiEyeLine /> {t.viewHolding}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openPricing(h)}>
+                  <RiMoneyEuroCircleLine /> {t.editPriceAndQuantity}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => selectHolding(h)}>
+                  <RiEditLine /> {t.editHolding}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
+        },
+      }),
+    ]
+  }, [])
+
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
       <h1 className="font-medium">{t.holdings}</h1>
@@ -177,58 +243,11 @@ export function Holdings() {
             <p className="text-sm text-muted-foreground">{t.noHoldingsYet}</p>
           )}
 
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t.holdingName}</TableHead>
-                <TableHead>{t.holdingType}</TableHead>
-                <TableHead className="text-right">{t.quantityOwned}</TableHead>
-                <TableHead className="text-right">{t.paid}</TableHead>
-                <TableHead className="w-10">{t.actions}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {holdings?.map((h) => (
-                <TableRow key={h.id}>
-                  <TableCell>{h.name}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {typeLabels[h.type]}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {h.quantity_owned}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    € {formatCents(h.paid_cents)}
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={t.actions}
-                        >
-                          <RiMoreLine />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setViewing(h)}>
-                          <RiEyeLine /> {t.viewHolding}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => openPricing(h)}>
-                          <RiMoneyEuroCircleLine /> {t.editPriceAndQuantity}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => selectHolding(h)}>
-                          <RiEditLine /> {t.editHolding}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <DataTable
+            columns={columns}
+            data={holdings ?? []}
+            getRowId={(h) => String(h.id)}
+          />
         </div>
 
         <FormSidebar

@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   RiDeleteBinLine,
   RiEditLine,
@@ -10,6 +10,11 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  createDataTableColumnHelper,
+  DataTable,
+  type DataTableColumnDef,
+} from "@/components/data-table"
 import {
   Dialog,
   DialogContent,
@@ -28,14 +33,6 @@ import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { api } from "@/lib/api"
 import { ColorDot } from "@/components/ColorDot"
 import { FormSidebar } from "@/components/form-sidebar"
@@ -55,23 +52,18 @@ const appliesLabels: Record<Applies, string> = {
 // Entrate / Entrambi, same order the add form's own radio group already uses.
 const appliesOrder: Applies[] = ["expense", "income", "both"]
 
-// Groups rows by applies_to, then sorts each section by color group
-// (colorSlots' fixed order — the whole point of a color is grouping, so
-// alphabetical-by-hex would defeat it) and finally by name, mirroring the
-// backend's `COLLATE NOCASE` ordering. Display-only: no row action reads
-// from this, only what order rows render in.
-function bySection<T extends { applies_to: Applies; color: ColorSlot; name: string }>(
-  items: T[] | null
-): Record<Applies, T[]> {
-  const sections: Record<Applies, T[]> = { expense: [], income: [], both: [] }
-  for (const item of items ?? []) sections[item.applies_to].push(item)
-  for (const list of Object.values(sections)) {
-    list.sort((a, b) => {
-      const byColor = colorSlots.indexOf(a.color) - colorSlots.indexOf(b.color)
-      return byColor !== 0 ? byColor : a.name.localeCompare(b.name, "it", { sensitivity: "base" })
-    })
-  }
-  return sections
+// The default within-section order (colorSlots' fixed order — the whole
+// point of a color is grouping, so alphabetical-by-hex would defeat it —
+// then name, mirroring the backend's `COLLATE NOCASE` ordering), now given
+// to DataTable's Name column as a custom sortFn rather than a
+// pre-sorted, pre-partitioned array: DataTable's own groupBy (ticket 03)
+// partitions by applies_to itself, sorting first.
+function byColorThenName<T extends { color: ColorSlot; name: string }>(
+  a: T,
+  b: T
+): number {
+  const byColor = colorSlots.indexOf(a.color) - colorSlots.indexOf(b.color)
+  return byColor !== 0 ? byColor : a.name.localeCompare(b.name, "it", { sensitivity: "base" })
 }
 
 const colorLabels: Record<ColorSlot, string> = {
@@ -344,12 +336,226 @@ export function Categories() {
     if (ok) setReplacingSub(null)
   }
 
-  // Ticket 06: the two tables below render these grouped/sorted sections
-  // instead of the raw `categories`/`subcategories` arrays — nothing else
-  // in this file reads from them, so every row action keeps working exactly
-  // as before, just reached through a differently-ordered list.
-  const categorySections = bySection(categories)
-  const subcategorySections = bySection(subcategories)
+  // v1.3.0: DataTable's own groupBy (ticket 03) replaces bySection — same
+  // Spese/Entrate/Entrambi partitioning, same within-section order
+  // (byColorThenName, given to the Name column as a sortingFn and as the
+  // default via initialSorting) — Applies To no longer needs its own column
+  // filter since it's now the grouping key itself.
+  const categoryColumns = useMemo<DataTableColumnDef<Category>[]>(() => {
+    const helper = createDataTableColumnHelper<Category>()
+    return [
+      helper.accessor("name", {
+        header: t.categoryName,
+        meta: { filterVariant: "text" },
+        sortFn: (rowA, rowB) => byColorThenName(rowA.original, rowB.original),
+        cell: ({ row }) => {
+          const c = row.original
+          return editing === c.id ? (
+            <Input
+              autoFocus
+              defaultValue={c.name}
+              className="h-9"
+              onBlur={(e) => void rename(c, e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur()
+                if (e.key === "Escape") setEditing(null)
+              }}
+            />
+          ) : (
+            <span
+              className={cn(
+                "inline-flex items-center gap-2",
+                c.hidden && "text-muted-foreground"
+              )}
+            >
+              <ColorDot color={c.color} />
+              {c.name}
+              {c.hidden && ` · ${t.hidden}`}
+            </span>
+          )
+        },
+      }),
+      // Kept as its own display column for visual parity with today's table
+      // (which shows it per-row, on top of the section header) even though
+      // it's no longer filterable on its own — the grouping key already
+      // narrows by it.
+      helper.accessor("applies_to", {
+        header: t.appliesTo,
+        enableSorting: false,
+        cell: (info) => (
+          <span className="text-xs text-muted-foreground">
+            {appliesLabels[info.getValue() as Applies]}
+          </span>
+        ),
+      }),
+      helper.display({
+        id: "actions",
+        header: t.actions,
+        enableSorting: false,
+        cell: ({ row }) => {
+          const c = row.original
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t.actions}
+                >
+                  <RiMoreLine />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                onCloseAutoFocus={(e) => e.preventDefault()}
+              >
+                <DropdownMenuItem
+                  disabled={c.base}
+                  onClick={() => setTimeout(() => setEditing(c.id), 0)}
+                >
+                  <RiEditLine /> {t.rename}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() =>
+                    void write(`/api/categories/${c.id}`, {
+                      method: "PATCH",
+                      body: JSON.stringify({ hidden: !c.hidden }),
+                    })
+                  }
+                >
+                  {c.hidden ? <RiEyeLine /> : <RiEyeOffLine />}{" "}
+                  {c.hidden ? t.unhide : t.hide}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setTimeout(() => setColoringCategory(c), 0)}
+                >
+                  <RiPaletteLine /> {t.changeColor}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  variant="destructive"
+                  disabled={c.base}
+                  onClick={() => {
+                    if (confirm(t.confirmDeleteCategory(c.name)))
+                      void deleteCategory(c)
+                  }}
+                >
+                  <RiDeleteBinLine /> {t.delete}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
+        },
+      }),
+    ]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing])
+
+  const subcategoryColumns = useMemo<DataTableColumnDef<Subcategory>[]>(() => {
+    const helper = createDataTableColumnHelper<Subcategory>()
+    return [
+      helper.accessor("name", {
+        header: t.categoryName,
+        meta: { filterVariant: "text" },
+        sortFn: (rowA, rowB) => byColorThenName(rowA.original, rowB.original),
+        cell: ({ row }) => {
+          const s = row.original
+          return editingSub === s.id ? (
+            <Input
+              autoFocus
+              defaultValue={s.name}
+              className="h-9"
+              onBlur={(e) => void renameSub(s, e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur()
+                if (e.key === "Escape") setEditingSub(null)
+              }}
+            />
+          ) : (
+            <span
+              className={cn(
+                "inline-flex items-center gap-2",
+                s.hidden && "text-muted-foreground"
+              )}
+            >
+              <ColorDot color={s.color} />
+              {s.name}
+              {s.hidden && ` · ${t.hidden}`}
+            </span>
+          )
+        },
+      }),
+      // Same visual-parity reasoning as the Categories table's own
+      // applies_to column above.
+      helper.accessor("applies_to", {
+        header: t.appliesTo,
+        enableSorting: false,
+        cell: (info) => (
+          <span className="text-xs text-muted-foreground">
+            {appliesLabels[info.getValue() as Applies]}
+          </span>
+        ),
+      }),
+      helper.display({
+        id: "actions",
+        header: t.actions,
+        enableSorting: false,
+        cell: ({ row }) => {
+          const s = row.original
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t.actions}
+                >
+                  <RiMoreLine />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                onCloseAutoFocus={(e) => e.preventDefault()}
+              >
+                <DropdownMenuItem
+                  onClick={() => setTimeout(() => setEditingSub(s.id), 0)}
+                >
+                  <RiEditLine /> {t.rename}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() =>
+                    void write(`/api/subcategories/${s.id}`, {
+                      method: "PATCH",
+                      body: JSON.stringify({ hidden: !s.hidden }),
+                    })
+                  }
+                >
+                  {s.hidden ? <RiEyeLine /> : <RiEyeOffLine />}{" "}
+                  {s.hidden ? t.unhide : t.hide}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setTimeout(() => setColoringSubcategory(s), 0)}
+                >
+                  <RiPaletteLine /> {t.changeColor}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => {
+                    if (confirm(t.confirmDeleteSubcategory(s.name)))
+                      void deleteSubcategory(s)
+                  }}
+                >
+                  <RiDeleteBinLine /> {t.delete}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
+        },
+      }),
+    ]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingSub])
 
   const subReplacementOptions = (subcategories ?? []).filter(
     (s) =>
@@ -371,237 +577,30 @@ export function Categories() {
             </p>
           )}
 
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t.categoryName}</TableHead>
-                <TableHead>{t.appliesTo}</TableHead>
-                <TableHead className="w-10">{t.actions}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {appliesOrder.map((section) =>
-                categorySections[section].length === 0 ? null : (
-                <Fragment key={section}>
-                  <TableRow className="hover:bg-transparent">
-                    <TableCell
-                      colSpan={3}
-                      className="bg-muted/50 text-xs font-medium text-muted-foreground"
-                    >
-                      {appliesLabels[section]}
-                    </TableCell>
-                  </TableRow>
-                  {categorySections[section].map((c) => (
-                <TableRow key={c.id}>
-                  <TableCell className="whitespace-normal">
-                    {editing === c.id ? (
-                      <Input
-                        autoFocus
-                        defaultValue={c.name}
-                        className="h-9"
-                        onBlur={(e) => void rename(c, e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") e.currentTarget.blur()
-                          if (e.key === "Escape") setEditing(null)
-                        }}
-                      />
-                    ) : (
-                      <span
-                        className={cn(
-                          "inline-flex items-center gap-2",
-                          c.hidden && "text-muted-foreground"
-                        )}
-                      >
-                        <ColorDot color={c.color} />
-                        {c.name}
-                        {c.hidden && ` · ${t.hidden}`}
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {appliesLabels[c.applies_to]}
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={t.actions}
-                        >
-                          <RiMoreLine />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        align="end"
-                        // Without this, Radix returns focus to the "..."
-                        // trigger once the menu closes — after Rinomina has
-                        // already rendered the name cell's autoFocus input,
-                        // stealing focus right back off it.
-                        onCloseAutoFocus={(e) => e.preventDefault()}
-                      >
-                        {/* The server refuses these two on a Base category;
-                            disabling them here is so the household is not
-                            offered the refusal. */}
-                        <DropdownMenuItem
-                          disabled={c.base}
-                          // Deferred a tick past the click: Radix is still
-                          // tearing down the menu's own focus handling at
-                          // this point, and mounting the autoFocus input
-                          // immediately loses the race against it.
-                          onClick={() => setTimeout(() => setEditing(c.id), 0)}
-                        >
-                          <RiEditLine /> {t.rename}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() =>
-                            void write(`/api/categories/${c.id}`, {
-                              method: "PATCH",
-                              body: JSON.stringify({ hidden: !c.hidden }),
-                            })
-                          }
-                        >
-                          {c.hidden ? (
-                            <RiEyeLine />
-                          ) : (
-                            <RiEyeOffLine />
-                          )}{" "}
-                          {c.hidden ? t.unhide : t.hide}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => setTimeout(() => setColoringCategory(c), 0)}
-                        >
-                          <RiPaletteLine /> {t.changeColor}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          variant="destructive"
-                          disabled={c.base}
-                          onClick={() => {
-                            if (confirm(t.confirmDeleteCategory(c.name)))
-                              void deleteCategory(c)
-                          }}
-                        >
-                          <RiDeleteBinLine /> {t.delete}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-                  ))}
-                </Fragment>
-                )
-              )}
-            </TableBody>
-          </Table>
+          <DataTable
+            columns={categoryColumns}
+            data={categories ?? []}
+            getRowId={(c) => String(c.id)}
+            initialSorting={[{ id: "name", desc: false }]}
+            groupBy={{
+              key: "applies_to",
+              order: appliesOrder,
+              label: (value) => appliesLabels[value as Applies],
+            }}
+          />
 
           <h2 className="font-medium">{t.subcategories}</h2>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t.categoryName}</TableHead>
-                <TableHead>{t.appliesTo}</TableHead>
-                <TableHead className="w-10">{t.actions}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {appliesOrder.map((section) =>
-                subcategorySections[section].length === 0 ? null : (
-                <Fragment key={section}>
-                  <TableRow className="hover:bg-transparent">
-                    <TableCell
-                      colSpan={3}
-                      className="bg-muted/50 text-xs font-medium text-muted-foreground"
-                    >
-                      {appliesLabels[section]}
-                    </TableCell>
-                  </TableRow>
-                  {subcategorySections[section].map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell className="whitespace-normal">
-                    {editingSub === s.id ? (
-                      <Input
-                        autoFocus
-                        defaultValue={s.name}
-                        className="h-9"
-                        onBlur={(e) => void renameSub(s, e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") e.currentTarget.blur()
-                          if (e.key === "Escape") setEditingSub(null)
-                        }}
-                      />
-                    ) : (
-                      <span
-                        className={cn(
-                          "inline-flex items-center gap-2",
-                          s.hidden && "text-muted-foreground"
-                        )}
-                      >
-                        <ColorDot color={s.color} />
-                        {s.name}
-                        {s.hidden && ` · ${t.hidden}`}
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {appliesLabels[s.applies_to]}
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={t.actions}
-                        >
-                          <RiMoreLine />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        align="end"
-                        onCloseAutoFocus={(e) => e.preventDefault()}
-                      >
-                        <DropdownMenuItem
-                          onClick={() => setTimeout(() => setEditingSub(s.id), 0)}
-                        >
-                          <RiEditLine /> {t.rename}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() =>
-                            void write(`/api/subcategories/${s.id}`, {
-                              method: "PATCH",
-                              body: JSON.stringify({ hidden: !s.hidden }),
-                            })
-                          }
-                        >
-                          {s.hidden ? <RiEyeLine /> : <RiEyeOffLine />}{" "}
-                          {s.hidden ? t.unhide : t.hide}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => setTimeout(() => setColoringSubcategory(s), 0)}
-                        >
-                          <RiPaletteLine /> {t.changeColor}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => {
-                            if (confirm(t.confirmDeleteSubcategory(s.name)))
-                              void deleteSubcategory(s)
-                          }}
-                        >
-                          <RiDeleteBinLine /> {t.delete}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-                  ))}
-                </Fragment>
-                )
-              )}
-            </TableBody>
-          </Table>
+          <DataTable
+            columns={subcategoryColumns}
+            data={subcategories ?? []}
+            getRowId={(s) => String(s.id)}
+            initialSorting={[{ id: "name", desc: false }]}
+            groupBy={{
+              key: "applies_to",
+              order: appliesOrder,
+              label: (value) => appliesLabels[value as Applies],
+            }}
+          />
         </div>
 
         <FormSidebar

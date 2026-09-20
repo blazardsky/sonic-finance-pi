@@ -1,8 +1,6 @@
-import { Fragment, useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   RiAddLine,
-  RiArrowDownSLine,
-  RiArrowUpSLine,
   RiDeleteBinLine,
   RiEditLine,
   RiEyeLine,
@@ -11,6 +9,11 @@ import {
 } from "@remixicon/react"
 
 import { Button } from "@/components/ui/button"
+import {
+  createDataTableColumnHelper,
+  DataTable,
+  type DataTableColumnDef,
+} from "@/components/data-table"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,14 +24,6 @@ import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useSidebar } from "@/components/ui/sidebar"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { api, apiJSON } from "@/lib/api"
 import { FormSidebar } from "@/components/form-sidebar"
 import { toast } from "@/lib/toast"
@@ -85,11 +80,10 @@ export function Clients() {
   })
   const [contractError, setContractError] = useState("")
 
-  // Contracts, per Client — loaded lazily the first time a row is expanded
-  // rather than for every Client up front, since most reads of this screen
-  // care about nothing past the name and the total.
-  const [expanded, setExpanded] = useState<number | null>(null)
-  const [contracts, setContracts] = useState<Contract[]>([])
+  // Bumped after any Contract save so the currently-expanded row's own
+  // ClientContracts (below) remounts and refetches — it otherwise only
+  // fetches once, on first expand.
+  const [contractsVersion, setContractsVersion] = useState(0)
 
   function resetForm() {
     setEditing(null)
@@ -225,23 +219,6 @@ export function Clients() {
     }
   }
 
-  // Shared by expanding a row and saving a new Contract into it — both end
-  // with the same "load what this Client has now" round trip.
-  const refreshContracts = (clientId: number) =>
-    apiJSON<Contract[]>(`/api/clients/${clientId}/contracts`).then(setContracts)
-
-  // Expanding a row loads that Client's Contracts; collapsing it (or
-  // expanding a different one) just hides them again — nothing here is worth
-  // caching across two Clients' rows.
-  async function toggleExpanded(clientId: number) {
-    if (expanded === clientId) {
-      setExpanded(null)
-      return
-    }
-    setExpanded(clientId)
-    await refreshContracts(clientId)
-  }
-
   // Returns whether the Contract was saved, so the sidebar (which alone knows
   // about the mobile Sheet) can close itself only once there is something to
   // close for. editingContractId picks POST vs PATCH — the same one draft
@@ -280,14 +257,114 @@ export function Clients() {
     setContractFor(null)
     setEditingContractId(null)
     setSidebarOpen(false)
-    // `contracts` backs whichever row is expanded in the table, which may be
-    // a different Client than the one this form is for — only refresh it
-    // when the two agree.
-    if (expanded === clientId) await refreshContracts(clientId)
+    // Bumps the currently-expanded row's ClientContracts remount key —
+    // harmless if the saved Contract's Client isn't the one expanded.
+    setContractsVersion((v) => v + 1)
     return true
   }
 
   const contractForClient = clients?.find((c) => c.id === contractFor) ?? null
+
+  // v1.3.0: DataTable's own sortable headers, per-column filters (Name,
+  // Default Category, Total Earned — the table's only columns today; the
+  // former "Contratti" toggle column is replaced by DataTable's own
+  // auto-injected expand toggle) and row expansion for Contracts. Default
+  // Category filters/sorts by name via an accessorFn, not the raw id.
+  // `editing`/`contractFor`'s dimmed row is dropped, same reasoning
+  // Expenses.tsx's own migration used.
+  const columns = useMemo<DataTableColumnDef<Client>[]>(() => {
+    const helper = createDataTableColumnHelper<Client>()
+    return [
+      helper.accessor("name", {
+        header: t.clientName,
+        meta: { filterVariant: "text" },
+        cell: ({ row }) => (
+          <span className={row.original.hidden ? "text-muted-foreground" : ""}>
+            {row.original.name}
+            {row.original.hidden && ` · ${t.hiddenClient}`}
+          </span>
+        ),
+      }),
+      helper.accessor(
+        (c) =>
+          categories.find((cat) => cat.id === c.default_category_id)?.name ??
+          t.notSet,
+        {
+          id: "default_category",
+          header: t.defaultCategory,
+          meta: { filterVariant: "select" },
+        }
+      ),
+      helper.accessor("total_earned_cents", {
+        header: t.totalEarned,
+        meta: { filterVariant: "range" },
+        cell: ({ row }) => (
+          <div className="text-right tabular-nums">
+            € {formatCents(row.original.total_earned_cents)}
+          </div>
+        ),
+      }),
+      helper.display({
+        id: "actions",
+        header: t.actions,
+        enableSorting: false,
+        cell: ({ row }) => {
+          const c = row.original
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t.actions}
+                >
+                  <RiMoreLine />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => selectClient(c)}>
+                  <RiEditLine /> {t.editClient}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => startContract(c)}>
+                  <RiAddLine /> {t.addContract}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() =>
+                    void write(`/api/clients/${c.id}`, {
+                      method: "PATCH",
+                      body: JSON.stringify({ hidden: !c.hidden }),
+                    })
+                  }
+                >
+                  {c.hidden ? <RiEyeLine /> : <RiEyeOffLine />}{" "}
+                  {c.hidden ? t.unhide : t.hide}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => {
+                    if (confirm(t.confirmDeleteClient(c.name)))
+                      void write(
+                        `/api/clients/${c.id}`,
+                        { method: "DELETE" },
+                        t.clientInUse
+                      ).then((ok) => {
+                        if (!ok) return
+                        if (editing === c.id) resetForm()
+                        if (contractFor === c.id) setContractFor(null)
+                      })
+                  }}
+                >
+                  <RiDeleteBinLine /> {t.delete}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
+        },
+      }),
+    ]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories, editing, contractFor])
 
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
@@ -305,170 +382,18 @@ export function Clients() {
             <p className="text-sm text-muted-foreground">{t.noClientsYet}</p>
           )}
 
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t.clientName}</TableHead>
-                <TableHead>{t.defaultCategory}</TableHead>
-                <TableHead className="text-right">{t.totalEarned}</TableHead>
-                <TableHead>{t.contracts}</TableHead>
-                <TableHead className="w-10">{t.actions}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {clients?.map((c) => (
-                <Fragment key={c.id}>
-                  <TableRow
-                    className={
-                      editing === c.id || contractFor === c.id
-                        ? "opacity-50"
-                        : ""
-                    }
-                  >
-                    <TableCell className="whitespace-normal">
-                      <span className={c.hidden ? "text-muted-foreground" : ""}>
-                        {c.name}
-                        {c.hidden && ` · ${t.hiddenClient}`}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      {categories.find((cat) => cat.id === c.default_category_id)
-                        ?.name ?? t.notSet}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      € {formatCents(c.total_earned_cents)}
-                    </TableCell>
-                    <TableCell>
-                      {/* View-only: the Client's own Contracts, read here and
-                          added from the sidebar instead. */}
-                      <Button
-                        size="xs"
-                        variant={expanded === c.id ? "secondary" : "ghost"}
-                        onClick={() => void toggleExpanded(c.id)}
-                      >
-                        {t.contracts}
-                        {expanded === c.id ? (
-                          <RiArrowUpSLine />
-                        ) : (
-                          <RiArrowDownSLine />
-                        )}
-                      </Button>
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={t.actions}
-                          >
-                            <RiMoreLine />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => selectClient(c)}>
-                            <RiEditLine /> {t.editClient}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => startContract(c)}>
-                            <RiAddLine /> {t.addContract}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() =>
-                              void write(`/api/clients/${c.id}`, {
-                                method: "PATCH",
-                                body: JSON.stringify({ hidden: !c.hidden }),
-                              })
-                            }
-                          >
-                            {c.hidden ? <RiEyeLine /> : <RiEyeOffLine />}{" "}
-                            {c.hidden ? t.unhide : t.hide}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={() => {
-                              if (confirm(t.confirmDeleteClient(c.name)))
-                                void write(
-                                  `/api/clients/${c.id}`,
-                                  { method: "DELETE" },
-                                  t.clientInUse
-                                ).then((ok) => {
-                                  if (!ok) return
-                                  if (editing === c.id) resetForm()
-                                  if (contractFor === c.id) setContractFor(null)
-                                })
-                            }}
-                          >
-                            <RiDeleteBinLine /> {t.delete}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                  {/* The expanded Client's Contracts: a nested row right under its
-                    own Client rather than a second Table, so the list itself is
-                    unchanged when nothing is expanded. */}
-                  {expanded === c.id && (
-                    <TableRow>
-                      <TableCell colSpan={5} className="bg-muted/30">
-                        <div className="flex flex-col gap-3 py-2">
-                          {contracts.length === 0 && (
-                            <p className="text-sm text-muted-foreground">
-                              {t.noContractsYet}
-                            </p>
-                          )}
-                          {contracts.map((ct) => (
-                            <div
-                              key={ct.id}
-                              className="flex flex-col gap-1 rounded-lg border p-2 text-sm"
-                            >
-                              <div className="flex items-center justify-between gap-2 font-medium">
-                                <span>
-                                  {formatMonth(ct.start_month)} –{" "}
-                                  {formatMonth(ct.end_month)}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <span className="tabular-nums">
-                                    € {formatCents(ct.total_cents)}
-                                  </span>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    aria-label={t.editContract}
-                                    onClick={() => startEditContract(c.id, ct)}
-                                  >
-                                    <RiEditLine />
-                                  </Button>
-                                </span>
-                              </div>
-                              <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
-                                <span>
-                                  {t.expectedSoFar}: €{" "}
-                                  {formatCents(ct.expected_so_far_cents)}
-                                </span>
-                                <span>
-                                  {t.contractReceived}: €{" "}
-                                  {formatCents(ct.received_cents)}
-                                </span>
-                                <span
-                                  className={ct.overdue ? "text-destructive" : ""}
-                                >
-                                  {t.invoiceTarget}: €{" "}
-                                  {formatCents(ct.invoice_target_this_month_cents)}
-                                  {ct.overdue && ` (${t.contractOverdue})`}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </Fragment>
-              ))}
-            </TableBody>
-          </Table>
+          <DataTable
+            columns={columns}
+            data={clients ?? []}
+            getRowId={(c) => String(c.id)}
+            renderSubRow={(row) => (
+              <ClientContracts
+                key={contractsVersion}
+                clientId={row.original.id}
+                onEditContract={(ct) => startEditContract(row.original.id, ct)}
+              />
+            )}
+          />
         </div>
 
         <FormSidebar
@@ -684,5 +609,80 @@ function ContractForm({
         </p>
       )}
     </form>
+  )
+}
+
+// A Client's Contracts, fetched on mount rather than passed down — DataTable
+// only mounts a `renderSubRow` when its row is actually expanded (and
+// unmounts it on collapse), which is what gives this the same "fetch lazily,
+// only for the row actually opened" behavior the previous hand-rolled
+// expand toggle had. The parent bumps ClientContracts' `key` after any
+// Contract save so this remounts (and refetches) instead of going stale.
+function ClientContracts({
+  clientId,
+  onEditContract,
+}: {
+  clientId: number
+  onEditContract: (contract: Contract) => void
+}) {
+  const [contracts, setContracts] = useState<Contract[] | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    apiJSON<Contract[]>(`/api/clients/${clientId}/contracts`).then((cs) => {
+      if (!cancelled) setContracts(cs)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [clientId])
+
+  if (contracts === null) return null
+
+  return (
+    <div className="flex flex-col gap-3 py-2">
+      {contracts.length === 0 && (
+        <p className="text-sm text-muted-foreground">{t.noContractsYet}</p>
+      )}
+      {contracts.map((ct) => (
+        <div
+          key={ct.id}
+          className="flex flex-col gap-1 rounded-lg border p-2 text-sm"
+        >
+          <div className="flex items-center justify-between gap-2 font-medium">
+            <span>
+              {formatMonth(ct.start_month)} – {formatMonth(ct.end_month)}
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="tabular-nums">
+                € {formatCents(ct.total_cents)}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t.editContract}
+                onClick={() => onEditContract(ct)}
+              >
+                <RiEditLine />
+              </Button>
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
+            <span>
+              {t.expectedSoFar}: € {formatCents(ct.expected_so_far_cents)}
+            </span>
+            <span>
+              {t.contractReceived}: € {formatCents(ct.received_cents)}
+            </span>
+            <span className={ct.overdue ? "text-destructive" : ""}>
+              {t.invoiceTarget}: €{" "}
+              {formatCents(ct.invoice_target_this_month_cents)}
+              {ct.overdue && ` (${t.contractOverdue})`}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }

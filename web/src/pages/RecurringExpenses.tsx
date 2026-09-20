@@ -1,7 +1,5 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
-  RiArrowDownSLine,
-  RiArrowUpSLine,
   RiDeleteBinLine,
   RiEditLine,
   RiMoreLine,
@@ -13,6 +11,11 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  createDataTableColumnHelper,
+  DataTable,
+  type DataTableColumnDef,
+} from "@/components/data-table"
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -22,14 +25,6 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/lib/api"
 import { ColorDot } from "@/components/ColorDot"
@@ -147,17 +142,6 @@ export function RecurringExpenses() {
   const [editing, setEditing] = useState<number | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  // Which rows have their Dettagli disclosure open — Negozio, Pagato da and
-  // Metodo di pagamento have no column of their own; Status and Note do, and
-  // are never in here.
-  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
-  const toggleExpanded = (id: number) =>
-    setExpandedIds((s) => {
-      const next = new Set(s)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
@@ -348,6 +332,123 @@ export function RecurringExpenses() {
   const isPAC = (r: Recurring) =>
     r.holding_id !== null && categoryIsInvestments(r.category_id)
 
+  // v1.3.0: DataTable's own sortable headers, per-column filters (Category,
+  // Status, Note, Amount — the table's only columns today) and row
+  // expansion for Details. The old manual "Dettagli" column is replaced by
+  // DataTable's own auto-injected expand toggle; Note keeps its
+  // `hidden md:table-cell` treatment and is still repeated inside Details
+  // for the same mobile-fallback reason it already was. Status's filter
+  // facets on a fixed "ongoing/ended · PAC/expense" combination rather than
+  // the cell's own dynamic "terminata a <month>" text, so ended rows don't
+  // fragment into one facet value per end month.
+  const columns = useMemo<DataTableColumnDef<Recurring>[]>(() => {
+    const helper = createDataTableColumnHelper<Recurring>()
+    return [
+      helper.accessor((r) => nameOf(categories, r.category_id), {
+        id: "category",
+        header: t.category,
+        meta: { filterVariant: "select" },
+        cell: ({ row }) => (
+          <span className={running(row.original) ? "" : "text-muted-foreground"}>
+            {nameOf(categories, row.original.category_id)}
+          </span>
+        ),
+      }),
+      helper.accessor(
+        (r) =>
+          `${running(r) ? t.ongoing : t.endedGeneric} · ${
+            isPAC(r) ? t.pacBadge : t.expenseBadge
+          }`,
+        {
+          id: "status",
+          header: t.status,
+          meta: { filterVariant: "select" },
+          cell: ({ row }) => {
+            const r = row.original
+            return (
+              <div className="flex flex-wrap gap-1">
+                <Badge variant={running(r) ? "secondary" : "outline"}>
+                  {running(r) ? t.ongoing : t.endedIn(formatMonth(r.end_month))}
+                </Badge>
+                <Badge
+                  className={
+                    isPAC(r)
+                      ? "bg-green-500/10 text-green-600 dark:text-green-400"
+                      : "bg-orange-500/10 text-orange-600 dark:text-orange-400"
+                  }
+                >
+                  {isPAC(r) ? t.pacBadge : t.expenseBadge}
+                </Badge>
+              </div>
+            )
+          },
+        }
+      ),
+      helper.accessor("note", {
+        header: t.note,
+        meta: { filterVariant: "text", hiddenOnMobile: true },
+        cell: (info) => (
+          <span className="truncate text-xs text-muted-foreground">
+            {info.getValue()}
+          </span>
+        ),
+      }),
+      helper.accessor("amount_cents", {
+        header: t.amount,
+        meta: { filterVariant: "range" },
+        cell: ({ row }) => (
+          <div className="text-right font-medium tabular-nums">
+            € {formatCents(row.original.amount_cents)}
+          </div>
+        ),
+      }),
+      helper.display({
+        id: "actions",
+        header: t.actions,
+        enableSorting: false,
+        cell: ({ row }) => {
+          const r = row.original
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t.actions}
+                >
+                  <RiMoreLine />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => selectRecurring(r)}>
+                  <RiEditLine /> {t.editRecurring}
+                </DropdownMenuItem>
+                {running(r) && (
+                  <>
+                    <DropdownMenuItem onClick={() => void end(r)}>
+                      <RiStopCircleLine /> {t.end}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => void replace(r)}>
+                      <RiRefreshLine /> {t.newAmount}
+                    </DropdownMenuItem>
+                  </>
+                )}
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => void removeRecurring(r)}
+                >
+                  <RiDeleteBinLine /> {t.delete}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
+        },
+      }),
+    ]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories])
+
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
       <div className="flex flex-1 flex-wrap gap-6">
@@ -368,138 +469,41 @@ export function RecurringExpenses() {
             <p className="text-sm text-muted-foreground">{t.noRecurringYet}</p>
           )}
 
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t.category}</TableHead>
-                <TableHead>{t.status}</TableHead>
-                <TableHead className="hidden md:table-cell">
-                  {t.note}
-                </TableHead>
-                <TableHead>{t.details}</TableHead>
-                <TableHead className="text-right">{t.amount}</TableHead>
-                <TableHead className="w-10">{t.actions}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {recurring?.map((r) => (
-                <TableRow
-                  key={r.id}
-                  className={editing === r.id ? "opacity-50" : ""}
-                >
-                  <TableCell
-                    className={running(r) ? "" : "text-muted-foreground"}
-                  >
-                    {nameOf(categories, r.category_id)}
-                  </TableCell>
-                  <TableCell>
-                    {/* The window, the day and the rest move to Dettagli
-                        below — this is just running or not. */}
-                    <div className="flex flex-wrap gap-1">
-                      <Badge variant={running(r) ? "secondary" : "outline"}>
-                        {running(r) ? t.ongoing : t.endedIn(formatMonth(r.end_month))}
-                      </Badge>
-                      <Badge
-                        className={
-                          isPAC(r)
-                            ? "bg-green-500/10 text-green-600 dark:text-green-400"
-                            : "bg-orange-500/10 text-orange-600 dark:text-orange-400"
-                        }
-                      >
-                        {isPAC(r) ? t.pacBadge : t.expenseBadge}
-                      </Badge>
-                    </div>
-                  </TableCell>
-                  <TableCell className="hidden truncate text-xs text-muted-foreground md:table-cell">
-                    {r.note}
-                  </TableCell>
-                  <TableCell className="whitespace-normal">
-                    <div className="flex w-48 flex-col gap-0.5">
-                      <button
-                        type="button"
-                        className="flex items-center gap-1 text-xs text-muted-foreground"
-                        onClick={() => toggleExpanded(r.id)}
-                        aria-expanded={expandedIds.has(r.id)}
-                        aria-label={t.details}
-                      >
-                        {expandedIds.has(r.id) ? (
-                          <RiArrowUpSLine className="size-3.5" />
-                        ) : (
-                          <RiArrowDownSLine className="size-3.5" />
-                        )}
-                        {t.details}
-                      </button>
-                      {expandedIds.has(r.id) && (
-                        <div className="flex flex-col gap-0.5">
-                          <span className="truncate text-xs text-muted-foreground">
-                            {t.dayOfMonth}: {r.day_of_month} · {windowOf(r)}
-                          </span>
-                          {r.store && (
-                            <span className="truncate text-xs text-muted-foreground">
-                              {t.store}: {r.store}
-                            </span>
-                          )}
-                          {r.payer && (
-                            <span className="truncate text-xs text-muted-foreground">
-                              {t.payer}: {r.payer}
-                            </span>
-                          )}
-                          {r.payment_method && (
-                            <span className="truncate text-xs text-muted-foreground">
-                              {t.paymentMethod}: {r.payment_method}
-                            </span>
-                          )}
-                          {r.note && (
-                            <span className="truncate text-xs text-muted-foreground md:hidden">
-                              {t.note}: {r.note}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">
-                    € {formatCents(r.amount_cents)}
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={t.actions}
-                        >
-                          <RiMoreLine />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => selectRecurring(r)}>
-                          <RiEditLine /> {t.editRecurring}
-                        </DropdownMenuItem>
-                        {running(r) && (
-                          <>
-                            <DropdownMenuItem onClick={() => void end(r)}>
-                              <RiStopCircleLine /> {t.end}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => void replace(r)}>
-                              <RiRefreshLine /> {t.newAmount}
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => void removeRecurring(r)}
-                        >
-                          <RiDeleteBinLine /> {t.delete}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <DataTable
+            columns={columns}
+            data={recurring ?? []}
+            getRowId={(r) => String(r.id)}
+            renderSubRow={(row) => {
+              const r = row.original
+              return (
+                <div className="flex flex-col gap-0.5">
+                  <span className="truncate text-xs text-muted-foreground">
+                    {t.dayOfMonth}: {r.day_of_month} · {windowOf(r)}
+                  </span>
+                  {r.store && (
+                    <span className="truncate text-xs text-muted-foreground">
+                      {t.store}: {r.store}
+                    </span>
+                  )}
+                  {r.payer && (
+                    <span className="truncate text-xs text-muted-foreground">
+                      {t.payer}: {r.payer}
+                    </span>
+                  )}
+                  {r.payment_method && (
+                    <span className="truncate text-xs text-muted-foreground">
+                      {t.paymentMethod}: {r.payment_method}
+                    </span>
+                  )}
+                  {r.note && (
+                    <span className="truncate text-xs text-muted-foreground md:hidden">
+                      {t.note}: {r.note}
+                    </span>
+                  )}
+                </div>
+              )
+            }}
+          />
         </div>
 
         <FormSidebar
