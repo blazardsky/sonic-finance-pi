@@ -218,6 +218,33 @@ export function DataTable<TData extends RowData>({
     (column) => column.getFilterValue() !== undefined
   ).length
 
+  const filterButton = filterableColumns.length > 0 && (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="hidden w-fit gap-1.5 sm:inline-flex"
+      aria-pressed={filtersOpen}
+      onClick={() => setFiltersOpen((v) => !v)}
+    >
+      <RiFilter3Line className="size-4" />
+      {t.dataTableFilters}
+      {activeFilterCount > 0 && (
+        <Badge variant="secondary" className="px-1.5">
+          {activeFilterCount}
+        </Badge>
+      )}
+    </Button>
+  )
+  // Filtri sits next to the prev/next buttons, the whole row pushed to the
+  // right — not a separate row of its own above the table.
+  const pagerRow = (
+    <div className="flex items-center justify-end gap-2">
+      {filterButton}
+      {pager}
+    </div>
+  )
+
   const renderDataRow = (row: Row<DataTableFeatures, TData>) => (
     <React.Fragment key={row.id}>
       <TableRow>
@@ -247,27 +274,12 @@ export function DataTable<TData extends RowData>({
   return (
     <div className="flex flex-col gap-2">
       <DataTableMobileFilters table={table} />
-      {filterableColumns.length > 0 && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="hidden w-fit gap-1.5 sm:inline-flex"
-          aria-pressed={filtersOpen}
-          onClick={() => setFiltersOpen((v) => !v)}
-        >
-          <RiFilter3Line className="size-4" />
-          {t.dataTableFilters}
-          {activeFilterCount > 0 && (
-            <Badge variant="secondary" className="px-1.5">
-              {activeFilterCount}
-            </Badge>
-          )}
-        </Button>
+      {groupBy && filterButton && (
+        <div className="flex justify-end">{filterButton}</div>
       )}
       {!groupBy &&
         (paginationPosition === "top" || paginationPosition === "both") &&
-        pager}
+        pagerRow}
       <Table>
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
@@ -334,7 +346,7 @@ export function DataTable<TData extends RowData>({
       </Table>
       {!groupBy &&
         (paginationPosition === "bottom" || paginationPosition === "both") &&
-        pager}
+        pagerRow}
     </div>
   )
 }

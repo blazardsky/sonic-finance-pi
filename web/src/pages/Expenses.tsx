@@ -584,7 +584,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
         header: t.amount,
         meta: { filterVariant: "range" },
         cell: ({ row }) => (
-          <div className="text-right font-medium tabular-nums">
+          <div className="font-medium tabular-nums">
             <SpoilerAmount
               cents={row.original.amount_cents}
               gift={isGiftCategory(categories, row.original.category_id)}
@@ -606,6 +606,11 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
             nameOf(categories, row.original.category_id)
           )
         },
+      }),
+      helper.accessor("store", {
+        header: t.store,
+        meta: { filterVariant: "text", hiddenOnMobile: true },
+        cell: (info) => info.getValue() || "-",
       }),
       helper.display({
         id: "actions",

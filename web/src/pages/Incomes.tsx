@@ -185,6 +185,10 @@ export function Incomes({
   // now, not in the table itself, the same simplification Expenses.tsx
   // already made for its own row.
   const [viewing, setViewing] = useState<Income | null>(null)
+  // The linked Contract for whatever "Visualizza" opened, if any — fetched
+  // per-client like the form's own clientContracts, since there is no
+  // standalone /api/contracts/{id} to read one directly by id.
+  const [viewingContract, setViewingContract] = useState<Contract | null>(null)
   // null is the default view: the most recent PAGE_SIZE Incomes, unfiltered.
   // Picking a year switches to that year's own Incomes, paged PAGE_SIZE at a
   // time — the same "recent / anno" filter Expenses.tsx offers, off the same
@@ -217,6 +221,24 @@ export function Incomes({
       cancelled = true
     }
   }, [draft.client_id, editing])
+
+  useEffect(() => {
+    let cancelled = false
+    const clientId = viewing?.client_id ?? null
+    const contractId = viewing?.contract_id ?? null
+    const contract =
+      clientId == null || contractId == null
+        ? Promise.resolve<Contract | null>(null)
+        : apiJSON<Contract[]>(`/api/clients/${clientId}/contracts`)
+            .then((cs) => cs.find((c) => c.id === contractId) ?? null)
+            .catch(() => null)
+    contract.then((c) => {
+      if (!cancelled) setViewingContract(c)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [viewing])
 
   // Loads a row into the form and makes sure the panel holding it is
   // actually visible — the form updates whether it is on screen or not, and a
@@ -504,7 +526,7 @@ export function Incomes({
     const helper = createDataTableColumnHelper<Income>()
     return [
       helper.accessor("payment_date", {
-        header: t.date,
+        header: t.paymentDate,
         meta: { filterVariant: "date-range" },
         cell: ({ row }) => {
           const income = row.original
@@ -528,7 +550,7 @@ export function Incomes({
         header: t.amount,
         meta: { filterVariant: "range" },
         cell: ({ row }) => (
-          <div className="text-right font-medium tabular-nums">
+          <div className="font-medium tabular-nums">
             € {formatCents(row.original.amount_cents)}
           </div>
         ),
@@ -547,14 +569,36 @@ export function Incomes({
               ) : (
                 nameOf(categories, income.category_id)
               )}
+              {/* Desktop shows Cliente as its own column instead — this stays
+                  only for mobile, where there is no room for a separate one. */}
               {income.client_id !== null && (
-                <span className="truncate text-xs text-muted-foreground">
+                <span className="truncate text-xs text-muted-foreground md:hidden">
                   {nameOf(clients, income.client_id)}
                 </span>
               )}
             </div>
           )
         },
+      }),
+      helper.accessor(
+        (income) => (income.client_id !== null ? nameOf(clients, income.client_id) : ""),
+        {
+          id: "client",
+          header: t.client,
+          meta: { filterVariant: "text", hiddenOnMobile: true },
+          cell: ({ row }) =>
+            row.original.client_id !== null
+              ? nameOf(clients, row.original.client_id)
+              : "-",
+        }
+      ),
+      helper.accessor("invoice_sent_date", {
+        header: t.invoiceSentDate,
+        meta: { filterVariant: "date-range", hiddenOnMobile: true },
+        cell: ({ row }) =>
+          row.original.invoice_sent_date
+            ? formatDate(row.original.invoice_sent_date)
+            : "-",
       }),
       helper.display({
         id: "actions",
@@ -935,6 +979,12 @@ export function Incomes({
                 />
                 {viewing.client_id !== null && (
                   <ViewRow label={t.client} value={nameOf(clients, viewing.client_id)} />
+                )}
+                {viewingContract && (
+                  <ViewRow
+                    label={t.contract}
+                    value={`${formatMonth(viewingContract.start_month)} – ${formatMonth(viewingContract.end_month)}`}
+                  />
                 )}
                 {viewing.payer && (
                   <ViewRow label={t.incomePayer} value={viewing.payer} />

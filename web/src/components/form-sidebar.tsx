@@ -289,7 +289,7 @@ function FormSidebarTrigger({
       style={{ right: open ? `calc(${edge}px + var(--sidebar-width))` : `${edge}px` }}
       className={cn(
         // top-20 = same inset as the contained panel (shell + header).
-        "fixed top-20 z-20 rounded-none border border-r-0 bg-black text-white shadow-sm transition-[right] duration-200 ease-linear hover:bg-black hover:text-white aria-expanded:bg-black aria-expanded:text-white dark:bg-white dark:text-black dark:hover:bg-white dark:hover:text-black dark:aria-expanded:bg-white dark:aria-expanded:text-black",
+        "fixed top-20 z-20 rounded-none border border-r-0 bg-black text-white shadow-sm hover:bg-black hover:text-white aria-expanded:bg-black aria-expanded:text-white dark:bg-white dark:text-black dark:hover:bg-white dark:hover:text-black dark:aria-expanded:bg-white dark:aria-expanded:text-black",
         className
       )}
     >
