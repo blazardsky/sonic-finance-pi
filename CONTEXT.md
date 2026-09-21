@@ -110,3 +110,6 @@ _Avoid_: alert, notification, task
 
 **Record**
 Anything that is recorded in the app (expenses, incomes, clients, categories)
+
+**actions sidebar**
+The right sidebar with the form that adds/modifies records
