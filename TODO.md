@@ -46,6 +46,15 @@
 ## v1.3.1
 - [ ] aggiungere delle chart per le sotto-categorie in report mensile e annuale
 - [ ] approfondire la reportistica (e l'esportazione: sankey, viste riassuntive, ...)
+- [ ] spostare la card "risparmio iniziale" dalla pagina risparmi alla pagina impostazioni
+
+## v1.3.2
+- [x] DataTable: mostrare 25 righe per pagina di default (prima 10)
+- [x] DataTable: nascondere i filtri per colonna di default, con un pulsante per mostrarli/nasconderli (anche su mobile, stesso comportamento del filtro a tendina già esistente)
+- [x] Clienti: ordinare i contratti nel pannello espanso dal più recente
+- [x] Clienti: nascondere di default i contratti già completati (terminati, fatturati e incassati per intero) dietro un pulsante "mostra completati", invece di lasciarli sempre in vista
+- [x] Fix: il salvataggio di una modifica in Investimenti non deve più resettare la tabella a pagina 1 (paginazione ora persistita nell'URL)
+- [x] Titoli: aggiungere il prezzo medio d'acquisto per quota, calcolato da quote e costo — modificabile aggiungendo un nuovo acquisto (si somma al totale) o sovrascrivendo quote/prezzo medio esistenti
 
 ## v1.4
 - [ ] Aggiungere un mcp per interagire con l'app direttamente da claude code o qualche altra AI
