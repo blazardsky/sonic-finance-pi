@@ -176,3 +176,104 @@ func handleSuggestStores(db *sql.DB) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, stores)
 	}
 }
+
+// distinctValues returns every distinct value ever typed into an FTS5
+// vocabulary table, alphabetically — the Suggerimenti screen's own read,
+// unlike suggestFrom's query-ranked handful, since here the household is
+// looking the whole vocabulary over to decide what to prune.
+func distinctValues(db *sql.DB, table, column string) ([]string, error) {
+	rows, err := db.Query(fmt.Sprintf(
+		`SELECT DISTINCT %s FROM %s ORDER BY %s COLLATE NOCASE`, column, table, column))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []string{}
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+// deleteValues removes every row of an FTS5 vocabulary table matching any of
+// values — every duplicate, since the table is append-only and a name typed
+// a dozen times has a dozen rows. Also the corresponding "how many purchases
+// used this store" clears from the Tracker's own comparison (ADR-0013): those
+// still group Store by its raw text at query time, and a value pruned here
+// simply becomes unsuggested going forward, never touching past Expenses.
+func deleteValues(db *sql.DB, table, column string, values []string) error {
+	if len(values) == 0 {
+		return nil
+	}
+	placeholders := make([]string, len(values))
+	args := make([]any, len(values))
+	for i, v := range values {
+		placeholders[i] = "?"
+		args[i] = v
+	}
+	_, err := db.Exec(fmt.Sprintf(
+		`DELETE FROM %s WHERE %s IN (%s)`, table, column, strings.Join(placeholders, ", ")),
+		args...)
+	return err
+}
+
+func handleListStores(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		stores, err := distinctValues(db, "store_fts", "store")
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, stores)
+	}
+}
+
+func handleDeleteStores(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Values []string `json:"values"`
+		}
+		if err := decodeJSON(w, r, &body); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		if err := deleteValues(db, "store_fts", "store", body.Values); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func handleListItemNames(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		names, err := distinctValues(db, "item_name_fts", "name")
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, names)
+	}
+}
+
+func handleDeleteItemNames(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Values []string `json:"values"`
+		}
+		if err := decodeJSON(w, r, &body); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		if err := deleteValues(db, "item_name_fts", "name", body.Values); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}

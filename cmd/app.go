@@ -89,6 +89,10 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 
 	mux.HandleFunc("GET /api/items/suggest", handleSuggestItemNames(db))
 	mux.HandleFunc("GET /api/stores/suggest", handleSuggestStores(db))
+	mux.HandleFunc("GET /api/items/names", handleListItemNames(db))
+	mux.HandleFunc("DELETE /api/items/names", handleDeleteItemNames(db))
+	mux.HandleFunc("GET /api/stores", handleListStores(db))
+	mux.HandleFunc("DELETE /api/stores", handleDeleteStores(db))
 
 	mux.HandleFunc("GET /api/incomes", handleListIncomes(db))
 	mux.HandleFunc("POST /api/incomes", handleCreateIncome(db, now))

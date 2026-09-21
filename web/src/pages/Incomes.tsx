@@ -168,7 +168,6 @@ export function Incomes({
     savings_starting_balance_cents: 0,
     net_worth_target_cents: 0,
   })
-  const [error, setError] = useState("")
 
   const [draft, setDraft] = useState<Draft>(blankDraft)
   const [editing, setEditing] = useState<number | null>(null)
@@ -272,7 +271,7 @@ export function Incomes({
           setClients(cl)
           setLists(l)
         })
-        .catch(() => setError(t.serverUnreachable)),
+        .catch(() => toast(t.serverUnreachable)),
     [incomesPath]
   )
 
@@ -311,14 +310,13 @@ export function Incomes({
 
   async function submit(event: FormEvent): Promise<boolean> {
     event.preventDefault()
-    setError("")
 
     // Cents are computed here and sent as an integer: the API refuses a
     // fractional amount_cents outright, so a bad parse cannot become a
     // silently rounded Income.
     const cents = toCents(draft.amount)
     if (cents === null || cents <= 0) {
-      setError(t.invalidAmount)
+      toast(t.invalidAmount)
       return false
     }
 
@@ -328,11 +326,11 @@ export function Incomes({
     if (draft.extra.trim() !== "") {
       const parsed = toCents(draft.extra)
       if (parsed === null || parsed < 0) {
-        setError(t.invalidAmount)
+        toast(t.invalidAmount)
         return false
       }
       if (parsed > cents) {
-        setError(t.invalidAmount)
+        toast(t.invalidAmount)
         return false
       }
       extraCents = parsed
@@ -343,7 +341,7 @@ export function Incomes({
     // sentinel fix above addresses the visual half of it) would otherwise
     // submit "" for category_id.
     if (draft.category_id === "") {
-      setError(t.invalidCategory)
+      toast(t.invalidCategory)
       return false
     }
 
@@ -353,7 +351,7 @@ export function Incomes({
     // and, unlike Payer, frontend-only — the server still accepts a null
     // Client on any Category.
     if (isFreelance && draft.client_id === "") {
-      setError(t.invalidIncomeClient)
+      toast(t.invalidIncomeClient)
       return false
     }
 
@@ -362,7 +360,7 @@ export function Incomes({
     // required check on it never runs. Checked here instead, opening the
     // disclosure so the field the error is about is what the household sees.
     if (draft.payer.trim() === "") {
-      setError(t.invalidIncomePayer)
+      toast(t.invalidIncomePayer)
       setDetailsOpen(true)
       return false
     }
@@ -384,7 +382,7 @@ export function Incomes({
         }),
       })
     } catch {
-      setError(t.incomeNotSaved)
+      toast(t.incomeNotSaved)
       return false
     }
     // A correction is finished. A new Income is often one of several invoices
@@ -414,14 +412,13 @@ export function Incomes({
   // Income still waiting on it — payment_date is the only field this PATCH
   // sends, so nothing else about the Income changes.
   async function markPaid(income: Income) {
-    setError("")
     try {
       await api(`/api/incomes/${income.id}`, {
         method: "PATCH",
         body: JSON.stringify({ payment_date: today() }),
       })
     } catch {
-      setError(t.incomeNotSaved)
+      toast(t.incomeNotSaved)
       return
     }
     await load()
@@ -430,11 +427,10 @@ export function Incomes({
   async function removeIncome(income: Income) {
     if (!confirm(t.confirmDeleteIncome(formatCents(income.amount_cents))))
       return
-    setError("")
     try {
       await api(`/api/incomes/${income.id}`, { method: "DELETE" })
     } catch {
-      setError(t.incomeNotDeleted)
+      toast(t.incomeNotDeleted)
       return
     }
     if (editing === income.id) {
@@ -936,13 +932,6 @@ export function Incomes({
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
-
-            {error && (
-              <p role="alert" className="text-sm text-destructive">
-                {error}
-              </p>
-            )}
-
           </MobileClosingForm>
         </FormSidebar>
       </div>

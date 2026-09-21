@@ -2,6 +2,7 @@ import {
   RiBarChart2Line,
   RiCalendarLine,
   RiDashboardLine,
+  RiEraserLine,
   RiExchangeFundsLine,
   RiFileChartLine,
   RiFileList3Line,
@@ -49,6 +50,7 @@ const icons: Record<Screen, typeof RiDashboardLine> = {
   holdings: RiFileList3Line,
   tracker: RiLineChartLine,
   settings: RiSettings3Line,
+  suggestions: RiEraserLine,
 }
 
 // The first three groups sit at the same altitude the screens are already
@@ -68,7 +70,7 @@ const groups: { label: string; screens: Screen[] }[] = [
   },
   {
     label: t.navManagement,
-    screens: ["categories", "clients", "holdings", "settings"],
+    screens: ["categories", "clients", "holdings", "settings", "suggestions"],
   },
   {
     label: t.tracker,

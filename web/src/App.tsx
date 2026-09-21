@@ -12,6 +12,7 @@ import { Month } from "@/pages/Month"
 import { RecurringExpenses } from "@/pages/RecurringExpenses"
 import { Savings } from "@/pages/Savings"
 import { Settings } from "@/pages/Settings"
+import { Suggestions } from "@/pages/Suggestions"
 import { Tracker } from "@/pages/Tracker"
 import { Year } from "@/pages/Year"
 import { YearlyReport } from "@/pages/YearlyReport"
@@ -46,6 +47,7 @@ export type Screen =
   | "holdings"
   | "tracker"
   | "settings"
+  | "suggestions"
 
 export function App() {
   const [state, setState] = useState<State>("checking")
@@ -161,6 +163,7 @@ export function App() {
             {screen === "holdings" && <Holdings />}
             {screen === "tracker" && <Tracker />}
             {screen === "settings" && <Settings />}
+            {screen === "suggestions" && <Suggestions />}
           </main>
         </div>
       </div>

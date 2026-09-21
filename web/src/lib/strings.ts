@@ -217,6 +217,22 @@ export const t = {
   navEntries: "Registrazioni",
   navManagement: "Gestione",
 
+  // Suggerimenti — manages the two typeahead vocabularies (store_fts,
+  // item_name_fts) Negozio/Voce suggest from: append-only history (ADR-0015),
+  // so a stale or duplicate spelling never falls out on its own without this
+  // screen.
+  suggestions: "Suggerimenti",
+  suggestionsStores: "Negozi",
+  suggestionsItems: "Voci",
+  suggestionsHint:
+    "I nomi suggeriti mentre scrivi in Negozio o Voce, presi da quanto digitato finora. Cancellane uno per smettere di vederlo suggerito — le spese già registrate non cambiano.",
+  suggestionsSearchPlaceholder: "Filtra…",
+  suggestionsNoneYet: "Nessun suggerimento registrato.",
+  suggestionsSelectAll: "Seleziona tutti",
+  suggestionsDeleteSelected: (n: number) => `Elimina selezionati (${n})`,
+  suggestionsDeleted: "Suggerimenti eliminati.",
+  suggestionsNotDeleted: "Eliminazione non riuscita. Riprova.",
+
   // Dashboard — the home screen's recap of where the year stands
   dashboard: "Panoramica",
   yearIncome: "Entrate dell'anno",
@@ -480,7 +496,7 @@ export const t = {
   // computed figures), and the manual current-price input that drives it.
   currentPrice: "Prezzo attuale",
   currentPriceHint:
-    "Per quota, inserito a mano. Determina valore attuale e guadagno/perdita.",
+    "Per quota, inserito a mano. Determina valore attuale e guadagno/perdita. Facoltativo: lascialo vuoto per modificare solo le quote o il prezzo medio.",
   quantityOwned: "Quote possedute",
   valueNow: "Valore attuale",
   paid: "Pagato",
@@ -494,6 +510,10 @@ export const t = {
   // price), added to or replacing the running manual correction.
   averagePurchasePrice: "Prezzo medio d'acquisto",
   manualLotQuantity: "Quote acquistate",
+  // The lot-quantity field's own placeholder (ticket: better UX), naming what
+  // is already owned so "Sovrascrivi" reads as "type the real total", not a
+  // number typed blind against an unknown starting point.
+  currentlyOwned: (quantity: string) => `Attualmente: ${quantity}`,
   manualLotHint:
     "Registra un nuovo acquisto: si aggiunge alle quote e al costo già presenti, e il prezzo medio si ricalcola di conseguenza. Lascia entrambi i campi vuoti se non hai comprato altre quote.",
   initialManualLotHint: "Facoltativo: le quote già possedute e il prezzo medio pagato.",

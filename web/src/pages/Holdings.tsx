@@ -29,7 +29,14 @@ import { api } from "@/lib/api"
 import { FormSidebar } from "@/components/form-sidebar"
 import { ViewRow } from "@/components/ViewRow"
 import { toast } from "@/lib/toast"
-import { formatCents, formatPricePerUnit, toCents, toQuantity, toTyped } from "@/lib/money"
+import {
+  formatCents,
+  formatPricePerUnit,
+  quantityTyped,
+  toCents,
+  toQuantity,
+  toTyped,
+} from "@/lib/money"
 import { t } from "@/lib/strings"
 import type { Holding, HoldingType } from "@/types"
 
@@ -81,11 +88,11 @@ type PricingDraft = {
 // only replaces the average (applyManualLot, cmd/holding.go). 0 is what
 // signals "no quantity typed" to it, same as an omitted field would.
 function parseLot(
-  quantityTyped: string,
+  quantityInput: string,
   priceTyped: string,
   replace: boolean
 ): { quantity: number; price_per_unit_cents: number } | null {
-  const quantityEmpty = quantityTyped.trim() === ""
+  const quantityEmpty = quantityInput.trim() === ""
   const priceEmpty = priceTyped.trim() === ""
   if (quantityEmpty && priceEmpty) return null
   if (priceEmpty) throw new Error(t.invalidManualLot)
@@ -95,7 +102,7 @@ function parseLot(
     if (!replace) throw new Error(t.invalidManualLot)
     return { quantity: 0, price_per_unit_cents: price }
   }
-  const quantity = toQuantity(quantityTyped)
+  const quantity = toQuantity(quantityInput)
   if (quantity === null) throw new Error(t.invalidManualLot)
   return { quantity, price_per_unit_cents: price }
 }
@@ -115,7 +122,6 @@ function parseLot(
 // separate from the Name/Type sidebar form.
 export function Holdings() {
   const [holdings, setHoldings] = useState<Holding[] | null>(null)
-  const [error, setError] = useState("")
   const [draft, setDraft] = useState(blankDraft)
   const [editing, setEditing] = useState<number | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -139,7 +145,7 @@ export function Holdings() {
       api("/api/holdings")
         .then((res) => res.json())
         .then(setHoldings)
-        .catch(() => setError(t.serverUnreachable)),
+        .catch(() => toast(t.serverUnreachable)),
     []
   )
 
@@ -148,13 +154,12 @@ export function Holdings() {
   }, [load])
 
   async function write(path: string, init: RequestInit) {
-    setError("")
     try {
       await api(path, init)
       await load()
       return true
     } catch {
-      setError(t.holdingNotSaved)
+      toast(t.holdingNotSaved)
       return false
     }
   }
@@ -178,7 +183,7 @@ export function Holdings() {
       // replace yet.
       lot = parseLot(draft.initialQuantity, draft.initialAveragePrice, false)
     } catch (e) {
-      setError(e instanceof Error ? e.message : t.invalidManualLot)
+      toast(e instanceof Error ? e.message : t.invalidManualLot)
       return
     }
     const ok = await write(
@@ -221,7 +226,7 @@ export function Holdings() {
     try {
       lot = parseLot(pricingDraft.lotQuantity, pricingDraft.lotAveragePrice, pricingDraft.replace)
     } catch (e) {
-      setError(e instanceof Error ? e.message : t.invalidManualLot)
+      toast(e instanceof Error ? e.message : t.invalidManualLot)
       return
     }
     const id = pricing.id
@@ -229,7 +234,13 @@ export function Holdings() {
     await write(`/api/holdings/${id}`, {
       method: "PATCH",
       body: JSON.stringify({
-        current_price_cents: toCents(pricingDraft.currentPrice),
+        // Left blank, current_price_cents is left out of the body entirely
+        // rather than sent as null — correcting the quotas or the average
+        // price should never require touching (or accidentally clearing) an
+        // already-recorded market price.
+        ...(pricingDraft.currentPrice.trim() !== "" && {
+          current_price_cents: toCents(pricingDraft.currentPrice),
+        }),
         ...(lot && { manual_lot: { ...lot, replace: pricingDraft.replace } }),
       }),
     })
@@ -322,12 +333,6 @@ export function Holdings() {
 
       <div className="flex flex-1 flex-wrap gap-6">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
-
           {holdings?.length === 0 && (
             <p className="text-sm text-muted-foreground">{t.noHoldingsYet}</p>
           )}
@@ -530,7 +535,7 @@ export function Holdings() {
                   onChange={(e) =>
                     setPricingDraft((d) => ({ ...d, lotQuantity: e.target.value }))
                   }
-                  placeholder="0"
+                  placeholder={t.currentlyOwned(quantityTyped(pricing.quantity_owned))}
                   className="h-10"
                 />
                 <FieldDescription>{t.manualLotHint}</FieldDescription>
