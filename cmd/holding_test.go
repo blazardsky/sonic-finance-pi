@@ -376,7 +376,7 @@ func TestHoldingsAreListedCaseInsensitivelyByName(t *testing.T) {
 	}
 }
 
-// The weighted-average math itself (schema step 21, Titoli's average-
+// The weighted-average math itself (schema step 20, Titoli's average-
 // purchase-price feature), against applyManualLot directly — no DB, no
 // HTTP, just the arithmetic every add/replace PATCH ultimately calls.
 func TestApplyManualLot(t *testing.T) {
@@ -428,6 +428,18 @@ func TestApplyManualLot(t *testing.T) {
 			quantity: 20, pricePerUnitCents: 4000, replace: true,
 			wantAdjustment:          17,    // 20 - 3, so total quantity = 17 + 3 = 20
 			wantCostAdjustmentCents: 65000, // (20*4000) - 15000 = 65000, so total paid = 65000+15000 = 80000 = 20*4000
+		},
+		{
+			// "Replace-average without a quantity" — no quantity typed
+			// (0, the same as omitted), replace set: the total quantity
+			// stays exactly what it already was (10 manual + 5
+			// transactions = 15), only the average changes.
+			name:              "replace with no quantity keeps the current total quantity, only the average changes",
+			currentAdjustment: 10, currentCostAdjustmentCents: 50000, // 10 @ 50.00 = 500.00
+			transactionsQuantity: 5, transactionsCostCents: 25000, // 5 @ 50.00 = 250.00, so total is 15 @ 50.00
+			quantity: 0, pricePerUnitCents: 6000, replace: true, // no quantity typed, new average 60.00
+			wantAdjustment:          10,    // unchanged: total stays 10 + 5 = 15
+			wantCostAdjustmentCents: 65000, // (15*6000) - 25000 = 90000-25000=65000, so total paid = 65000+25000=90000 = 15*6000
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -520,6 +532,46 @@ func TestManualLotReplaceOverwritesNetOfLiveTransactions(t *testing.T) {
 	after := a.holdings(t)[0]
 	if after.QuantityOwned != 21 || after.PaidCents != 84000 {
 		t.Errorf("after the extra buy: quantity/paid = %v/%d, want 21/84000", after.QuantityOwned, after.PaidCents)
+	}
+}
+
+// "Replace-average without a quantity is not meaningful ... unless the user
+// is replacing" — a replace with no quantity typed keeps the Holding's
+// current total quantity exactly as it was and only corrects the average.
+func TestManualLotReplaceWithNoQuantityKeepsTheTotalQuantity(t *testing.T) {
+	a := newTestApp(t)
+	h := a.createHolding(t, "VWCE", holdingETF)
+	investments := a.investments(t)
+
+	a.addExpense(t, map[string]any{
+		"amount_cents": 25000, "category_id": investments.ID, "occurred_on": "2026-06-01",
+		"holding_id": h.ID, "quantity": 5.0,
+	})
+	// A first lot, added: 10 @ 50.00 on top of the 5 @ 50.00 buy — 15 @ 50.00.
+	var got holdingJSON
+	a.patch(t, holdingPath(h.ID), map[string]any{
+		"manual_lot": map[string]any{"quantity": 10, "price_per_unit_cents": 5000, "replace": false},
+	}, &got)
+	if got.QuantityOwned != 15 {
+		t.Fatalf("after the first lot: quantity_owned = %v, want 15", got.QuantityOwned)
+	}
+
+	// Now replace the average alone, with no quantity — the total quantity
+	// must stay 15, only paid_cents/the average should change.
+	res := a.patch(t, holdingPath(h.ID), map[string]any{
+		"manual_lot": map[string]any{"price_per_unit_cents": 6000, "replace": true},
+	}, &got)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH manual_lot replace-average-only = %d, want 200", res.StatusCode)
+	}
+	if got.QuantityOwned != 15 {
+		t.Errorf("quantity_owned = %v, want 15 (unchanged)", got.QuantityOwned)
+	}
+	if got.PaidCents != 90000 {
+		t.Errorf("paid_cents = %d, want 90000 (15 × 6000)", got.PaidCents)
+	}
+	if got.AveragePricePerUnitCents == nil || *got.AveragePricePerUnitCents != 6000 {
+		t.Errorf("average_price_per_unit_cents = %v, want 6000", got.AveragePricePerUnitCents)
 	}
 }
 

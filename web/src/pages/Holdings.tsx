@@ -75,14 +75,28 @@ type PricingDraft = {
 // not a meaningful purchase, per the household's own spec. Returns null on
 // "neither" (nothing to send), the parsed pair on "both", and throws
 // (caught by the caller) on a mismatched or unparseable one/the-other.
+// replace only, since "replace-average without a quantity" is meaningless
+// while adding (a lot always needs its own quantity) but well-defined while
+// replacing — the server keeps the Holding's current total quantity and
+// only replaces the average (applyManualLot, cmd/holding.go). 0 is what
+// signals "no quantity typed" to it, same as an omitted field would.
 function parseLot(
   quantityTyped: string,
-  priceTyped: string
+  priceTyped: string,
+  replace: boolean
 ): { quantity: number; price_per_unit_cents: number } | null {
-  if (quantityTyped.trim() === "" && priceTyped.trim() === "") return null
-  const quantity = toQuantity(quantityTyped)
+  const quantityEmpty = quantityTyped.trim() === ""
+  const priceEmpty = priceTyped.trim() === ""
+  if (quantityEmpty && priceEmpty) return null
+  if (priceEmpty) throw new Error(t.invalidManualLot)
   const price = toCents(priceTyped)
-  if (quantity === null || price === null) throw new Error(t.invalidManualLot)
+  if (price === null) throw new Error(t.invalidManualLot)
+  if (quantityEmpty) {
+    if (!replace) throw new Error(t.invalidManualLot)
+    return { quantity: 0, price_per_unit_cents: price }
+  }
+  const quantity = toQuantity(quantityTyped)
+  if (quantity === null) throw new Error(t.invalidManualLot)
   return { quantity, price_per_unit_cents: price }
 }
 
@@ -160,7 +174,9 @@ export function Holdings() {
     event.preventDefault()
     let lot
     try {
-      lot = parseLot(draft.initialQuantity, draft.initialAveragePrice)
+      // Creating a Holding is always an add — there's no existing total to
+      // replace yet.
+      lot = parseLot(draft.initialQuantity, draft.initialAveragePrice, false)
     } catch (e) {
       setError(e instanceof Error ? e.message : t.invalidManualLot)
       return
@@ -203,7 +219,7 @@ export function Holdings() {
     if (!pricing) return
     let lot
     try {
-      lot = parseLot(pricingDraft.lotQuantity, pricingDraft.lotAveragePrice)
+      lot = parseLot(pricingDraft.lotQuantity, pricingDraft.lotAveragePrice, pricingDraft.replace)
     } catch (e) {
       setError(e instanceof Error ? e.message : t.invalidManualLot)
       return

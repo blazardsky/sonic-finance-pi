@@ -53,7 +53,7 @@ type holding struct {
 	// tax software's job, not this app's.
 	QuantityOwned float64 `json:"quantity_owned"`
 
-	// The cost-basis counterpart to QuantityAdjustment (schema step 21,
+	// The cost-basis counterpart to QuantityAdjustment (schema step 20,
 	// Titoli's average-purchase-price feature): a hand-typed contribution to
 	// PaidCents from manually-recorded purchase lots, on top of whatever
 	// linked Expenses/Incomes already sum to. A real column, same as
@@ -71,7 +71,7 @@ type holding struct {
 	// PaidCents ÷ QuantityOwned, computed at read time — nil when
 	// QuantityOwned is zero (nothing to divide by) or negative (sold more
 	// than was ever bought, a state with no meaningful average). Never
-	// stored: freezing a number here is exactly what schema step 21 is
+	// stored: freezing a number here is exactly what schema step 20 is
 	// avoiding, since it would drift the moment a linked buy/sell changes.
 	AveragePricePerUnitCents *float64 `json:"average_price_per_unit_cents"`
 
@@ -96,9 +96,19 @@ type manualLot struct {
 	Replace           bool    `json:"replace"`
 }
 
+// validate requires Quantity only when adding — a lot with a price and no
+// quantity is not a purchase. Replacing is the deliberate exception: a
+// replace's quantity may be omitted (or 0, indistinguishable here, and
+// treated the same) to mean "keep the current total quantity, just correct
+// the average" — there is still something to weight the new average
+// against in that case, namely whatever the Holding's total already is,
+// which is exactly what "unless the user is replacing" carves out.
 func (m *manualLot) validate() error {
-	if m.Quantity <= 0 {
+	if !m.Replace && m.Quantity <= 0 {
 		return errors.New("a purchase lot needs a quantity greater than zero")
+	}
+	if m.Quantity < 0 {
+		return errors.New("quantity must not be negative")
 	}
 	if m.PricePerUnitCents < 0 {
 		return errors.New("price per unit must not be negative")
@@ -116,7 +126,12 @@ func (m *manualLot) validate() error {
 // Unchecked (add): the lot adds on top of whatever manual correction already
 // existed — currentAdjustment/currentCostAdjustmentCents plus this lot.
 //
-// Checked (replace): overwrites the running manual correction so the
+// Checked (replace) with quantity <= 0: keeps the Holding's current total
+// quantity (currentAdjustment plus what transactions already contribute)
+// and only replaces the average — the "replace-average without a quantity"
+// case validate() lets through.
+//
+// Checked (replace) otherwise: overwrites the running manual correction so the
 // Holding's OVERALL quantity/average come out to exactly quantity/
 // pricePerUnitCents, regardless of what the manual correction was before —
 // solved by subtracting what linked transactions already contribute, since
@@ -127,10 +142,17 @@ func applyManualLot(
 	transactionsQuantity float64, transactionsCostCents int64,
 	quantity float64, pricePerUnitCents float64, replace bool,
 ) (newAdjustment float64, newCostAdjustmentCents int64) {
-	lotCostCents := int64(math.Round(quantity * pricePerUnitCents))
 	if replace {
-		return quantity - transactionsQuantity, lotCostCents - transactionsCostCents
+		effectiveQuantity := quantity
+		if effectiveQuantity <= 0 {
+			// No quantity typed — keep the current total (validate has
+			// already refused this unless replace is set).
+			effectiveQuantity = currentAdjustment + transactionsQuantity
+		}
+		lotCostCents := int64(math.Round(effectiveQuantity * pricePerUnitCents))
+		return effectiveQuantity - transactionsQuantity, lotCostCents - transactionsCostCents
 	}
+	lotCostCents := int64(math.Round(quantity * pricePerUnitCents))
 	return currentAdjustment + quantity, currentCostAdjustmentCents + lotCostCents
 }
 
@@ -233,7 +255,7 @@ func migrateHoldingQuantityAdjustment(tx *sql.Tx) error {
 	return err
 }
 
-// migrateHoldingCostAdjustment is schema step 21: CostAdjustmentCents, the
+// migrateHoldingCostAdjustment is schema step 20: CostAdjustmentCents, the
 // cost-basis counterpart to quantity_adjustment — Titoli's average-purchase-
 // price feature needs a manually-typed cost contribution to weight against
 // the manually-typed quantity one, since PaidCents before this step comes
