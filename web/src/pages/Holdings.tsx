@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { RiEditLine, RiEyeLine, RiMoneyEuroCircleLine, RiMoreLine } from "@remixicon/react"
 
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   createDataTableColumnHelper,
   DataTable,
@@ -28,7 +29,7 @@ import { api } from "@/lib/api"
 import { FormSidebar } from "@/components/form-sidebar"
 import { ViewRow } from "@/components/ViewRow"
 import { toast } from "@/lib/toast"
-import { formatCents, toCents, toTyped } from "@/lib/money"
+import { formatCents, formatPricePerUnit, toCents, toQuantity, toTyped } from "@/lib/money"
 import { t } from "@/lib/strings"
 import type { Holding, HoldingType } from "@/types"
 
@@ -40,20 +41,49 @@ const typeLabels: Record<HoldingType, string> = {
   other: t.holdingTypeOther,
 }
 
-type Draft = { name: string; type: HoldingType }
+// initialQuantity/initialAveragePrice only matter while creating (spec:
+// "optionally set initial quotas") — both/neither, same bargain a manual
+// lot always makes; unused once editing an existing Holding's name/type.
+type Draft = {
+  name: string
+  type: HoldingType
+  initialQuantity: string
+  initialAveragePrice: string
+}
 
-const blankDraft = (): Draft => ({ name: "", type: "etf" })
+const blankDraft = (): Draft => ({
+  name: "",
+  type: "etf",
+  initialQuantity: "",
+  initialAveragePrice: "",
+})
 
-// The price/quantity-adjustment form travels as typed strings, the same
-// bargain every euro/quantity input in this app makes: "" is unset, never
-// "0". Unlike the quantity fields on Expense/Income, the adjustment is
-// signed, so it does not go through toQuantity (which refuses anything not
-// positive) — parseAdjustment below is its own, looser parser.
-type PricingDraft = { currentPrice: string; quantityAdjustment: string }
+// One purchase lot as typed: quantity and its average price both travel as
+// plain strings, "" meaning unset, the same bargain every euro/quantity
+// input in this app makes. replace picks add-once vs overwrite (see
+// manualLotBody below) — meaningless on its own without a quantity/price,
+// so it's not surfaced at all in the create form, only the edit dialog.
+type PricingDraft = {
+  currentPrice: string
+  lotQuantity: string
+  lotAveragePrice: string
+  replace: boolean
+}
 
-function parseAdjustment(typed: string): number {
-  const n = Number(typed.trim().replace(",", "."))
-  return Number.isFinite(n) ? n : 0
+// A lot needs both a quantity and a price, or neither — a price with
+// nothing to weight it against (or a quantity with no price recorded) is
+// not a meaningful purchase, per the household's own spec. Returns null on
+// "neither" (nothing to send), the parsed pair on "both", and throws
+// (caught by the caller) on a mismatched or unparseable one/the-other.
+function parseLot(
+  quantityTyped: string,
+  priceTyped: string
+): { quantity: number; price_per_unit_cents: number } | null {
+  if (quantityTyped.trim() === "" && priceTyped.trim() === "") return null
+  const quantity = toQuantity(quantityTyped)
+  const price = toCents(priceTyped)
+  if (quantity === null || price === null) throw new Error(t.invalidManualLot)
+  return { quantity, price_per_unit_cents: price }
 }
 
 // The Holding management screen: add and rename, the fixed list ticket 03's
@@ -63,9 +93,11 @@ function parseAdjustment(typed: string): number {
 //
 // Value now and gain/loss sit behind a Dettagli view dialog rather than in
 // the table itself (the same simplification Expenses/Incomes' own view
-// dialogs made), and current_price_cents/quantity_adjustment — the two
-// hand-typed corrections — are edited through their own small dialog, the
-// same shape Categories.tsx uses for a Subcategory's colour: a focused edit,
+// dialogs made), and current_price_cents plus a purchase lot (quantity +
+// average price, added to or replacing the running quantity_adjustment/
+// cost_adjustment_cents correction — average-purchase-price feature) are
+// edited through their own small dialog, the same shape Categories.tsx uses
+// for a Subcategory's colour: a focused edit,
 // separate from the Name/Type sidebar form.
 export function Holdings() {
   const [holdings, setHoldings] = useState<Holding[] | null>(null)
@@ -77,7 +109,9 @@ export function Holdings() {
   const [pricing, setPricing] = useState<Holding | null>(null)
   const [pricingDraft, setPricingDraft] = useState<PricingDraft>({
     currentPrice: "",
-    quantityAdjustment: "",
+    lotQuantity: "",
+    lotAveragePrice: "",
+    replace: false,
   })
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
@@ -116,22 +150,41 @@ export function Holdings() {
   // form updates whether it is on screen or not.
   function selectHolding(h: Holding) {
     setEditing(h.id)
-    setDraft({ name: h.name, type: h.type })
+    // initialQuantity/initialAveragePrice are create-only (see Draft's own
+    // comment) — editing an existing Holding's name/type never touches them.
+    setDraft({ name: h.name, type: h.type, initialQuantity: "", initialAveragePrice: "" })
     setSidebarOpen(true)
   }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
+    let lot
+    try {
+      lot = parseLot(draft.initialQuantity, draft.initialAveragePrice)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t.invalidManualLot)
+      return
+    }
     const ok = await write(
       editing === null ? "/api/holdings" : `/api/holdings/${editing}`,
-      { method: editing === null ? "POST" : "PATCH", body: JSON.stringify(draft) }
+      {
+        method: editing === null ? "POST" : "PATCH",
+        body: JSON.stringify({
+          name: draft.name,
+          type: draft.type,
+          // A lot only ever applies while creating — editing this same form
+          // later never carries initialQuantity/initialAveragePrice again
+          // (selectHolding always blanks them), so this is never sent twice.
+          ...(lot && { manual_lot: { ...lot, replace: false } }),
+        }),
+      }
     )
     if (!ok) return
     if (editing === null) toast(t.added)
     setEditing(null)
     // Adding several similar Holdings in a row is common (a handful of ETFs
-    // set up at once) — the type stays, only the name clears.
-    setDraft((d) => ({ ...d, name: "" }))
+    // set up at once) — the type stays, only the name and lot clear.
+    setDraft((d) => ({ ...d, name: "", initialQuantity: "", initialAveragePrice: "" }))
   }
 
   function openPricing(h: Holding) {
@@ -139,21 +192,29 @@ export function Holdings() {
     setPricingDraft({
       currentPrice:
         h.current_price_cents === null ? "" : toTyped(h.current_price_cents),
-      quantityAdjustment:
-        h.quantity_adjustment === 0 ? "" : String(h.quantity_adjustment).replace(".", ","),
+      lotQuantity: "",
+      lotAveragePrice: "",
+      replace: false,
     })
   }
 
   async function submitPricing(event: React.FormEvent) {
     event.preventDefault()
     if (!pricing) return
+    let lot
+    try {
+      lot = parseLot(pricingDraft.lotQuantity, pricingDraft.lotAveragePrice)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t.invalidManualLot)
+      return
+    }
     const id = pricing.id
     setPricing(null)
     await write(`/api/holdings/${id}`, {
       method: "PATCH",
       body: JSON.stringify({
         current_price_cents: toCents(pricingDraft.currentPrice),
-        quantity_adjustment: parseAdjustment(pricingDraft.quantityAdjustment),
+        ...(lot && { manual_lot: { ...lot, replace: pricingDraft.replace } }),
       }),
     })
   }
@@ -190,6 +251,18 @@ export function Holdings() {
             € {formatCents(row.original.paid_cents)}
           </div>
         ),
+      }),
+      helper.accessor("average_price_per_unit_cents", {
+        header: t.averagePurchasePrice,
+        meta: { filterVariant: "range" },
+        cell: ({ row }) => {
+          const avg = row.original.average_price_per_unit_cents
+          return (
+            <div className="text-right tabular-nums">
+              {avg === null ? "" : `€ ${formatPricePerUnit(avg)}`}
+            </div>
+          )
+        },
       }),
       helper.display({
         id: "actions",
@@ -314,6 +387,45 @@ export function Holdings() {
                 </SelectContent>
               </Select>
             </Field>
+
+            {/* Create-only (Draft's own comment) — editing an existing
+                Holding's name/type never shows these; further lots go
+                through the pricing dialog's own trio instead. */}
+            {editing === null && (
+              <>
+                <Field>
+                  <FieldLabel htmlFor="initial-quantity">
+                    {t.manualLotQuantity}
+                  </FieldLabel>
+                  <Input
+                    id="initial-quantity"
+                    type="text"
+                    inputMode="decimal"
+                    value={draft.initialQuantity}
+                    onChange={(e) => set("initialQuantity", e.target.value)}
+                    placeholder="0"
+                    className="h-10"
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="initial-average-price">
+                    {t.averagePurchasePrice}
+                  </FieldLabel>
+                  <InputGroup className="h-10">
+                    <InputGroupAddon className="text-sm">€</InputGroupAddon>
+                    <InputGroupInput
+                      id="initial-average-price"
+                      type="text"
+                      inputMode="decimal"
+                      value={draft.initialAveragePrice}
+                      onChange={(e) => set("initialAveragePrice", e.target.value)}
+                      placeholder="0,00"
+                    />
+                  </InputGroup>
+                  <FieldDescription>{t.initialManualLotHint}</FieldDescription>
+                </Field>
+              </>
+            )}
           </form>
         </FormSidebar>
       </div>
@@ -332,6 +444,12 @@ export function Holdings() {
                   value={String(viewing.quantity_owned)}
                 />
                 <ViewRow label={t.paid} value={`€ ${formatCents(viewing.paid_cents)}`} />
+                {viewing.average_price_per_unit_cents !== null && (
+                  <ViewRow
+                    label={t.averagePurchasePrice}
+                    value={`€ ${formatPricePerUnit(viewing.average_price_per_unit_cents)}`}
+                  />
+                )}
                 {viewing.current_price_cents !== null && (
                   <ViewRow
                     label={t.currentPrice}
@@ -387,22 +505,51 @@ export function Holdings() {
               </Field>
 
               <Field>
-                <FieldLabel htmlFor="quantity-adjustment">
-                  {t.quantityAdjustment}
-                </FieldLabel>
+                <FieldLabel htmlFor="lot-quantity">{t.manualLotQuantity}</FieldLabel>
                 <Input
-                  id="quantity-adjustment"
+                  id="lot-quantity"
                   type="text"
                   inputMode="decimal"
-                  value={pricingDraft.quantityAdjustment}
+                  value={pricingDraft.lotQuantity}
                   onChange={(e) =>
-                    setPricingDraft((d) => ({ ...d, quantityAdjustment: e.target.value }))
+                    setPricingDraft((d) => ({ ...d, lotQuantity: e.target.value }))
                   }
                   placeholder="0"
                   className="h-10"
                 />
-                <FieldDescription>{t.quantityAdjustmentHint}</FieldDescription>
+                <FieldDescription>{t.manualLotHint}</FieldDescription>
               </Field>
+
+              <Field>
+                <FieldLabel htmlFor="lot-average-price">
+                  {t.averagePurchasePrice}
+                </FieldLabel>
+                <InputGroup className="h-10">
+                  <InputGroupAddon className="text-sm">€</InputGroupAddon>
+                  <InputGroupInput
+                    id="lot-average-price"
+                    type="text"
+                    inputMode="decimal"
+                    value={pricingDraft.lotAveragePrice}
+                    onChange={(e) =>
+                      setPricingDraft((d) => ({ ...d, lotAveragePrice: e.target.value }))
+                    }
+                    placeholder="0,00"
+                  />
+                </InputGroup>
+              </Field>
+
+              <FieldLabel htmlFor="replace-lot" className="font-normal">
+                <Checkbox
+                  id="replace-lot"
+                  checked={pricingDraft.replace}
+                  onCheckedChange={(v) =>
+                    setPricingDraft((d) => ({ ...d, replace: v === true }))
+                  }
+                />
+                {t.replaceManualLot}
+              </FieldLabel>
+              <FieldDescription>{t.replaceManualLotHint}</FieldDescription>
 
               <DialogFooter>
                 <Button type="submit">{t.save}</Button>

@@ -488,9 +488,19 @@ export const t = {
   viewHolding: "Dettagli",
   holdingDetails: "Dettagli investimento",
   editPriceAndQuantity: "Modifica prezzo e quote",
-  quantityAdjustment: "Correzione quote",
-  quantityAdjustmentHint:
-    "Aggiunta (o sottratta) alle quote calcolate da acquisti e vendite — utile perché le quote di un PAC non sono mai precise.",
+  // The average-purchase-price feature: PaidCents ÷ QuantityOwned, derived
+  // server-side (cmd/holding.go's computeHoldingFigures), never typed
+  // directly — what IS typed is a purchase lot (quantity + its own average
+  // price), added to or replacing the running manual correction.
+  averagePurchasePrice: "Prezzo medio d'acquisto",
+  manualLotQuantity: "Quote acquistate",
+  manualLotHint:
+    "Registra un nuovo acquisto: si aggiunge alle quote e al costo già presenti, e il prezzo medio si ricalcola di conseguenza. Lascia entrambi i campi vuoti se non hai comprato altre quote.",
+  initialManualLotHint: "Facoltativo: le quote già possedute e il prezzo medio pagato.",
+  replaceManualLot: "Sovrascrivi anziché aggiungere",
+  replaceManualLotHint:
+    "Le quote e il prezzo medio inseriti diventano il nuovo totale, al posto di quello calcolato finora.",
+  invalidManualLot: "Inserisci sia le quote che il prezzo medio, oppure lascia entrambi i campi vuoti.",
 
   // Risparmi — read-only recap (ticket 07): total Savings, starting balance,
   // and the portfolio breakdown from GET /api/reports/savings. No entries are

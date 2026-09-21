@@ -80,12 +80,22 @@ export type Holding = {
   // this is how quantity_owned gets trued up without opening every one of
   // them. 0 on a Holding nobody has corrected.
   quantity_adjustment: number
+  // The cost-basis counterpart to quantity_adjustment (average-purchase-
+  // price feature): a hand-typed contribution to paid_cents from manually
+  // recorded purchase lots, moved together with quantity_adjustment via the
+  // manual_lot PATCH/POST field rather than typed directly. 0 on a Holding
+  // with no manual lots.
+  cost_adjustment_cents: number
   // quantity_adjustment plus quantity bought minus quantity sold from paid
   // Incomes only (ADR-0003), computed at read time and never stored.
   quantity_owned: number
-  // Net of what was spent buying this Holding minus what was received
-  // selling it (paid Incomes only), computed at read time.
+  // cost_adjustment_cents plus what was spent buying this Holding minus
+  // what was received selling it (paid Incomes only), computed at read
+  // time.
   paid_cents: number
+  // paid_cents ÷ quantity_owned, computed at read time — null when
+  // quantity_owned is zero or negative (nothing meaningful to average).
+  average_price_per_unit_cents: number | null
   // quantity_owned × current_price_cents, rounded to the nearest cent. Null
   // whenever current_price_cents is.
   value_now_cents: number | null
