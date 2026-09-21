@@ -6,6 +6,10 @@ import {
   createFilteredRowModel,
   createPaginatedRowModel,
   createSortedRowModel,
+  filterFn_equalsString,
+  filterFn_inDateRange,
+  filterFn_includesString,
+  filterFn_inNumberRange,
   metaHelper,
   rowExpandingFeature,
   rowPaginationFeature,
@@ -37,6 +41,15 @@ export interface DataTableColumnMeta {
 export const dataTableFeatures = tableFeatures({
   columnFilteringFeature,
   filteredRowModel: createFilteredRowModel(),
+  // TanStack v9 resolves a string `filterFn` name against the table's own
+  // registry, not the module's built-ins, so every name FILTER_FN_BY_VARIANT
+  // can produce must be registered here or the filter is silently skipped.
+  filterFns: {
+    includesString: filterFn_includesString,
+    equalsString: filterFn_equalsString,
+    inNumberRange: filterFn_inNumberRange,
+    inDateRange: filterFn_inDateRange,
+  },
   rowSortingFeature,
   sortedRowModel: createSortedRowModel(),
   rowPaginationFeature,
