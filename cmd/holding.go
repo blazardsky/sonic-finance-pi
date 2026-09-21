@@ -52,7 +52,28 @@ type holding struct {
 	// capital-gains-accurate weighted cost basis, which is the household's
 	// tax software's job, not this app's.
 	QuantityOwned float64 `json:"quantity_owned"`
-	PaidCents     int64   `json:"paid_cents"`
+
+	// The cost-basis counterpart to QuantityAdjustment (schema step 20,
+	// Titoli's average-purchase-price feature): a hand-typed contribution to
+	// PaidCents from manually-recorded purchase lots, on top of whatever
+	// linked Expenses/Incomes already sum to. A real column, same as
+	// QuantityAdjustment, and freely settable directly — but ordinarily set
+	// through the manual_lot request field instead (applyManualLot), which
+	// keeps it and QuantityAdjustment moving together so the derived average
+	// stays meaningful.
+	CostAdjustmentCents int64 `json:"cost_adjustment_cents"`
+
+	// CostAdjustmentCents plus every linked Expense (a buy) less every
+	// linked, paid Income (a sell) — the exact same shape QuantityOwned
+	// already has, one level of cents up.
+	PaidCents int64 `json:"paid_cents"`
+
+	// PaidCents ÷ QuantityOwned, computed at read time — nil when
+	// QuantityOwned is zero (nothing to divide by) or negative (sold more
+	// than was ever bought, a state with no meaningful average). Never
+	// stored: freezing a number here is exactly what schema step 20 is
+	// avoiding, since it would drift the moment a linked buy/sell changes.
+	AveragePricePerUnitCents *float64 `json:"average_price_per_unit_cents"`
 
 	// nil whenever CurrentPriceCents is nil — there is nothing to value at.
 	// GainLossPercent is also nil when PaidCents is zero, the same
@@ -62,6 +83,79 @@ type holding struct {
 	GainLossPercent *float64 `json:"gain_loss_percent"`
 }
 
+// manualLot is the PATCH/POST body's optional carrier for the Titoli
+// average-purchase-price feature: one purchase lot's quantity and price per
+// unit, applied by applyManualLot as either a one-shot addition to
+// QuantityAdjustment/CostAdjustmentCents or a full replace of them. Quantity
+// is required whenever a lot is sent at all — a price with no quantity to
+// weight it against (add or replace) is not a meaningful average, only a
+// number with nothing underneath it.
+type manualLot struct {
+	Quantity          float64 `json:"quantity"`
+	PricePerUnitCents float64 `json:"price_per_unit_cents"`
+	Replace           bool    `json:"replace"`
+}
+
+// validate requires Quantity only when adding — a lot with a price and no
+// quantity is not a purchase. Replacing is the deliberate exception: a
+// replace's quantity may be omitted (or 0, indistinguishable here, and
+// treated the same) to mean "keep the current total quantity, just correct
+// the average" — there is still something to weight the new average
+// against in that case, namely whatever the Holding's total already is,
+// which is exactly what "unless the user is replacing" carves out.
+func (m *manualLot) validate() error {
+	if !m.Replace && m.Quantity <= 0 {
+		return errors.New("a purchase lot needs a quantity greater than zero")
+	}
+	if m.Quantity < 0 {
+		return errors.New("quantity must not be negative")
+	}
+	if m.PricePerUnitCents < 0 {
+		return errors.New("price per unit must not be negative")
+	}
+	return nil
+}
+
+// applyManualLot computes a Holding's new QuantityAdjustment/
+// CostAdjustmentCents after recording one purchase lot of `quantity` units
+// at `pricePerUnitCents` each. transactionsQuantity/transactionsCostCents
+// are what linked Expenses/Incomes already contribute — read fresh from the
+// Holding this is called against, never a stale snapshot, so a lot recorded
+// moments after a buy or sell posts still lands on the correct total.
+//
+// Unchecked (add): the lot adds on top of whatever manual correction already
+// existed — currentAdjustment/currentCostAdjustmentCents plus this lot.
+//
+// Checked (replace) with quantity <= 0: keeps the Holding's current total
+// quantity (currentAdjustment plus what transactions already contribute)
+// and only replaces the average — the "replace-average without a quantity"
+// case validate() lets through.
+//
+// Checked (replace) otherwise: overwrites the running manual correction so the
+// Holding's OVERALL quantity/average come out to exactly quantity/
+// pricePerUnitCents, regardless of what the manual correction was before —
+// solved by subtracting what linked transactions already contribute, since
+// QuantityOwned/PaidCents are always transactionsQuantity+adjustment and
+// transactionsCostCents+costAdjustment.
+func applyManualLot(
+	currentAdjustment float64, currentCostAdjustmentCents int64,
+	transactionsQuantity float64, transactionsCostCents int64,
+	quantity float64, pricePerUnitCents float64, replace bool,
+) (newAdjustment float64, newCostAdjustmentCents int64) {
+	if replace {
+		effectiveQuantity := quantity
+		if effectiveQuantity <= 0 {
+			// No quantity typed — keep the current total (validate has
+			// already refused this unless replace is set).
+			effectiveQuantity = currentAdjustment + transactionsQuantity
+		}
+		lotCostCents := int64(math.Round(effectiveQuantity * pricePerUnitCents))
+		return effectiveQuantity - transactionsQuantity, lotCostCents - transactionsCostCents
+	}
+	lotCostCents := int64(math.Round(quantity * pricePerUnitCents))
+	return currentAdjustment + quantity, currentCostAdjustmentCents + lotCostCents
+}
+
 // computeHoldingFigures fills in the read-time-only fields from
 // CurrentPriceCents, QuantityOwned and PaidCents, which scanHolding has
 // already set. Its own function, not inlined into scanHolding, for the same
@@ -69,6 +163,10 @@ type holding struct {
 // handler needs the stored/summed fields refreshed after its own change, and
 // this is the one place that arithmetic lives.
 func computeHoldingFigures(h *holding) {
+	if h.QuantityOwned > 0 {
+		avg := float64(h.PaidCents) / h.QuantityOwned
+		h.AveragePricePerUnitCents = &avg
+	}
 	if h.CurrentPriceCents == nil {
 		return
 	}
@@ -157,6 +255,18 @@ func migrateHoldingQuantityAdjustment(tx *sql.Tx) error {
 	return err
 }
 
+// migrateHoldingCostAdjustment is schema step 20: CostAdjustmentCents, the
+// cost-basis counterpart to quantity_adjustment — Titoli's average-purchase-
+// price feature needs a manually-typed cost contribution to weight against
+// the manually-typed quantity one, since PaidCents before this step comes
+// only from linked Expenses/Incomes with no hand-typed correction at all.
+// Defaults to 0 so every existing Holding reads as "no manual cost
+// correction yet," the same bargain quantity_adjustment's own default made.
+func migrateHoldingCostAdjustment(tx *sql.Tx) error {
+	_, err := tx.Exec(`ALTER TABLE holding ADD COLUMN cost_adjustment_cents INTEGER NOT NULL DEFAULT 0`)
+	return err
+}
+
 // handleListHoldings returns every Holding. Unlike Category and Client there
 // is no hidden flag in this version (see the spec's Out of Scope), so there is
 // nothing for a picker to filter out.
@@ -195,20 +305,39 @@ func handleListHoldings(db *sql.DB) http.HandlerFunc {
 // even if nothing is linked to it yet), but QuantityOwned and PaidCents are
 // computed from linked Expenses/Incomes that cannot possibly exist yet — set
 // explicitly rather than trusted from whatever a forged request body claims.
+//
+// An optional manual_lot seeds QuantityAdjustment/CostAdjustmentCents the
+// same way it corrects them later (applyManualLot) — with nothing linked
+// yet, transactionsQuantity/transactionsCostCents are both zero, so add and
+// replace land on the same result: the lot's own quantity and average.
 func handleCreateHolding(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var h holding
-		if err := decodeJSON(w, r, &h); err != nil {
+		var body struct {
+			holding
+			ManualLot *manualLot `json:"manual_lot"`
+		}
+		if err := decodeJSON(w, r, &body); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
+		h := body.holding
 		if err := h.validate(); err != nil {
 			writeInvalid(w, err)
 			return
 		}
+		if body.ManualLot != nil {
+			if err := body.ManualLot.validate(); err != nil {
+				writeInvalid(w, err)
+				return
+			}
+			h.QuantityAdjustment, h.CostAdjustmentCents = applyManualLot(
+				h.QuantityAdjustment, h.CostAdjustmentCents, 0, 0,
+				body.ManualLot.Quantity, body.ManualLot.PricePerUnitCents, body.ManualLot.Replace,
+			)
+		}
 
-		res, err := db.Exec(`INSERT INTO holding (name, type, current_price_cents, quantity_adjustment) VALUES (?, ?, ?, ?)`,
-			h.Name, h.Type, h.CurrentPriceCents, h.QuantityAdjustment)
+		res, err := db.Exec(`INSERT INTO holding (name, type, current_price_cents, quantity_adjustment, cost_adjustment_cents) VALUES (?, ?, ?, ?, ?)`,
+			h.Name, h.Type, h.CurrentPriceCents, h.QuantityAdjustment, h.CostAdjustmentCents)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -217,23 +346,27 @@ func handleCreateHolding(db *sql.DB) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		h.QuantityOwned, h.PaidCents = h.QuantityAdjustment, 0
+		h.QuantityOwned, h.PaidCents = h.QuantityAdjustment, h.CostAdjustmentCents
 		computeHoldingFigures(&h)
 		writeJSON(w, http.StatusCreated, h)
 	}
 }
 
 // handlePatchHolding renames a Holding, changes its type, sets/clears its
-// current_price_cents, or corrects its quantity_adjustment. Decoding onto the
-// stored row is what makes it partial, the same bargain a Client's PATCH
-// makes. PaidCents and the quantity summed from linked Expenses/Incomes are
-// restored after decoding — computed, never something a PATCH body gets to
-// claim directly, the same protection handlePatchContract gives
-// ReceivedCents/AccountedCents — but QuantityAdjustment is a real column and
-// freely writable, so QuantityOwned is rebuilt from the (possibly just
-// changed) adjustment plus the untouched transaction sum. Nothing else here
-// is protected the way a Base category is: no report resolves one Holding by
-// identity, so every Holding is the household's to rename.
+// current_price_cents, or corrects its quantity_adjustment/
+// cost_adjustment_cents — directly, or through manual_lot (applyManualLot),
+// which computes both together from the household's Q/price/replace inputs
+// instead of asking them to work out the raw correction numbers themselves.
+// Decoding onto the stored row is what makes it partial, the same bargain a
+// Client's PATCH makes. The two transaction sums are captured before
+// decoding and QuantityOwned/PaidCents are rebuilt from them afterward —
+// computed, never something a PATCH body gets to claim directly, the same
+// protection handlePatchContract gives ReceivedCents/AccountedCents — but
+// QuantityAdjustment/CostAdjustmentCents are real columns and freely
+// writable (directly or via manual_lot), which is exactly what those two
+// rebuilds fold back in. Nothing else here is protected the way a Base
+// category is: no report resolves one Holding by identity, so every Holding
+// is the household's to rename.
 func handlePatchHolding(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		h, ok := findHolding(w, db, r.PathValue("id"))
@@ -241,25 +374,46 @@ func handlePatchHolding(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		id := h.ID
-		quantityFromTransactions, paidCents := h.QuantityOwned-h.QuantityAdjustment, h.PaidCents
-		if err := decodeJSON(w, r, &h); err != nil {
+		quantityFromTransactions := h.QuantityOwned - h.QuantityAdjustment
+		costFromTransactions := h.PaidCents - h.CostAdjustmentCents
+		currentAdjustment, currentCostAdjustment := h.QuantityAdjustment, h.CostAdjustmentCents
+
+		var body struct {
+			holding
+			ManualLot *manualLot `json:"manual_lot"`
+		}
+		body.holding = h
+		if err := decodeJSON(w, r, &body); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
+		h = body.holding
 		h.ID = id // an id in the body is not a way to move the row
-		h.PaidCents = paidCents
+
+		if body.ManualLot != nil {
+			if err := body.ManualLot.validate(); err != nil {
+				writeInvalid(w, err)
+				return
+			}
+			h.QuantityAdjustment, h.CostAdjustmentCents = applyManualLot(
+				currentAdjustment, currentCostAdjustment,
+				quantityFromTransactions, costFromTransactions,
+				body.ManualLot.Quantity, body.ManualLot.PricePerUnitCents, body.ManualLot.Replace,
+			)
+		}
 		h.QuantityOwned = h.QuantityAdjustment + quantityFromTransactions
+		h.PaidCents = h.CostAdjustmentCents + costFromTransactions
 		if err := h.validate(); err != nil {
 			writeInvalid(w, err)
 			return
 		}
 
-		if _, err := db.Exec(`UPDATE holding SET name = ?, type = ?, current_price_cents = ?, quantity_adjustment = ? WHERE id = ?`,
-			h.Name, h.Type, h.CurrentPriceCents, h.QuantityAdjustment, h.ID); err != nil {
+		if _, err := db.Exec(`UPDATE holding SET name = ?, type = ?, current_price_cents = ?, quantity_adjustment = ?, cost_adjustment_cents = ? WHERE id = ?`,
+			h.Name, h.Type, h.CurrentPriceCents, h.QuantityAdjustment, h.CostAdjustmentCents, h.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		h.ValueNowCents, h.GainLossCents, h.GainLossPercent = nil, nil, nil
+		h.ValueNowCents, h.GainLossCents, h.GainLossPercent, h.AveragePricePerUnitCents = nil, nil, nil, nil
 		computeHoldingFigures(&h)
 		writeJSON(w, http.StatusOK, h)
 	}
@@ -289,9 +443,10 @@ func findHolding(w http.ResponseWriter, db *sql.DB, rawID string) (holding, bool
 // The two subqueries are the quantity and amount summed from linked
 // Expenses (a buy) less linked, paid Incomes (a sell) — ADR-0003's
 // payment_date filter, the same as clientSelect's own total-earned subquery
-// relies on. quantity_adjustment rides along raw; scanHolding adds it to the
-// summed quantity to get QuantityOwned.
-const holdingSelect = `SELECT id, name, type, current_price_cents, quantity_adjustment,
+// relies on. quantity_adjustment/cost_adjustment_cents ride along raw;
+// scanHolding adds them to the summed quantity/amount to get
+// QuantityOwned/PaidCents.
+const holdingSelect = `SELECT id, name, type, current_price_cents, quantity_adjustment, cost_adjustment_cents,
 	(SELECT COALESCE(SUM(quantity), 0) FROM expense WHERE expense.holding_id = holding.id) -
 		(SELECT COALESCE(SUM(quantity), 0) FROM income WHERE income.holding_id = holding.id AND income.payment_date IS NOT NULL),
 	(SELECT COALESCE(SUM(amount_cents), 0) FROM expense WHERE expense.holding_id = holding.id) -
@@ -301,10 +456,12 @@ const holdingSelect = `SELECT id, name, type, current_price_cents, quantity_adju
 func scanHolding(row interface{ Scan(...any) error }) (holding, error) {
 	var h holding
 	var quantityFromTransactions float64
-	if err := row.Scan(&h.ID, &h.Name, &h.Type, &h.CurrentPriceCents, &h.QuantityAdjustment, &quantityFromTransactions, &h.PaidCents); err != nil {
+	var costFromTransactions int64
+	if err := row.Scan(&h.ID, &h.Name, &h.Type, &h.CurrentPriceCents, &h.QuantityAdjustment, &h.CostAdjustmentCents, &quantityFromTransactions, &costFromTransactions); err != nil {
 		return holding{}, err
 	}
 	h.QuantityOwned = h.QuantityAdjustment + quantityFromTransactions
+	h.PaidCents = h.CostAdjustmentCents + costFromTransactions
 	computeHoldingFigures(&h)
 	return h, nil
 }

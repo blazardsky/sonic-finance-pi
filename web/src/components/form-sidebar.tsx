@@ -119,6 +119,7 @@ function FormSidebar({
         mobileWidth="100vw"
         themed={false}
         contained
+        instant
         onContainedRectChange={(r) => setEdge(r.edge)}
         overlay={expanded}
         overlayWidth={EXPANDED_OVERLAY_WIDTH}

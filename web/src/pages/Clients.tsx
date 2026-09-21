@@ -27,7 +27,8 @@ import { useSidebar } from "@/components/ui/sidebar"
 import { api, apiJSON } from "@/lib/api"
 import { FormSidebar } from "@/components/form-sidebar"
 import { toast } from "@/lib/toast"
-import { formatCents, formatMonth, toCents, toTyped } from "@/lib/money"
+import { formatCents, formatMonth, thisMonth, toCents, toTyped } from "@/lib/money"
+import { cn } from "@/lib/utils"
 import { pickableCategories, withSaved } from "@/lib/pickers"
 import { t } from "@/lib/strings"
 import type { Category, Client, Contract, Lists } from "@/types"
@@ -618,6 +619,68 @@ function ContractForm({
 // only for the row actually opened" behavior the previous hand-rolled
 // expand toggle had. The parent bumps ClientContracts' `key` after any
 // Contract save so this remounts (and refetches) instead of going stale.
+// A Contract that's run its course: past its end month, fully invoiced (every
+// euro of the total accounted for), and fully paid (nothing accounted still
+// waiting on payment). One still overdue on invoicing or payment past its
+// end month is not complete — it still needs attention, which is exactly
+// what staying in the plain list keeps visible.
+function isContractComplete(ct: Contract): boolean {
+  return (
+    ct.end_month < thisMonth() &&
+    ct.accounted_cents >= ct.total_cents &&
+    ct.received_cents >= ct.accounted_cents
+  )
+}
+
+function ContractCard({
+  ct,
+  onEditContract,
+  muted = false,
+}: {
+  ct: Contract
+  onEditContract: (contract: Contract) => void
+  muted?: boolean
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-1 rounded-lg border p-2 text-sm",
+        muted && "text-muted-foreground"
+      )}
+    >
+      <div className="flex items-center justify-between gap-2 font-medium">
+        <span>
+          {formatMonth(ct.start_month)} – {formatMonth(ct.end_month)}
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="tabular-nums">€ {formatCents(ct.total_cents)}</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t.editContract}
+            onClick={() => onEditContract(ct)}
+          >
+            <RiEditLine />
+          </Button>
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
+        <span>
+          {t.expectedSoFar}: € {formatCents(ct.expected_so_far_cents)}
+        </span>
+        <span>
+          {t.contractReceived}: € {formatCents(ct.received_cents)}
+        </span>
+        <span className={ct.overdue ? "text-destructive" : ""}>
+          {t.invoiceTarget}: € {formatCents(ct.invoice_target_this_month_cents)}
+          {ct.overdue && ` (${t.contractOverdue})`}
+        </span>
+      </div>
+    </div>
+  )
+}
+
 function ClientContracts({
   clientId,
   onEditContract,
@@ -626,6 +689,7 @@ function ClientContracts({
   onEditContract: (contract: Contract) => void
 }) {
   const [contracts, setContracts] = useState<Contract[] | null>(null)
+  const [showCompleted, setShowCompleted] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -639,50 +703,46 @@ function ClientContracts({
 
   if (contracts === null) return null
 
+  // Newest first — by start month, ties broken by id (a later id was created
+  // later even when two contracts happen to share a start month).
+  const sorted = [...contracts].sort(
+    (a, b) => b.start_month.localeCompare(a.start_month) || b.id - a.id
+  )
+  const active = sorted.filter((ct) => !isContractComplete(ct))
+  const completed = sorted.filter(isContractComplete)
+
   return (
     <div className="flex flex-col gap-3 py-2">
       {contracts.length === 0 && (
         <p className="text-sm text-muted-foreground">{t.noContractsYet}</p>
       )}
-      {contracts.map((ct) => (
-        <div
-          key={ct.id}
-          className="flex flex-col gap-1 rounded-lg border p-2 text-sm"
-        >
-          <div className="flex items-center justify-between gap-2 font-medium">
-            <span>
-              {formatMonth(ct.start_month)} – {formatMonth(ct.end_month)}
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="tabular-nums">
-                € {formatCents(ct.total_cents)}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t.editContract}
-                onClick={() => onEditContract(ct)}
-              >
-                <RiEditLine />
-              </Button>
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
-            <span>
-              {t.expectedSoFar}: € {formatCents(ct.expected_so_far_cents)}
-            </span>
-            <span>
-              {t.contractReceived}: € {formatCents(ct.received_cents)}
-            </span>
-            <span className={ct.overdue ? "text-destructive" : ""}>
-              {t.invoiceTarget}: €{" "}
-              {formatCents(ct.invoice_target_this_month_cents)}
-              {ct.overdue && ` (${t.contractOverdue})`}
-            </span>
-          </div>
-        </div>
+      {active.map((ct) => (
+        <ContractCard key={ct.id} ct={ct} onEditContract={onEditContract} />
       ))}
+      {completed.length > 0 && (
+        <>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-fit"
+            onClick={() => setShowCompleted((v) => !v)}
+          >
+            {showCompleted
+              ? t.hideCompletedContracts
+              : t.showCompletedContracts(completed.length)}
+          </Button>
+          {showCompleted &&
+            completed.map((ct) => (
+              <ContractCard
+                key={ct.id}
+                ct={ct}
+                onEditContract={onEditContract}
+                muted
+              />
+            ))}
+        </>
+      )}
     </div>
   )
 }
