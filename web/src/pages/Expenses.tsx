@@ -49,6 +49,7 @@ import {
 import { DatePicker } from "@/components/date-picker"
 import { FormSidebar } from "@/components/form-sidebar"
 import { PeriodLabel, PeriodStepper } from "@/components/PeriodStepper"
+import { SpendingIntentPicker } from "@/components/SpendingIntentPicker"
 import { SpoilerAmount } from "@/components/SpoilerAmount"
 import { ViewRow } from "@/components/ViewRow"
 import { toast } from "@/lib/toast"
@@ -73,7 +74,7 @@ import {
   withSaved,
 } from "@/lib/pickers"
 import { t } from "@/lib/strings"
-import type { Category, Expense, Holding, Lists, Subcategory } from "@/types"
+import type { Category, Expense, Holding, Lists, SpendingIntent, Subcategory } from "@/types"
 
 // A free-text field that suggests from the household's own history as it
 // types (ticket 03's /api/items/suggest and /api/stores/suggest) — built on
@@ -221,6 +222,7 @@ const blankDraft = (): Draft => ({
   tax_year: 0,
   items: [],
   subcategory_id: null,
+  spending_intent: null,
 })
 
 // Field by field rather than a spread, so the draft carries what the form
@@ -236,6 +238,7 @@ const draftOf = (e: Expense): Draft => ({
   note: e.note,
   tax_year: e.tax_year,
   subcategory_id: e.subcategory_id,
+  spending_intent: e.spending_intent,
   items: e.items.map((it) => ({
     name: it.name,
     amount: toTyped(it.amount_cents),
@@ -310,6 +313,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
     goal_cents: 0,
     savings_starting_balance_cents: 0,
     net_worth_target_cents: 0,
+    spending_intent_enabled: false,
   })
   const [draft, setDraft] = useState<Draft>(blankDraft)
   const [editing, setEditing] = useState<number | null>(null)
@@ -329,6 +333,13 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
   // App re-renders with the flag still set (see App.tsx's reset-on-navigate-
   // away).
   const [openMobileOnArrival] = useState(() => quickAdd ?? false)
+  // Ticket 03: whether the Spending intent badges have been touched by hand
+  // this session, while creating an Expense — until then, picking a Category
+  // re-seeds the badges from its default every time; once true, a further
+  // Category change stops silently overwriting the manual choice. Only
+  // create cares about this: editing an existing Expense never re-seeds from
+  // a Category change (see the Category Select's onValueChange below).
+  const [spendingIntentTouched, setSpendingIntentTouched] = useState(false)
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
@@ -341,6 +352,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
     setDraft(draftOf(e))
     setDetailsOpen(true)
     setSidebarOpen(true)
+    setSpendingIntentTouched(false)
   }
 
   // No year selected: the recent view, `limit` alone. A year selected: that
@@ -481,7 +493,13 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
     setDraft((d) =>
       wasEditing ? blankDraft() : { ...d, amount: "", store: "", note: "", items: [] }
     )
-    if (wasEditing) setDetailsOpen(true)
+    // Spending intent stays with Category/Payer/method on a repeat add
+    // (same reasoning as the comment above); an edit finishing is a fresh
+    // slate, so its own touched lock goes with it.
+    if (wasEditing) {
+      setDetailsOpen(true)
+      setSpendingIntentTouched(false)
+    }
     await load()
     return true
   }
@@ -498,6 +516,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
       setEditing(null)
       setDraft(blankDraft())
       setDetailsOpen(false)
+      setSpendingIntentTouched(false)
     }
     await load()
   }
@@ -699,6 +718,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                     setEditing(null)
                     setDraft(blankDraft())
                     setDetailsOpen(true)
+                    setSpendingIntentTouched(false)
                   }}
                 >
                   {t.cancel}
@@ -745,9 +765,19 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
               <FieldLabel htmlFor="category">{t.category}</FieldLabel>
               <Select
                 value={draft.category_id === "" ? NO_CATEGORY : String(draft.category_id)}
-                onValueChange={(v) =>
-                  set("category_id", v === NO_CATEGORY ? "" : Number(v))
-                }
+                onValueChange={(v) => {
+                  const categoryId = v === NO_CATEGORY ? "" : Number(v)
+                  set("category_id", categoryId)
+                  // Ticket 03: on create only, and only until the badges have
+                  // been touched by hand, a Category change re-seeds Spending
+                  // intent from the newly picked one's own default (null
+                  // included — a Category with no default clears the pre-fill
+                  // too, the same "re-seed" the spec asks for).
+                  if (editing === null && !spendingIntentTouched) {
+                    const category = categories.find((c) => c.id === categoryId)
+                    set("spending_intent", category?.spending_intent ?? null)
+                  }
+                }}
                 required
               >
                 <SelectTrigger id="category" className="h-10 w-full">
@@ -794,6 +824,24 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                 </SelectContent>
               </Select>
             </Field>
+
+            {/* Ticket 03: rendered only while the feature's own settings
+                switch is on, and genuinely optional (spec, story 14) — the
+                whole section is skippable, and the picker's own re-tap-to-
+                clear behavior is how nothing-picked is reached without a
+                separate "none" control. */}
+            {lists.spending_intent_enabled && (
+              <Field>
+                <FieldLabel>{t.spendingIntent}</FieldLabel>
+                <SpendingIntentPicker
+                  value={draft.spending_intent}
+                  onChange={(v: SpendingIntent | null) => {
+                    setSpendingIntentTouched(true)
+                    set("spending_intent", v)
+                  }}
+                />
+              </Field>
+            )}
 
             {/* Only for a tax payment, and outside the details disclosure: for
                 this one Expense the year it relates to is not a detail, it is the

@@ -32,6 +32,10 @@ type expenseJSON struct {
 
 	// A second, independent tag alongside CategoryID, nil on most Expenses.
 	SubcategoryID *int64 `json:"subcategory_id"`
+
+	// This Expense's own Spending intent (ticket 03) — nil when not
+	// classified, independent of its Category's own default.
+	SpendingIntent *string `json:"spending_intent"`
 }
 
 // An Item as the API hands it out. It carries no id: nothing addresses an Item
@@ -177,18 +181,21 @@ func TestExpenseWritesAreValidated(t *testing.T) {
 		body any
 		want int
 	}{
-		"a zero amount":       {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 0, "category_id": groceries}, http.StatusBadRequest},
-		"a negative amount":   {map[string]any{"occurred_on": "2026-03-15", "amount_cents": -500, "category_id": groceries}, http.StatusBadRequest},
-		"a missing date":      {map[string]any{"amount_cents": 500, "category_id": groceries}, http.StatusBadRequest},
-		"a malformed date":    {map[string]any{"occurred_on": "15/03/2026", "amount_cents": 500, "category_id": groceries}, http.StatusBadRequest},
-		"an impossible date":  {map[string]any{"occurred_on": "2026-02-30", "amount_cents": 500, "category_id": groceries}, http.StatusBadRequest},
-		"no Category":         {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500}, http.StatusBadRequest},
-		"an unknown Category": {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": 9999}, http.StatusBadRequest},
-		"an income Category":  {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": freelance}, http.StatusBadRequest},
+		"a zero amount":          {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 0, "category_id": groceries}, http.StatusBadRequest},
+		"a negative amount":      {map[string]any{"occurred_on": "2026-03-15", "amount_cents": -500, "category_id": groceries}, http.StatusBadRequest},
+		"a missing date":         {map[string]any{"amount_cents": 500, "category_id": groceries}, http.StatusBadRequest},
+		"a malformed date":       {map[string]any{"occurred_on": "15/03/2026", "amount_cents": 500, "category_id": groceries}, http.StatusBadRequest},
+		"an impossible date":     {map[string]any{"occurred_on": "2026-02-30", "amount_cents": 500, "category_id": groceries}, http.StatusBadRequest},
+		"no Category":            {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500}, http.StatusBadRequest},
+		"an unknown Category":    {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": 9999}, http.StatusBadRequest},
+		"an income Category":     {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": freelance}, http.StatusBadRequest},
 		"an unknown subcategory": {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": groceries, "subcategory_id": 9999}, http.StatusBadRequest},
 		// Ticket 08: "whose money was it" is never left unanswered going forward.
 		"an empty payer":     {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": groceries, "payer": ""}, http.StatusBadRequest},
 		"a whitespace payer": {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": groceries, "payer": "   "}, http.StatusBadRequest},
+		// Ticket 03: matches the column's own CHECK, refused at the door as a
+		// 400 rather than surfacing as the DB's 500.
+		"an unrecognized spending_intent": {map[string]any{"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": groceries, "spending_intent": "meh"}, http.StatusBadRequest},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -358,17 +365,19 @@ func TestEditsAreValidated(t *testing.T) {
 		body any
 		want int
 	}{
-		"a zero amount":       {expensePath(logged.ID), map[string]any{"amount_cents": 0}, http.StatusBadRequest},
-		"a fractional amount": {expensePath(logged.ID), map[string]any{"amount_cents": 7.99}, http.StatusBadRequest},
-		"a malformed date":    {expensePath(logged.ID), map[string]any{"occurred_on": "15/03/2026"}, http.StatusBadRequest},
-		"an income Category":  {expensePath(logged.ID), map[string]any{"category_id": freelance}, http.StatusBadRequest},
-		"an unknown Category": {expensePath(logged.ID), map[string]any{"category_id": 9999}, http.StatusBadRequest},
+		"a zero amount":          {expensePath(logged.ID), map[string]any{"amount_cents": 0}, http.StatusBadRequest},
+		"a fractional amount":    {expensePath(logged.ID), map[string]any{"amount_cents": 7.99}, http.StatusBadRequest},
+		"a malformed date":       {expensePath(logged.ID), map[string]any{"occurred_on": "15/03/2026"}, http.StatusBadRequest},
+		"an income Category":     {expensePath(logged.ID), map[string]any{"category_id": freelance}, http.StatusBadRequest},
+		"an unknown Category":    {expensePath(logged.ID), map[string]any{"category_id": 9999}, http.StatusBadRequest},
 		"an unknown subcategory": {expensePath(logged.ID), map[string]any{"subcategory_id": 9999}, http.StatusBadRequest},
-		"an unknown Expense":  {expensePath(9999), map[string]any{"amount_cents": 100}, http.StatusNotFound},
-		"an unparseable id":   {"/api/expenses/nope", map[string]any{"amount_cents": 100}, http.StatusNotFound},
+		"an unknown Expense":     {expensePath(9999), map[string]any{"amount_cents": 100}, http.StatusNotFound},
+		"an unparseable id":      {"/api/expenses/nope", map[string]any{"amount_cents": 100}, http.StatusNotFound},
 		// Ticket 08: an edit setting the Payer empty is refused the same as a create.
 		"an empty payer":     {expensePath(logged.ID), map[string]any{"payer": ""}, http.StatusBadRequest},
 		"a whitespace payer": {expensePath(logged.ID), map[string]any{"payer": "   "}, http.StatusBadRequest},
+		// Ticket 03: an edit is validated exactly as a create is.
+		"an unrecognized spending_intent": {expensePath(logged.ID), map[string]any{"spending_intent": "meh"}, http.StatusBadRequest},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -918,6 +927,75 @@ func TestAHoldingIDCanBeSetChangedAndClearedByPatch(t *testing.T) {
 // ptr is a float64 literal address, for building an itemJSON's optional
 // Quantity in table-driven cases without a named variable per case.
 func ptr(f float64) *float64 { return &f }
+
+// The ticket's core: an Expense's own Spending intent round-trips through
+// create and update independently of its Category's own default (ticket 02
+// covers that default in isolation), an unset one reads back null rather
+// than an invented value, and a PATCH silent about it leaves it alone while
+// an explicit null clears it — the same omitted-vs-null distinction
+// handlePatchCategory makes, which falls out for free here since PATCH
+// decodes straight onto the loaded row rather than a separate presence
+// struct.
+func TestExpenseSpendingIntentRoundTripsThroughCreateAndUpdate(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+
+	unclassified := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": alimentari,
+	})
+	if unclassified.SpendingIntent != nil {
+		t.Errorf("spending_intent = %v on create with nothing picked, want nil", *unclassified.SpendingIntent)
+	}
+
+	logged := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": alimentari,
+		"spending_intent": "necessity",
+	})
+	if logged.SpendingIntent == nil || *logged.SpendingIntent != "necessity" {
+		t.Fatalf("spending_intent on create = %v, want %q", logged.SpendingIntent, "necessity")
+	}
+
+	var updated expenseJSON
+	res := a.patch(t, expensePath(logged.ID), map[string]any{"spending_intent": "desire_bullshit"}, &updated)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH spending_intent = %d, want 200", res.StatusCode)
+	}
+	if updated.SpendingIntent == nil || *updated.SpendingIntent != "desire_bullshit" {
+		t.Errorf("spending_intent after patch = %v, want %q", updated.SpendingIntent, "desire_bullshit")
+	}
+
+	// A PATCH silent about spending_intent leaves it exactly where it was.
+	a.patch(t, expensePath(logged.ID), map[string]any{"amount_cents": 600}, &updated)
+	if updated.SpendingIntent == nil || *updated.SpendingIntent != "desire_bullshit" {
+		t.Errorf("spending_intent after an unrelated patch = %v, want it left alone at %q", updated.SpendingIntent, "desire_bullshit")
+	}
+
+	// An explicit null clears it.
+	a.patch(t, expensePath(logged.ID), map[string]any{"spending_intent": nil}, &updated)
+	if updated.SpendingIntent != nil {
+		t.Errorf("spending_intent after clearing = %v, want nil", *updated.SpendingIntent)
+	}
+}
+
+// desire_wise/desire_bullshit are each directly valid on their own — the
+// single-column enum encodes the whole conditional tree, so none of the four
+// values requires having passed through plain "desire" first.
+func TestEachSpendingIntentValueIsDirectlySettableWithoutAPrerequisite(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+
+	for _, value := range spendingIntents {
+		t.Run(value, func(t *testing.T) {
+			created := a.addExpense(t, map[string]any{
+				"occurred_on": "2026-03-15", "amount_cents": 500, "category_id": alimentari,
+				"spending_intent": value,
+			})
+			if created.SpendingIntent == nil || *created.SpendingIntent != value {
+				t.Errorf("spending_intent = %v, want %q set directly", created.SpendingIntent, value)
+			}
+		})
+	}
+}
 
 // Ticket 01: quantity and unit are a pair. Either alone is meaningless — a
 // quantity with no unit does not say what it counts, and a unit with no

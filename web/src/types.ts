@@ -152,6 +152,11 @@ export type Expense = {
   // How many units of holding_id this Expense bought, or null. Meaningless
   // without a holding_id alongside it — nothing enforces that pairing.
   quantity: number | null
+  // This Expense's own Spending intent (ticket 03), independent of its
+  // Category's default — that default only ever pre-fills this field at
+  // creation time (see Category.spending_intent); from then on this is the
+  // one value anything reads. null means "not classified".
+  spending_intent: SpendingIntent | null
 }
 
 // A part of an Expense under its own Category. No id: an Item is saved as one
