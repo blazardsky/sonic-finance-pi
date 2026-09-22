@@ -306,6 +306,12 @@ export type HoldingBreakdown = {
   type: HoldingType
   net_cents: number
   percent: number
+  // Same read-time figures as Holding's own (computeHoldingFigures): null on
+  // the same terms — no current_price_cents typed in means nothing to value
+  // at, and gain_loss_percent is also null when net_cents is zero.
+  value_now_cents: number | null
+  gain_loss_cents: number | null
+  gain_loss_percent: number | null
 }
 
 // The Savings page's one request (ticket 07) — cmd/savings.go's

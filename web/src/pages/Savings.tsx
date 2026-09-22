@@ -189,9 +189,11 @@ export function Savings() {
   )
 }
 
-// v1.3.0: DataTable's own sortable headers and per-column filters — same
-// columns as today (Holding, Type, Amount, %). Read-only, same as
-// Investments.tsx: no Actions column, this is a derived recap.
+// v1.3.0: DataTable's own sortable headers and per-column filters. Holding,
+// Type, Amount, % plus current value and gain/loss, both null (blank) on a
+// Holding with no current_price_cents typed in (computeHoldingFigures).
+// Read-only, same as Investments.tsx: no Actions column, this is a derived
+// recap.
 const portfolioColumns: DataTableColumnDef<HoldingBreakdown>[] = (() => {
   const helper = createDataTableColumnHelper<HoldingBreakdown>()
   return [
@@ -221,6 +223,31 @@ const portfolioColumns: DataTableColumnDef<HoldingBreakdown>[] = (() => {
           {row.original.percent.toFixed(1)}%
         </div>
       ),
+    }),
+    helper.accessor("value_now_cents", {
+      header: t.valueNow,
+      meta: { filterVariant: "range" },
+      cell: ({ row }) => (
+        <div className="text-right tabular-nums">
+          {row.original.value_now_cents === null
+            ? ""
+            : `€ ${formatCents(row.original.value_now_cents)}`}
+        </div>
+      ),
+    }),
+    helper.accessor("gain_loss_cents", {
+      header: t.gainLoss,
+      meta: { filterVariant: "range" },
+      cell: ({ row }) => {
+        const { gain_loss_cents: cents, gain_loss_percent: percent } = row.original
+        return (
+          <div className="text-right tabular-nums">
+            {cents === null
+              ? ""
+              : `€ ${formatCents(cents)}${percent === null ? "" : ` (${percent.toFixed(1)}%)`}`}
+          </div>
+        )
+      },
     }),
   ]
 })()

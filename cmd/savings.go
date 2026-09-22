@@ -35,6 +35,14 @@ type holdingBreakdown struct {
 	Type      string  `json:"type"`
 	NetCents  int64   `json:"net_cents"`
 	Percent   float64 `json:"percent"`
+
+	// The same read-time figures Holdings.tsx's Dettagli view shows
+	// (computeHoldingFigures) — nil on the same terms there: no current
+	// price typed in means nothing to value at, and GainLossPercent is also
+	// nil when NetCents is zero, the divide-by-nothing guard.
+	ValueNowCents   *int64   `json:"value_now_cents"`
+	GainLossCents   *int64   `json:"gain_loss_cents"`
+	GainLossPercent *float64 `json:"gain_loss_percent"`
 }
 
 // savingsReport is the Savings page's one request: the computed figure, the
@@ -184,46 +192,36 @@ func computeSavingsCents(db *sql.DB, cutoff string) (savingsCents, startingBalan
 }
 
 // readHoldingBreakdown is the portfolio percentage breakdown: each Holding's
-// net contribution (buys minus sells) as a percentage of the total across
-// every other Holding still standing, plus that total itself (ticket 05's
-// CombinedCents is Savings plus this, so the caller reuses it rather than
-// re-summing the same slice). Same shape as readBreakdown's Category
-// grouping (cmd/reports.go), applied to Holdings — buys and sells are summed
-// per Holding in SQL, but the zero-drop and the percentage itself are plain
-// Go arithmetic over the small handful of rows a household ever has, rather
-// than SQL cleverness for its own sake.
+// PaidCents (readHoldings — cost_adjustment_cents plus buys minus sells) as a
+// percentage of the total across every other Holding still standing, plus
+// that total itself (ticket 05's CombinedCents is Savings plus this, so the
+// caller reuses it rather than re-summing the same slice) and the same
+// ValueNowCents/GainLossCents/GainLossPercent computeHoldingFigures already
+// derives for Holdings.tsx — read once here rather than a second formula.
 func readHoldingBreakdown(db *sql.DB) ([]holdingBreakdown, int64, error) {
-	rows, err := db.Query(`SELECT h.id, h.name, h.type,
-			COALESCE(buys.cents, 0) - COALESCE(sells.cents, 0) AS net_cents
-		FROM holding h
-		LEFT JOIN (SELECT holding_id, SUM(amount_cents) AS cents FROM expense
-			WHERE holding_id IS NOT NULL GROUP BY holding_id) buys ON buys.holding_id = h.id
-		LEFT JOIN (SELECT holding_id, SUM(amount_cents) AS cents FROM income
-			WHERE holding_id IS NOT NULL AND payment_date IS NOT NULL
-			GROUP BY holding_id) sells ON sells.holding_id = h.id
-		ORDER BY h.name COLLATE NOCASE`)
+	holdings, err := readHoldings(db)
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
 
 	out := []holdingBreakdown{}
 	var total int64
-	for rows.Next() {
-		var hb holdingBreakdown
-		if err := rows.Scan(&hb.HoldingID, &hb.Name, &hb.Type, &hb.NetCents); err != nil {
-			return nil, 0, err
-		}
+	for _, h := range holdings {
 		// A Holding never bought or fully sold back out nets to zero and is
 		// dropped entirely — the ticket's rule, not shown as a 0% row.
-		if hb.NetCents == 0 {
+		if h.PaidCents == 0 {
 			continue
 		}
-		out = append(out, hb)
-		total += hb.NetCents
-	}
-	if err := rows.Err(); err != nil {
-		return nil, 0, err
+		out = append(out, holdingBreakdown{
+			HoldingID:       h.ID,
+			Name:            h.Name,
+			Type:            h.Type,
+			NetCents:        h.PaidCents,
+			ValueNowCents:   h.ValueNowCents,
+			GainLossCents:   h.GainLossCents,
+			GainLossPercent: h.GainLossPercent,
+		})
+		total += h.PaidCents
 	}
 	for i := range out {
 		out[i].Percent = float64(out[i].NetCents) * 100 / float64(total)

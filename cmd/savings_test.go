@@ -348,3 +348,63 @@ func TestNetWorthTargetRoundTripsThroughSettings(t *testing.T) {
 		t.Errorf("net_worth_target_cents = %d, want 50000000", got.NetWorthTargetCents)
 	}
 }
+
+// A Holding entered only via a manual lot — quotes already owned before the
+// household started tracking buys/sells, same as Titoli/Holdings.tsx shows
+// it — has no linked Expense/Income, so net_cents must come from
+// cost_adjustment_cents alone. Before this, such a Holding computed to 0 and
+// was silently dropped from both the breakdown and CombinedCents.
+func TestSavingsBreakdownIncludesAManualLotWithNoTransactions(t *testing.T) {
+	a := newTestApp(t)
+	h := a.createHolding(t, "VWCE", holdingETF)
+
+	if res := a.patch(t, holdingPath(h.ID), map[string]any{
+		"manual_lot": map[string]any{"quantity": 10, "price_per_unit_cents": 5000, "replace": false},
+	}, nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH manual_lot = %d, want 200", res.StatusCode)
+	}
+
+	got := a.savings(t)
+	if len(got.Holdings) != 1 {
+		t.Fatalf("holdings = %+v, want the manual-lot Holding present", got.Holdings)
+	}
+	want := int64(50000)
+	if got.Holdings[0].NetCents != want {
+		t.Errorf("net_cents = %d, want %d (cost_adjustment_cents alone)", got.Holdings[0].NetCents, want)
+	}
+	if got.CombinedCents != want {
+		t.Errorf("combined_cents = %d, want %d to include the manual lot", got.CombinedCents, want)
+	}
+}
+
+// A Holding's current value and gain/loss ride along in the breakdown too —
+// the same computeHoldingFigures arithmetic Holdings.tsx's Dettagli view
+// shows, not a second formula.
+func TestSavingsBreakdownIncludesValueNowAndGainLoss(t *testing.T) {
+	a := newTestApp(t)
+	h := a.createHolding(t, "VWCE", holdingETF)
+
+	if res := a.patch(t, holdingPath(h.ID), map[string]any{
+		"manual_lot": map[string]any{"quantity": 10, "price_per_unit_cents": 5000, "replace": false},
+	}, nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH manual_lot = %d, want 200", res.StatusCode)
+	}
+	if res := a.patch(t, holdingPath(h.ID), map[string]any{"current_price_cents": int64(6000)}, nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH current_price_cents = %d, want 200", res.StatusCode)
+	}
+
+	got := a.savings(t)
+	if len(got.Holdings) != 1 {
+		t.Fatalf("holdings = %+v, want one row", got.Holdings)
+	}
+	row := got.Holdings[0]
+	if row.ValueNowCents == nil || *row.ValueNowCents != 60000 {
+		t.Errorf("value_now_cents = %v, want 60000 (10 × 6000)", row.ValueNowCents)
+	}
+	if row.GainLossCents == nil || *row.GainLossCents != 10000 {
+		t.Errorf("gain_loss_cents = %v, want 10000 (60000 − 50000)", row.GainLossCents)
+	}
+	if row.GainLossPercent == nil || *row.GainLossPercent != 20 {
+		t.Errorf("gain_loss_percent = %v, want 20", row.GainLossPercent)
+	}
+}

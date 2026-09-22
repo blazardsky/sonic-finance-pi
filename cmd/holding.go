@@ -275,30 +275,40 @@ func migrateHoldingCostAdjustment(tx *sql.Tx) error {
 // at most.
 func handleListHoldings(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rows, err := db.Query(holdingSelect + ` ORDER BY name COLLATE NOCASE`)
+		out, err := readHoldings(db)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		defer rows.Close()
-
-		// An empty list has to marshal as [] rather than null: the frontend
-		// maps over it, and an empty list is where every household starts.
-		out := []holding{}
-		for rows.Next() {
-			h, err := scanHolding(rows)
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, err)
-				return
-			}
-			out = append(out, h)
-		}
-		if err := rows.Err(); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, out)
 	}
+}
+
+// readHoldings is every Holding, figures and all — handleListHoldings' own
+// query, pulled out so readHoldingBreakdown (cmd/savings.go) can read the
+// same QuantityOwned/PaidCents/ValueNowCents/GainLossCents arithmetic rather
+// than a second copy of it in SQL.
+func readHoldings(db *sql.DB) ([]holding, error) {
+	rows, err := db.Query(holdingSelect + ` ORDER BY name COLLATE NOCASE`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// An empty list has to marshal as [] rather than null: the frontend
+	// maps over it, and an empty list is where every household starts.
+	out := []holding{}
+	for rows.Next() {
+		h, err := scanHolding(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // A newly created Holding can set current_price_cents right away (harmless,
