@@ -35,6 +35,8 @@ import {
 import { t } from "@/lib/strings"
 import type { Screen } from "@/App"
 
+const APP_RELEASE_VERSION = '1.3.4';
+
 const icons: Record<Screen, typeof RiDashboardLine> = {
   dashboard: RiDashboardLine,
   month: RiCalendarLine,
@@ -121,6 +123,7 @@ function Brand() {
   return (
     <div className="cursor-default rounded-b-sm bg-brand px-3 py-2.5 font-heading text-sm text-brand-foreground">
       <span className="font-bold uppercase">Sonic</span> Finance
+      <small className="opacity-50">{` | v${APP_RELEASE_VERSION}`}</small>
     </div>
   )
 }
