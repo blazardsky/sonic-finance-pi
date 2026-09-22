@@ -282,7 +282,7 @@ export const t = {
   recentEntries: "Ultime registrazioni",
   noEntriesYet: "Nessuna registrazione ancora.",
 
-  // Budget / Target / Goal (ticket 04) — shown on the Month page only for the
+  // Budget / Target / Goal (ticket 04) — shown on the Dashboard, for the
   // current real month (CONTEXT.md: Budget/Target are about Expenses, Goal is
   // about savings — three distinct words, kept distinct here too). The same
   // two labels are reused on the Settings screen, where Target and Goal are
