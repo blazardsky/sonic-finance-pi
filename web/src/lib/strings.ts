@@ -590,6 +590,13 @@ export const t = {
   // Year review's line chart (ticket 05) — its section heading, above the
   // four series that reuse the four labels just above.
   spendingIntentByMonth: "Intento di spesa nel tempo",
+  // Year review's blurred diagram (ticket 06) — desktop only. Its three
+  // regions combine two of the four labels above; "Desiderio" alone never
+  // appears here since a plain, unrefined Desire isn't one of the diagram's
+  // three regions (spec story 22/24).
+  spendingIntentDiagram: "Carattere della spesa",
+  spendingIntentDesireWise: "Desiderio sensato",
+  spendingIntentDesireBullshit: "Desiderio stronzata",
   // The Category edit form's own label for its default (ticket 02) — distinct
   // from the plain t.spendingIntent heading the Expense form uses, since here
   // it is explicitly a seed, not the classification itself.

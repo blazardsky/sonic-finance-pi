@@ -105,6 +105,10 @@ export function YearlyReport() {
     () => spendingIntentSeries(full?.spending_intent_by_month ?? [], year),
     [full, year]
   )
+  const spendingIntentRegionsForYear = useMemo(
+    () => spendingIntentRegions(full?.spending_intent_by_month ?? []),
+    [full]
+  )
   const step = (by: number) => setYear(String(Number(year) + by))
 
   return (
@@ -158,6 +162,19 @@ export function YearlyReport() {
             {t.spendingIntentByMonth}
           </h2>
           <SpendingIntentLineChart points={spendingIntentPoints} />
+        </section>
+      )}
+
+      {/* Ticket 06: desktop only, no mobile fallback (spec story 23) — the
+          blurred overlap only reads once there is room to keep three blobs
+          apart, so the section is hidden outright below `md` rather than
+          shrunk into something illegible. */}
+      {spendingIntentEnabled && spendingIntentRegionsForYear.length > 0 && (
+        <section className="hidden flex-col gap-2 md:flex">
+          <h2 className="text-sm font-medium text-muted-foreground">
+            {t.spendingIntentDiagram}
+          </h2>
+          <SpendingIntentDiagram regions={spendingIntentRegionsForYear} />
         </section>
       )}
 
@@ -567,6 +584,108 @@ const spendingIntentTooltip = (
     )}
   />
 )
+
+// Ticket 06's diagram: three fixed positions in a relative square, one per
+// region. "By feel" per the spec — a hand-placed triangle, not a computed
+// Venn/Euler layout — so the three blobs stay visually separable at every
+// size rather than a formula occasionally stacking them dead center.
+type IntentRegionKey = "necessity" | "wise" | "bullshit"
+
+const spendingIntentRegionLayout: Record<
+  IntentRegionKey,
+  { center: { x: number; y: number }; color: string }
+> = {
+  necessity: { center: { x: 36, y: 46 }, color: "var(--chart-1)" },
+  wise: { center: { x: 66, y: 38 }, color: "var(--credit)" },
+  bullshit: { center: { x: 54, y: 70 }, color: "var(--destructive)" },
+}
+
+type IntentRegion = {
+  key: IntentRegionKey
+  label: string
+  cents: number
+  share: number
+  center: { x: number; y: number }
+  color: string
+}
+
+// spendingIntentRegions sums the year's twelve rows into the diagram's three
+// classified buckets (spec story 22). A plain `desire` row with no Wise/
+// Bullshit refinement is deliberately left out of every bucket — same as an
+// untagged Expense (spec story 24) — the diagram only ever shows what was
+// actually judged, never a raw, unrefined Desire total. An empty array means
+// nothing was classified all year; the caller hides the section on that.
+function spendingIntentRegions(
+  byMonth: FullYearReport["spending_intent_by_month"]
+): IntentRegion[] {
+  const totals = byMonth.reduce(
+    (acc, m) => ({
+      necessity: acc.necessity + m.necessity_cents,
+      wise: acc.wise + m.wise_cents,
+      bullshit: acc.bullshit + m.bullshit_cents,
+    }),
+    { necessity: 0, wise: 0, bullshit: 0 }
+  )
+  const grandTotal = totals.necessity + totals.wise + totals.bullshit
+  if (grandTotal === 0) return []
+
+  const labels: Record<IntentRegionKey, string> = {
+    necessity: t.spendingIntentNecessity,
+    wise: t.spendingIntentDesireWise,
+    bullshit: t.spendingIntentDesireBullshit,
+  }
+  return (Object.keys(totals) as IntentRegionKey[])
+    .filter((key) => totals[key] > 0)
+    .map((key) => ({
+      key,
+      label: labels[key],
+      cents: totals[key],
+      share: totals[key] / grandTotal,
+      ...spendingIntentRegionLayout[key],
+    }))
+}
+
+// Diameter is driven by the *square root* of each region's share, so its
+// area — not its raw diameter — is what reads as proportional (a bubble
+// chart's usual convention); a floor keeps a genuinely tiny sliver visible
+// as a soft dot rather than vanishing outright.
+const MIN_BLOB_DIAMETER_PCT = 28
+const MAX_BLOB_DIAMETER_PCT = 80
+
+function SpendingIntentDiagram({ regions }: { regions: IntentRegion[] }) {
+  return (
+    <div className="relative mx-auto aspect-square max-h-80 w-full max-w-80">
+      {regions.map((r) => (
+        <div
+          key={r.key}
+          aria-hidden
+          className="absolute rounded-full blur-2xl"
+          style={{
+            left: `${r.center.x}%`,
+            top: `${r.center.y}%`,
+            width: `${MIN_BLOB_DIAMETER_PCT + (MAX_BLOB_DIAMETER_PCT - MIN_BLOB_DIAMETER_PCT) * Math.sqrt(r.share)}%`,
+            aspectRatio: "1 / 1",
+            transform: "translate(-50%, -50%)",
+            background: r.color,
+            opacity: 0.55,
+          }}
+        />
+      ))}
+      {regions.map((r) => (
+        <div
+          key={`${r.key}-label`}
+          className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center"
+          style={{ left: `${r.center.x}%`, top: `${r.center.y}%` }}
+        >
+          <span className="text-xs font-medium text-foreground">{r.label}</span>
+          <span className="font-mono text-xs tabular-nums text-muted-foreground">
+            € {formatCents(r.cents)}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 function SpendingIntentLineChart({ points }: { points: SpendingIntentPoint[] }) {
   return (
