@@ -290,6 +290,62 @@ func TestCategoryColorMigrationBackfillsExistingCategoriesByHue(t *testing.T) {
 	}
 }
 
+// Schema step 21 (ticket 01): category, expense and recurring_expense each
+// gain a nullable spending_intent column with the identical CHECK. Tickets
+// 02-04 are what give it an HTTP surface — this is the raw-SQL check for the
+// shape that has none yet, the same convention
+// TestInvestmentsMigrationAddsHoldingTableAndColumns already follows.
+func TestSpendingIntentMigrationAddsColumnsWithCheck(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "spending-intent.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	var categoryID int64
+	if err := db.QueryRow(`SELECT id FROM category LIMIT 1`).Scan(&categoryID); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.Exec(`UPDATE category SET spending_intent = 'desire_wise' WHERE id = ?`, categoryID); err != nil {
+		t.Errorf("category.spending_intent missing or wrong shape: %v", err)
+	}
+
+	res, err := db.Exec(`INSERT INTO expense (occurred_on, amount_cents, category_id, spending_intent, created_at)
+		VALUES ('2026-03-15', 1000, ?, 'necessity', '2026-03-15T00:00:00Z')`, categoryID)
+	if err != nil {
+		t.Fatalf("expense.spending_intent missing or wrong shape: %v", err)
+	}
+	expenseID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spendingIntent sql.NullString
+	if err := db.QueryRow(`SELECT spending_intent FROM expense WHERE id = ?`, expenseID).Scan(&spendingIntent); err != nil {
+		t.Fatal(err)
+	}
+	if !spendingIntent.Valid || spendingIntent.String != "necessity" {
+		t.Errorf("expense.spending_intent = %v, want %q", spendingIntent, "necessity")
+	}
+
+	if _, err := db.Exec(`INSERT INTO recurring_expense
+		(amount_cents, category_id, spending_intent, day_of_month, start_month, created_at)
+		VALUES (10000, ?, 'desire_bullshit', 15, '2026-03', '2026-03-15T00:00:00Z')`, categoryID); err != nil {
+		t.Errorf("recurring_expense.spending_intent missing or wrong shape: %v", err)
+	}
+	// A row that leaves it unnamed reads back NULL — no value invents a
+	// classification nobody picked.
+	if _, err := db.Exec(`INSERT INTO recurring_expense
+		(amount_cents, category_id, day_of_month, start_month, created_at)
+		VALUES (10000, ?, 15, '2026-03', '2026-03-15T00:00:00Z')`, categoryID); err != nil {
+		t.Errorf("recurring_expense.spending_intent should allow NULL: %v", err)
+	}
+
+	if _, err := db.Exec(`UPDATE category SET spending_intent = 'not-a-value' WHERE id = ?`, categoryID); err == nil {
+		t.Error("an out-of-list spending_intent was accepted, want the CHECK constraint to refuse it")
+	}
+}
+
 // A database an older binary already migrated partway needs its data
 // protected before the new binary's migrateStep cases touch it.
 func TestMigrateBacksUpAnExistingDatabaseBeforeMigrating(t *testing.T) {

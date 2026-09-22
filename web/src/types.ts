@@ -173,6 +173,10 @@ export type Lists = {
   // The total the household wants Savings plus its portfolio to reach, on
   // the same terms as the starting balance above.
   net_worth_target_cents: number
+  // Spending intent's single on/off switch (ticket 01) — off by default;
+  // turning it off hides the feature's UI everywhere without touching any
+  // Spending intent already recorded.
+  spending_intent_enabled: boolean
 }
 
 // Budget (computed), Target and Goal (household-set) — cmd/budget.go's

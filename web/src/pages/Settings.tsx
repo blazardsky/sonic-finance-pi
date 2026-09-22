@@ -3,8 +3,15 @@ import { useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldLabel,
+  FieldTitle,
+} from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/lib/api"
 import { toCents, toTyped } from "@/lib/money"
@@ -36,6 +43,10 @@ export function Settings() {
   // amount-typing convention as the Expense/Income forms (toCents/toTyped).
   const [target, setTarget] = useState("")
   const [goal, setGoal] = useState("")
+  // Ticket 01: the feature's single switch. Off by default, and rides the
+  // same payload/save as the rest of this form rather than its own request —
+  // one settings screen, one save.
+  const [spendingIntentEnabled, setSpendingIntentEnabled] = useState(false)
   const [listsMessage, setListsMessage] = useState("")
   const [listsError, setListsError] = useState("")
 
@@ -46,6 +57,7 @@ export function Settings() {
         setPaymentMethods(toText(l.payment_methods))
         setTarget(toTyped(l.target_cents))
         setGoal(toTyped(l.goal_cents))
+        setSpendingIntentEnabled(l.spending_intent_enabled)
       })
       .catch(() => setListsError(t.serverUnreachable))
   }, [])
@@ -65,6 +77,7 @@ export function Settings() {
       payment_methods: toList(paymentMethods),
       target_cents: targetCents,
       goal_cents: goalCents,
+      spending_intent_enabled: spendingIntentEnabled,
     }
     // Refused here as well as by the server: a picker with no options is a
     // dead end, and the household should hear about it before the round trip.
@@ -84,6 +97,7 @@ export function Settings() {
       setPaymentMethods(toText(saved.payment_methods))
       setTarget(toTyped(saved.target_cents))
       setGoal(toTyped(saved.goal_cents))
+      setSpendingIntentEnabled(saved.spending_intent_enabled)
       setListsMessage(t.listsSaved)
     } catch (res) {
       setListsError(
@@ -160,6 +174,20 @@ export function Settings() {
                   className="h-9"
                 />
               </Field>
+
+              <FieldLabel htmlFor="spending-intent-enabled">
+                <Field orientation="horizontal">
+                  <FieldContent>
+                    <FieldTitle>{t.spendingIntent}</FieldTitle>
+                    <FieldDescription>{t.spendingIntentHint}</FieldDescription>
+                  </FieldContent>
+                  <Switch
+                    id="spending-intent-enabled"
+                    checked={spendingIntentEnabled}
+                    onCheckedChange={setSpendingIntentEnabled}
+                  />
+                </Field>
+              </FieldLabel>
 
               {listsError && (
                 <p role="alert" className="text-sm text-destructive">

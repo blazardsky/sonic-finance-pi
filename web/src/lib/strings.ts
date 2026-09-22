@@ -575,6 +575,12 @@ export const t = {
   listsNotSaved: "Elenchi non salvati. Riprova.",
   emptyList: "Ogni elenco vuole almeno una voce.",
 
+  // Spending intent's single on/off switch (ticket 01). Off by default: an
+  // experiment the household is trying, not a permanent addition yet.
+  spendingIntent: "Intento di spesa",
+  spendingIntentHint:
+    "Classifica le spese come Necessità o Desiderio, e i Desideri come Sensati o Stronzate. Spegnendolo si nasconde tutto senza cancellare nulla.",
+
   changePassword: "Cambia password",
   currentPassword: "Password attuale",
   newPassword: "Nuova password",
