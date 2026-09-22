@@ -36,6 +36,10 @@ _Avoid_: tag, label, type, kind, type of payment
 A second, independent tag an Expense (or a Recurring expense) may optionally carry alongside its Category — never a child of one specific Category, and never nested itself. The same Subcategory freely pairs with whichever Category an entry actually used it under; nothing links a Subcategory to a fixed parent.
 _Avoid_: sub-category (as a kind of Category), child category, tag
 
+**Spending intent**:
+An optional, two-step judgment the household can attach to an Expense or Recurring expense, off by default behind a settings switch. First: was it a Necessity or a Desire. Only a Desire can then optionally be further marked Wise or Bullshit — a Necessity is judged on neither, since needing something isn't a question of whether buying it was a good call. A Category may carry its own default Spending intent, which seeds a new Expense's own value; once set, an Expense's Spending intent is its own and does not change if the Category's default changes later.
+_Avoid_: tag (Subcategory already owns that word), judgment, classification, mark
+
 **Base category**:
 A Category the app itself depends on and therefore protects from renaming and deletion — "Freelance" and "Taxes" are what the yearly tax summary is computed from, "Investments" is what Budget, Target, and the yearly Estimate exclude, and "Gift" is what the spoiler blur resolves. They can be hidden from the pickers once you stop using them, but never renamed or removed. Only categories the code actually resolves are protected; every other Category is yours to add, rename, and archive freely.
 _Avoid_: system category, built-in, default, reserved
