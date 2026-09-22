@@ -509,6 +509,9 @@ export type Recurring = {
   // A second, independent tag alongside category_id, copied onto each
   // generated Expense the same way holding_id is — see Subcategory.
   subcategory_id: number | null
+  // Ticket 04: this Recurring expense's own Spending intent, copied onto
+  // each generated Expense the same way category_id is.
+  spending_intent: SpendingIntent | null
 }
 
 // A labeled on/off toggle for a manual action the app doesn't automate — a

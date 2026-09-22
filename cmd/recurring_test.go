@@ -32,6 +32,10 @@ type recurringJSON struct {
 	// A second, independent tag alongside CategoryID, copied onto each
 	// generated Expense the same way HoldingID is.
 	SubcategoryID *int64 `json:"subcategory_id"`
+
+	// Ticket 04: this Recurring expense's own Spending intent, copied onto
+	// each generated Expense the same way CategoryID is.
+	SpendingIntent *string `json:"spending_intent"`
 }
 
 // recurringPath addresses one the way the API does.
@@ -817,5 +821,58 @@ func TestAGeneratedRecurringInvestmentExpenseIsEditedSkippedAndDeletedLikeAnyOth
 	all := a.expenses(t)
 	if len(all) != 1 || all[0].HoldingID == nil || *all[0].HoldingID != vwce.ID {
 		t.Errorf("listed = %+v, want one Expense in March carrying holding_id %d", all, vwce.ID)
+	}
+}
+
+// Ticket 04's core: a Recurring expense's own Spending intent round-trips
+// through create and update, independently of its Category's own default —
+// the same guarantee ticket 03 already gives an Expense.
+func TestRecurringSpendingIntentRoundTripsThroughCreateAndUpdate(t *testing.T) {
+	a := newTestApp(t)
+
+	unclassified := a.addRecurring(t, a.rent(t, map[string]any{
+		"day_of_month": 5, "start_month": "2026-03",
+	}))
+	if unclassified.SpendingIntent != nil {
+		t.Errorf("spending_intent = %v on create with nothing picked, want nil", *unclassified.SpendingIntent)
+	}
+
+	var created recurringJSON
+	res := a.post(t, "/api/recurring", a.rent(t, map[string]any{
+		"day_of_month": 5, "start_month": "2026-03", "spending_intent": "necessity",
+	}), &created)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("POST with spending_intent = %d, want 201", res.StatusCode)
+	}
+	if created.SpendingIntent == nil || *created.SpendingIntent != "necessity" {
+		t.Fatalf("spending_intent on create = %v, want %q", created.SpendingIntent, "necessity")
+	}
+
+	var updated recurringJSON
+	res = a.patch(t, recurringPath(created.ID), map[string]any{"spending_intent": "desire_bullshit"}, &updated)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH spending_intent = %d, want 200", res.StatusCode)
+	}
+	if updated.SpendingIntent == nil || *updated.SpendingIntent != "desire_bullshit" {
+		t.Errorf("spending_intent after patch = %v, want %q", updated.SpendingIntent, "desire_bullshit")
+	}
+}
+
+// materialise copies spending_intent onto the generated Expense the same way
+// it already copies category_id, holding_id and subcategory_id.
+func TestMaterialiseCopiesTheSpendingIntentOntoTheGeneratedExpense(t *testing.T) {
+	a := newTestApp(t)
+
+	a.addRecurring(t, a.rent(t, map[string]any{
+		"day_of_month": 5, "start_month": "2026-03", "spending_intent": "desire_wise",
+	}))
+	a.month(t, "2026-03")
+
+	got := a.expenses(t)
+	if len(got) != 1 {
+		t.Fatalf("listed %d Expenses, want the one generated", len(got))
+	}
+	if got[0].SpendingIntent == nil || *got[0].SpendingIntent != "desire_wise" {
+		t.Errorf("generated Expense spending_intent = %v, want %q", got[0].SpendingIntent, "desire_wise")
 	}
 }
