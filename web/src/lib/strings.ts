@@ -580,6 +580,17 @@ export const t = {
   spendingIntent: "Intento di spesa",
   spendingIntentHint:
     "Classifica le spese come Necessità o Desiderio, e i Desideri come Sensati o Stronzate. Spegnendolo si nasconde tutto senza cancellare nulla.",
+  // The two badge pairs themselves (ticket 02, reused by tickets 03-04):
+  // Necessità/Desiderio, then — only once Desiderio is picked — Sensata/
+  // Stronzata refines it further.
+  spendingIntentNecessity: "Necessità",
+  spendingIntentDesire: "Desiderio",
+  spendingIntentWise: "Sensata",
+  spendingIntentBullshit: "Stronzata",
+  // The Category edit form's own label for its default (ticket 02) — distinct
+  // from the plain t.spendingIntent heading the Expense form uses, since here
+  // it is explicitly a seed, not the classification itself.
+  spendingIntentDefault: "Intento di spesa predefinito",
 
   changePassword: "Cambia password",
   currentPassword: "Password attuale",

@@ -6,6 +6,7 @@ import {
   RiEyeOffLine,
   RiMoreLine,
   RiPaletteLine,
+  RiPriceTag3Line,
 } from "@remixicon/react"
 
 import { Button } from "@/components/ui/button"
@@ -33,14 +34,15 @@ import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { api } from "@/lib/api"
+import { api, apiJSON } from "@/lib/api"
 import { ColorDot } from "@/components/ColorDot"
 import { FormSidebar } from "@/components/form-sidebar"
+import { SpendingIntentPicker } from "@/components/SpendingIntentPicker"
 import { cn } from "@/lib/utils"
 import { colorSlots, paletteVar, type ColorSlot } from "@/lib/palette"
 import { toast } from "@/lib/toast"
 import { t } from "@/lib/strings"
-import type { Applies, Category, Subcategory } from "@/types"
+import type { Applies, Category, Lists, SpendingIntent, Subcategory } from "@/types"
 
 const appliesLabels: Record<Applies, string> = {
   expense: t.appliesExpense,
@@ -128,6 +130,20 @@ export function Categories() {
   // (spec, user story 9), so "blue-gray" is a real choice here too, not a
   // placeholder waiting to be replaced.
   const [color, setColor] = useState<ColorSlot>("blue-gray")
+  // The add form's Spending intent default (ticket 02) — unset is just as
+  // real a choice as any of the four values (spec, story 8), so this starts
+  // and can freely return to null.
+  const [spendingIntent, setSpendingIntent] = useState<SpendingIntent | null>(null)
+  // Whether the feature's own settings switch is on — the control renders
+  // nowhere on this screen while it's off (ticket 01/02).
+  const [spendingIntentEnabled, setSpendingIntentEnabled] = useState(false)
+  // The row a "Intento di spesa" dialog is open for, same shape
+  // coloringCategory uses — null closes it. Unlike the color popover, this
+  // one can take more than one tap to reach its final value (Desire, then
+  // Wise), so it stages the pick locally and PATCHes once on close rather
+  // than on every tap.
+  const [editingIntentCategory, setEditingIntentCategory] = useState<Category | null>(null)
+  const [pendingIntent, setPendingIntent] = useState<SpendingIntent | null>(null)
   // The row a "cambia colore" dialog is open for, Category or Subcategory —
   // null closes it, the same shape replacing/replacingSub already use below.
   const [coloringCategory, setColoringCategory] = useState<Category | null>(null)
@@ -159,10 +175,12 @@ export function Categories() {
       Promise.all([
         api("/api/categories").then((res) => res.json()),
         api("/api/subcategories").then((res) => res.json()),
+        apiJSON<Lists>("/api/settings"),
       ])
-        .then(([c, s]) => {
+        .then(([c, s, l]) => {
           setCategories(c)
           setSubcategories(s)
+          setSpendingIntentEnabled(l.spending_intent_enabled)
         })
         .catch(() => setError(t.serverUnreachable)),
     []
@@ -203,14 +221,32 @@ export function Categories() {
       isSubcategory ? "/api/subcategories" : "/api/categories",
       {
         method: "POST",
-        body: JSON.stringify({ name, applies_to: appliesTo, color }),
+        body: JSON.stringify(
+          isSubcategory
+            ? { name, applies_to: appliesTo, color }
+            : { name, applies_to: appliesTo, color, spending_intent: spendingIntent }
+        ),
       }
     )
     if (created) {
       setName("")
       setColor("blue-gray")
+      setSpendingIntent(null)
       toast(t.added)
     }
+  }
+
+  // Applies the staged pick from the "Intento di spesa" dialog, only if it
+  // actually changed — same "don't write what didn't move" guard changeColor
+  // uses above.
+  async function closeIntentEditor() {
+    const editing = editingIntentCategory
+    setEditingIntentCategory(null)
+    if (!editing || pendingIntent === editing.spending_intent) return
+    await write(`/api/categories/${editing.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ spending_intent: pendingIntent }),
+    })
   }
 
   async function changeColor(to: ColorSlot) {
@@ -432,6 +468,18 @@ export function Categories() {
                 >
                   <RiPaletteLine /> {t.changeColor}
                 </DropdownMenuItem>
+                {spendingIntentEnabled && (
+                  <DropdownMenuItem
+                    onClick={() =>
+                      setTimeout(() => {
+                        setPendingIntent(c.spending_intent)
+                        setEditingIntentCategory(c)
+                      }, 0)
+                    }
+                  >
+                    <RiPriceTag3Line /> {t.spendingIntentDefault}
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
                   variant="destructive"
                   disabled={c.base}
@@ -449,7 +497,7 @@ export function Categories() {
       }),
     ]
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editing])
+  }, [editing, spendingIntentEnabled])
 
   const subcategoryColumns = useMemo<DataTableColumnDef<Subcategory>[]>(() => {
     const helper = createDataTableColumnHelper<Subcategory>()
@@ -668,6 +716,13 @@ export function Categories() {
               <ColorPicker value={color} onChange={setColor} />
             </Field>
 
+            {!isSubcategory && spendingIntentEnabled && (
+              <Field>
+                <FieldLabel>{t.spendingIntentDefault}</FieldLabel>
+                <SpendingIntentPicker value={spendingIntent} onChange={setSpendingIntent} />
+              </Field>
+            )}
+
           </form>
         </FormSidebar>
       </div>
@@ -815,6 +870,28 @@ export function Categories() {
                 <DialogDescription>{coloringSubcategory.name}</DialogDescription>
               </DialogHeader>
               <ColorPicker value={coloringSubcategory.color} onChange={changeSubColor} />
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={editingIntentCategory !== null}
+        onOpenChange={(open) => !open && void closeIntentEditor()}
+      >
+        <DialogContent>
+          {editingIntentCategory && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{t.spendingIntentDefault}</DialogTitle>
+                <DialogDescription>{editingIntentCategory.name}</DialogDescription>
+              </DialogHeader>
+              <SpendingIntentPicker value={pendingIntent} onChange={setPendingIntent} />
+              <DialogFooter>
+                <Button type="button" onClick={() => void closeIntentEditor()}>
+                  {t.save}
+                </Button>
+              </DialogFooter>
             </>
           )}
         </DialogContent>

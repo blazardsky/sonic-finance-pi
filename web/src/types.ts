@@ -4,6 +4,16 @@ import type { ColorSlot } from "@/lib/palette"
 
 export type Applies = "expense" | "income" | "both"
 
+// The four values Spending intent can hold (spec's Implementation Decisions →
+// Schema) — a single enum rather than two flags, so "necessity, but also
+// wise" is simply not a representable value. null (on Category, Expense and
+// Recurring expense alike) means "nothing recorded", the ordinary case.
+export type SpendingIntent =
+  | "necessity"
+  | "desire"
+  | "desire_wise"
+  | "desire_bullshit"
+
 export type Category = {
   id: number
   name: string
@@ -26,6 +36,11 @@ export type Category = {
   // Base narrowed the same way, to the Investments category — the one the
   // PAC badge reads, without matching on its (renameable) name.
   investments: boolean
+  // The Category's default Spending intent (ticket 02) — a pure client-side
+  // seed for a new Expense's own value, resolved only at Expense-creation
+  // time. null means no default is set; changing this later never touches
+  // any Expense already saved under this Category.
+  spending_intent: SpendingIntent | null
 }
 
 // A second, independent tag an Expense (or a Recurring expense) can carry

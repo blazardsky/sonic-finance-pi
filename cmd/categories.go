@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -120,6 +121,14 @@ type category struct {
 	// still exactly as much Investments as before.
 	Investments bool `json:"investments"`
 
+	// The Category's own default Spending intent (ticket 02), one of
+	// spendingIntents or nil for "no default set" — a pure client-side seed
+	// read only at Expense-creation time (spec's Further Notes), never
+	// resolved server-side against any Expense. Nil is the ordinary case:
+	// every Category starts with no default, same as a fresh migration
+	// leaves every existing row.
+	SpendingIntent *string `json:"spending_intent"`
+
 	code string
 }
 
@@ -184,15 +193,21 @@ func handleListCategories(db *sql.DB) http.HandlerFunc {
 func handleCreateCategory(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Name      string `json:"name"`
-			AppliesTo string `json:"applies_to"`
-			Color     string `json:"color"`
+			Name           string  `json:"name"`
+			AppliesTo      string  `json:"applies_to"`
+			Color          string  `json:"color"`
+			SpendingIntent *string `json:"spending_intent"`
 		}
 		if err := decodeJSON(w, r, &body); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		c := category{Name: strings.TrimSpace(body.Name), AppliesTo: body.AppliesTo, Color: body.Color}
+		c := category{
+			Name:           strings.TrimSpace(body.Name),
+			AppliesTo:      body.AppliesTo,
+			Color:          body.Color,
+			SpendingIntent: body.SpendingIntent,
+		}
 		if c.Color == "" {
 			c.Color = defaultColor
 		}
@@ -201,7 +216,8 @@ func handleCreateCategory(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		res, err := db.Exec(`INSERT INTO category (name, applies_to, color) VALUES (?, ?, ?)`, c.Name, c.AppliesTo, c.Color)
+		res, err := db.Exec(`INSERT INTO category (name, applies_to, color, spending_intent) VALUES (?, ?, ?, ?)`,
+			c.Name, c.AppliesTo, c.Color, c.SpendingIntent)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -240,6 +256,14 @@ func handlePatchCategory(db *sql.DB) http.HandlerFunc {
 			AppliesTo *string `json:"applies_to"`
 			Hidden    *bool   `json:"hidden"`
 			Color     *string `json:"color"`
+			// json.RawMessage, not *string like the fields above: an omitted
+			// key must leave the stored default untouched, while an explicit
+			// `"spending_intent": null` must clear it — two different
+			// requests a plain *string field cannot tell apart, since JSON
+			// decodes both into the same nil pointer. RawMessage captures the
+			// raw bytes only when the key is present at all, present-or-not
+			// decided below.
+			SpendingIntent json.RawMessage `json:"spending_intent"`
 		}
 		if err := decodeJSON(w, r, &body); err != nil {
 			writeError(w, http.StatusBadRequest, err)
@@ -262,13 +286,21 @@ func handlePatchCategory(db *sql.DB) http.HandlerFunc {
 		if body.Color != nil {
 			c.Color = *body.Color
 		}
+		if body.SpendingIntent != nil {
+			var v *string
+			if err := json.Unmarshal(body.SpendingIntent, &v); err != nil {
+				writeError(w, http.StatusBadRequest, err)
+				return
+			}
+			c.SpendingIntent = v
+		}
 		if err := c.validate(); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
 
-		if _, err := db.Exec(`UPDATE category SET name = ?, applies_to = ?, hidden = ?, color = ? WHERE id = ?`,
-			c.Name, c.AppliesTo, c.Hidden, c.Color, c.ID); err != nil {
+		if _, err := db.Exec(`UPDATE category SET name = ?, applies_to = ?, hidden = ?, color = ?, spending_intent = ? WHERE id = ?`,
+			c.Name, c.AppliesTo, c.Hidden, c.Color, c.SpendingIntent, c.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -394,12 +426,12 @@ func findCategory(w http.ResponseWriter, db *sql.DB, rawID string) (category, bo
 // PAC badge) — the code itself stays an implementation detail of the reports
 // that resolve by it.
 var categorySelect = fmt.Sprintf(
-	`SELECT id, name, applies_to, hidden, color, code IS NOT NULL, IFNULL(code, '') = '%s', IFNULL(code, '') = '%s', IFNULL(code, '') = '%s' FROM category`,
+	`SELECT id, name, applies_to, hidden, color, code IS NOT NULL, IFNULL(code, '') = '%s', IFNULL(code, '') = '%s', IFNULL(code, '') = '%s', spending_intent FROM category`,
 	codeGift, codeFreelance, codeInvestments)
 
 func scanCategory(row interface{ Scan(...any) error }) (category, error) {
 	var c category
-	err := row.Scan(&c.ID, &c.Name, &c.AppliesTo, &c.Hidden, &c.Color, &c.Base, &c.Gift, &c.Freelance, &c.Investments)
+	err := row.Scan(&c.ID, &c.Name, &c.AppliesTo, &c.Hidden, &c.Color, &c.Base, &c.Gift, &c.Freelance, &c.Investments, &c.SpendingIntent)
 	return c, err
 }
 
@@ -460,6 +492,9 @@ func (c category) validate() error {
 	}
 	if !validColor(c.Color) {
 		return fmt.Errorf("color must be one of %v", categoryColors)
+	}
+	if !validSpendingIntent(c.SpendingIntent) {
+		return fmt.Errorf("spending_intent must be one of %v", spendingIntents)
 	}
 	return nil
 }
