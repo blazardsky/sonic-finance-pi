@@ -19,6 +19,23 @@ type monthCategoryTotal struct {
 	AmountCents int64  `json:"amount_cents"`
 }
 
+// spendingIntentMonthTotal is one month's Spending intent split (ticket 05):
+// the four buckets the year-review line chart derives its percentages from.
+// desire_cents is every desire-shaped row (plain, wise or bullshit) — the
+// total the Necessity/Desire pair mirrors around 100% of tagged spend, and
+// the denominator the frontend divides wise_cents/bullshit_cents by, per the
+// spec's "computed against that month's Desire spend specifically". A month
+// with nothing classified at all has no row here — same "absence over a
+// misleading zero" the spec's story 21 asks for, left to the frontend to
+// read as a flat/empty line rather than answered as a row of zeros.
+type spendingIntentMonthTotal struct {
+	Month          string `json:"month"`
+	NecessityCents int64  `json:"necessity_cents"`
+	DesireCents    int64  `json:"desire_cents"`
+	WiseCents      int64  `json:"wise_cents"`
+	BullshitCents  int64  `json:"bullshit_cents"`
+}
+
 // fullYearReport is ADR-0011's report: the one screen allowed to run what the
 // comment on readBreakdown calls the heaviest query in the app, because it is
 // opened on purpose rather than folded into Year.tsx's default load, and
@@ -32,6 +49,12 @@ type fullYearReport struct {
 	Year string `json:"year"`
 
 	ByMonth []monthCategoryTotal `json:"by_month"`
+
+	// Ticket 05: the year-review line chart's own field, reused as-is by
+	// ticket 06's diagram (summed across the year rather than read per
+	// month). Expense-only, same as ByMonth — Income never carries a
+	// Spending intent (the column does not exist on that table).
+	SpendingIntentByMonth []spendingIntentMonthTotal `json:"spending_intent_by_month"`
 
 	// The year's Expense with Taxes left out: what was actually spent
 	// living, separate from what was paid the state.
@@ -83,6 +106,10 @@ func handleFullYearReport(db *sql.DB, now func() time.Time) http.HandlerFunc {
 		var err error
 
 		if report.ByMonth, err = readMonthCategoryBreakdown(db, year); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if report.SpendingIntentByMonth, err = readSpendingIntentByMonth(db, year); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -146,6 +173,49 @@ func readMonthCategoryBreakdown(db *sql.DB, year string) ([]monthCategoryTotal, 
 	for rows.Next() {
 		var m monthCategoryTotal
 		if err := rows.Scan(&m.Month, &m.CategoryID, &m.Category, &m.AmountCents); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// readSpendingIntentByMonth is ticket 05's own grouped query: one row per
+// month that has at least one classified Expense, its amount_cents summed
+// into the four buckets spendingIntentMonthTotal names. Conditional
+// aggregation in one pass over `expense` — no Item join, unlike
+// readMonthCategoryBreakdown, because Spending intent lives on the Expense
+// as a whole (out of scope for Item, per the spec) rather than needing
+// ADR-0002's per-Item attribution split.
+//
+// WHERE excludes untagged rows so a month with nothing classified never
+// produces a row of zeros — GROUP BY simply has nothing to group, which is
+// what lets the frontend tell "nothing tagged this month" apart from "tagged
+// spend that happens to net to zero" without a sentinel.
+func readSpendingIntentByMonth(db *sql.DB, year string) ([]spendingIntentMonthTotal, error) {
+	rows, err := db.Query(`SELECT substr(e.occurred_on, 1, 7) AS month,
+			SUM(CASE WHEN e.spending_intent = ? THEN e.amount_cents ELSE 0 END),
+			SUM(CASE WHEN e.spending_intent IN (?, ?, ?) THEN e.amount_cents ELSE 0 END),
+			SUM(CASE WHEN e.spending_intent = ? THEN e.amount_cents ELSE 0 END),
+			SUM(CASE WHEN e.spending_intent = ? THEN e.amount_cents ELSE 0 END)
+		FROM expense e
+		WHERE substr(e.occurred_on, 1, 4) = ? AND e.spending_intent IS NOT NULL
+		GROUP BY month
+		ORDER BY month`,
+		spendingIntentNecessity,
+		spendingIntentDesire, spendingIntentDesireWise, spendingIntentDesireBullshit,
+		spendingIntentDesireWise,
+		spendingIntentDesireBullshit,
+		year)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []spendingIntentMonthTotal{}
+	for rows.Next() {
+		var m spendingIntentMonthTotal
+		if err := rows.Scan(&m.Month, &m.NecessityCents, &m.DesireCents, &m.WiseCents, &m.BullshitCents); err != nil {
 			return nil, err
 		}
 		out = append(out, m)

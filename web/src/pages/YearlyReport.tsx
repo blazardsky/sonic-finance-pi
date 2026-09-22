@@ -9,6 +9,7 @@ import {
   Radar,
   RadarChart,
   XAxis,
+  YAxis,
 } from "recharts"
 
 import { PeriodLabel, PeriodStepper } from "@/components/PeriodStepper"
@@ -34,7 +35,7 @@ import { formatCents, thisMonth, thisYear } from "@/lib/money"
 import { paletteVar } from "@/lib/palette"
 import { colorOf } from "@/lib/pickers"
 import { t } from "@/lib/strings"
-import type { Category, FullYearReport, MonthRow, YearTotals } from "@/types"
+import type { Category, FullYearReport, Lists, MonthRow, YearTotals } from "@/types"
 
 // ADR-0011: this page, and only this page, is allowed to ask for a whole
 // year's Category breakdown — a query the ticket that added Year.tsx's own
@@ -47,6 +48,10 @@ export function YearlyReport() {
   const [totals, setTotals] = useState<YearTotals | null>(null)
   const [full, setFull] = useState<FullYearReport | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
+  // Ticket 05: gates the Spending intent line chart, same toggle every other
+  // page reads off /api/settings. Read once at mount, same as Categories
+  // below — the switch itself lives on Settings.tsx, not here.
+  const [spendingIntentEnabled, setSpendingIntentEnabled] = useState(false)
   const [error, setError] = useState("")
 
   useEffect(() => {
@@ -81,6 +86,13 @@ export function YearlyReport() {
       .catch(() => setCategories([]))
   }, [])
 
+  // Same reasoning: the toggle isn't year-scoped either.
+  useEffect(() => {
+    apiJSON<Lists>("/api/settings")
+      .then((l) => setSpendingIntentEnabled(l.spending_intent_enabled))
+      .catch(() => setSpendingIntentEnabled(false))
+  }, [])
+
   const grid = useMemo(() => pivotByMonth(full?.by_month ?? [], year), [full, year])
   const path = useMemo(() => cumulativePath(totals?.months ?? []), [totals])
   const monthly = useMemo(() => monthlyTotals(totals?.months ?? []), [totals])
@@ -89,6 +101,10 @@ export function YearlyReport() {
     [full, categories]
   )
   const sliceConfig = useMemo(() => categorySliceConfig(slices), [slices])
+  const spendingIntentPoints = useMemo(
+    () => spendingIntentSeries(full?.spending_intent_by_month ?? [], year),
+    [full, year]
+  )
   const step = (by: number) => setYear(String(Number(year) + by))
 
   return (
@@ -133,6 +149,15 @@ export function YearlyReport() {
             {t.financesPath}
           </h2>
           <FinancesPathChart path={path} />
+        </section>
+      )}
+
+      {spendingIntentEnabled && full && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-sm font-medium text-muted-foreground">
+            {t.spendingIntentByMonth}
+          </h2>
+          <SpendingIntentLineChart points={spendingIntentPoints} />
         </section>
       )}
 
@@ -473,6 +498,102 @@ function MonthlyRadarChart({
         />
         <ChartLegend className="mt-8" content={<ChartLegendContent />} />
       </RadarChart>
+    </ChartContainer>
+  )
+}
+
+// Ticket 05: Necessity/Desire mirror each other around 100% of that month's
+// tagged spend; Wise/Bullshit are read against that month's Desire spend
+// specifically (spec's story 20), not the whole month, so a month with very
+// little Desire spend doesn't make them misleadingly tiny. Wise/Bullshit
+// borrow --credit/--destructive — the same green/red the app already spells
+// good/bad money news in — rather than the plain --chart-* pair Necessity/
+// Desire use, since those two really are a judgment, not just a category.
+const spendingIntentChartConfig = {
+  necessity: { label: t.spendingIntentNecessity, color: "var(--chart-1)" },
+  desire: { label: t.spendingIntentDesire, color: "var(--chart-2)" },
+  wise: { label: t.spendingIntentWise, color: "var(--credit)" },
+  bullshit: { label: t.spendingIntentBullshit, color: "var(--destructive)" },
+} satisfies ChartConfig
+
+type SpendingIntentPoint = {
+  label: string
+  necessity: number | null
+  desire: number | null
+  wise: number | null
+  bullshit: number | null
+}
+
+// spendingIntentSeries turns the raw per-month cents buckets
+// (fullYearReport's spending_intent_by_month, cmd/yearreport.go) into the
+// four percentages the chart draws. A month the backend left out entirely —
+// nothing classified at all (spec story 21) — stays null on every series
+// rather than reading as a misleading 0%; recharts then draws a gap instead
+// of dipping the line to the floor (connectNulls left at its default false).
+function spendingIntentSeries(
+  byMonth: FullYearReport["spending_intent_by_month"],
+  year: string
+): SpendingIntentPoint[] {
+  const perMonth = new Map(byMonth.map((m) => [m.month, m]))
+  return t.monthsShort.map((label, i) => {
+    const month = `${year}-${String(i + 1).padStart(2, "0")}`
+    const row = perMonth.get(month)
+    if (!row) {
+      return { label, necessity: null, desire: null, wise: null, bullshit: null }
+    }
+    const tagged = row.necessity_cents + row.desire_cents
+    return {
+      label,
+      necessity: tagged > 0 ? (row.necessity_cents / tagged) * 100 : null,
+      desire: tagged > 0 ? (row.desire_cents / tagged) * 100 : null,
+      wise: row.desire_cents > 0 ? (row.wise_cents / row.desire_cents) * 100 : null,
+      bullshit: row.desire_cents > 0 ? (row.bullshit_cents / row.desire_cents) * 100 : null,
+    }
+  })
+}
+
+const spendingIntentTooltip = (
+  <ChartTooltipContent
+    formatter={(value, name) => (
+      <div className="flex flex-1 justify-between gap-2 leading-none">
+        <span className="text-muted-foreground">
+          {spendingIntentChartConfig[name as keyof typeof spendingIntentChartConfig]
+            ?.label ?? name}
+        </span>
+        <span className="font-mono font-medium tabular-nums">
+          {Number(value).toFixed(0)}%
+        </span>
+      </div>
+    )}
+  />
+)
+
+function SpendingIntentLineChart({ points }: { points: SpendingIntentPoint[] }) {
+  return (
+    <ChartContainer config={spendingIntentChartConfig} className="aspect-auto h-64 w-full">
+      <LineChart data={points} margin={{ top: 4, right: 8, left: 8, bottom: 0 }}>
+        <XAxis
+          dataKey="label"
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          interval="preserveStartEnd"
+        />
+        <YAxis
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          domain={[0, 100]}
+          tickFormatter={(value: number) => `${value}%`}
+          width={40}
+        />
+        <ChartTooltip cursor={false} content={spendingIntentTooltip} />
+        <ChartLegend content={<ChartLegendContent />} />
+        <Line dataKey="necessity" type="monotone" stroke="var(--color-necessity)" strokeWidth={2} dot={false} />
+        <Line dataKey="desire" type="monotone" stroke="var(--color-desire)" strokeWidth={2} dot={false} />
+        <Line dataKey="wise" type="monotone" stroke="var(--color-wise)" strokeWidth={2} dot={false} />
+        <Line dataKey="bullshit" type="monotone" stroke="var(--color-bullshit)" strokeWidth={2} dot={false} />
+      </LineChart>
     </ChartContainer>
   )
 }

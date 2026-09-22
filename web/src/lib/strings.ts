@@ -587,6 +587,9 @@ export const t = {
   spendingIntentDesire: "Desiderio",
   spendingIntentWise: "Sensata",
   spendingIntentBullshit: "Stronzata",
+  // Year review's line chart (ticket 05) — its section heading, above the
+  // four series that reuse the four labels just above.
+  spendingIntentByMonth: "Intento di spesa nel tempo",
   // The Category edit form's own label for its default (ticket 02) — distinct
   // from the plain t.spendingIntent heading the Expense form uses, since here
   // it is explicitly a seed, not the classification itself.

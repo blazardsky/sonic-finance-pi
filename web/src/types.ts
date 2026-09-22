@@ -399,6 +399,19 @@ export type MonthCategoryTotal = {
   amount_cents: number
 }
 
+// One month's Spending intent split (ticket 05) — already grouped
+// server-side into the four buckets the year-review line chart (and ticket
+// 06's diagram, summed across the year) derive their shares from. A month
+// with nothing classified at all has no entry here, not a row of zeros —
+// spec story 21's "flat/empty" rather than a misleading zero.
+export type SpendingIntentMonthTotal = {
+  month: string
+  necessity_cents: number
+  desire_cents: number
+  wise_cents: number
+  bullshit_cents: number
+}
+
 // The full yearly report (ticket 07): everything Year.tsx's own
 // /api/reports/year/{year} does not already answer. The page reads both
 // endpoints together — this one for the Category grid and the figures below,
@@ -406,6 +419,8 @@ export type MonthCategoryTotal = {
 export type FullYearReport = {
   year: string
   by_month: MonthCategoryTotal[]
+  // Ticket 05/06's own field, behind spending_intent_enabled on the page.
+  spending_intent_by_month: SpendingIntentMonthTotal[]
   // The year's Expense with Taxes left out — what was actually spent living.
   expense_excluding_tax_cents: number
   // Savings (SavingsReport.savings_cents' own formula) as it stood on
