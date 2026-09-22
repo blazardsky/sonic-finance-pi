@@ -108,20 +108,58 @@
    (259.815, the header/sidebar/chart family) rather than a new one.
    sidebar-border reuses the same value as border/input since --sidebar's
    background is nearly identical to --background in both themes. */
+/* v1.3.3: on top of the audit above, the four app "surfaces" — shell (the
+   outermost frame), sidebar, background (the main content pane) and
+   card/popover (cards and modals) — are spread into a real elevation scale
+   instead of sitting within a hair of each other, darkest to lightest:
+   shell < sidebar < background < card/popover in light, and the reverse
+   lightness direction in dark (shell is the frame either way, so it sits at
+   whichever end reads as "further back" for that theme: darkest in light,
+   lightest in dark). Foreground and muted-foreground both move a little
+   further from their base value too, and card/badge get a shadow so the
+   lightness gap reads as elevation, not just a flat color change. */
 .high-contrast {
-    --muted-foreground: oklch(0.437 0.06 259.815);
+    --foreground: oklch(0.09 0.01 326);
+    --muted-foreground: oklch(0.40 0.06 259.815);
     --border: oklch(0.568 0.06 259.815);
     --input: oklch(0.568 0.06 259.815);
     --ring: oklch(0.521 0.06 259.815);
+    --shell: oklch(0.84 0.045 259.815);
+    --sidebar: oklch(0.92 0.02 259.815);
+    --sidebar-foreground: oklch(0.32 0.14 259.815);
     --sidebar-border: oklch(0.568 0.06 259.815);
+    --background: oklch(0.96 0.006 325.6);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.09 0.01 326);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.09 0.01 326);
 }
 
 .dark.high-contrast {
-    --muted-foreground: oklch(0.779 0.06 259.815);
+    --foreground: oklch(0.99 0 0);
+    --muted-foreground: oklch(0.80 0.06 259.815);
     --border: oklch(0.582 0.06 259.815);
     --input: oklch(0.582 0.06 259.815);
     --ring: oklch(0.653 0.06 259.815);
+    --shell: oklch(0.32 0.05 259.815);
+    --sidebar: oklch(0.19 0.04 259.815);
+    --sidebar-foreground: oklch(0.85 0.09 259.815);
     --sidebar-border: oklch(0.582 0.06 259.815);
+    --background: oklch(0.13 0.045 259.815);
+    --card: oklch(0.28 0.045 259.815);
+    --card-foreground: oklch(0.99 0 0);
+    --popover: oklch(0.28 0.045 259.815);
+    --popover-foreground: oklch(0.99 0 0);
+}
+
+.high-contrast [data-slot="card"],
+.high-contrast [data-slot="badge"] {
+    box-shadow: 0 1px 3px oklch(0 0 0 / 12%);
+}
+
+.dark.high-contrast [data-slot="card"],
+.dark.high-contrast [data-slot="badge"] {
+    box-shadow: 0 1px 3px oklch(0 0 0 / 35%);
 }
 
 @theme inline {
