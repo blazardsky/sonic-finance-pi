@@ -582,16 +582,31 @@ export const t = {
     "Classifica le spese come Necessità o Desiderio, e i Desideri come Sensati o Stronzate. Spegnendolo si nasconde tutto senza cancellare nulla.",
   // The two badge pairs themselves (ticket 02, reused by tickets 03-04):
   // Necessità/Desiderio, then — only once Desiderio is picked — Sensata/
-  // Stronzata refines it further.
+  // Neutro/Stronzata refines it further. Neutro is a real, explicitly
+  // selectable third option (not "nothing picked") so a Desiderio never
+  // forces a household member to call it either sensato or una stronzata —
+  // it's picked the moment Desiderio itself is, same as plain "desire" (no
+  // suffix) already meant before Neutro had its own badge.
   spendingIntentNecessity: "Necessità",
   spendingIntentDesire: "Desiderio",
   spendingIntentWise: "Sensata",
+  spendingIntentNeutral: "Neutro",
   spendingIntentBullshit: "Stronzata",
+  // The question-mark tooltip next to every Spending intent label (picker
+  // and heading alike) — the one place the four/five values are explained,
+  // so the picker itself can stay just badges with no room-hungry hint text
+  // beside it.
+  spendingIntentHelp:
+    "Necessità: non potresti farne a meno. Desiderio: lo volevi, ma non ti serviva — e puoi anche dire se è stato Sensato, Neutro o una Stronzata.",
   // Year review's line chart (ticket 05) — its section heading, above the
-  // four series that reuse the four labels just above.
+  // Necessità/Desiderio series.
   spendingIntentByMonth: "Intento di spesa nel tempo",
+  // The pie chart beside the line chart — how a year's Desideri split
+  // between Sensata/Neutro/Stronzata, the same three shades the picker's
+  // second pair now offers.
+  spendingIntentDesireBreakdown: "Tipo di desiderio",
   // Year review's blurred diagram (ticket 06) — desktop only. Its three
-  // regions combine two of the four labels above; "Desiderio" alone never
+  // regions combine two of the labels above; "Desiderio" alone never
   // appears here since a plain, unrefined Desire isn't one of the diagram's
   // three regions (spec story 22/24).
   spendingIntentDiagram: "Carattere della spesa",

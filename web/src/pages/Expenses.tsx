@@ -49,7 +49,7 @@ import {
 import { DatePicker } from "@/components/date-picker"
 import { FormSidebar } from "@/components/form-sidebar"
 import { PeriodLabel, PeriodStepper } from "@/components/PeriodStepper"
-import { SpendingIntentPicker } from "@/components/SpendingIntentPicker"
+import { SpendingIntentHelpTooltip, SpendingIntentPicker } from "@/components/SpendingIntentPicker"
 import { SpoilerAmount } from "@/components/SpoilerAmount"
 import { ViewRow } from "@/components/ViewRow"
 import { toast } from "@/lib/toast"
@@ -832,7 +832,10 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
                 separate "none" control. */}
             {lists.spending_intent_enabled && (
               <Field>
-                <FieldLabel>{t.spendingIntent}</FieldLabel>
+                <FieldLabel className="items-center gap-1.5">
+                  {t.spendingIntent}
+                  <SpendingIntentHelpTooltip />
+                </FieldLabel>
                 <SpendingIntentPicker
                   value={draft.spending_intent}
                   onChange={(v: SpendingIntent | null) => {

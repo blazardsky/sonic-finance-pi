@@ -35,6 +35,7 @@ import { formatCents, thisMonth, thisYear } from "@/lib/money"
 import { paletteVar } from "@/lib/palette"
 import { colorOf } from "@/lib/pickers"
 import { t } from "@/lib/strings"
+import { cn } from "@/lib/utils"
 import type { Category, FullYearReport, Lists, MonthRow, YearTotals } from "@/types"
 
 // ADR-0011: this page, and only this page, is allowed to ask for a whole
@@ -105,6 +106,11 @@ export function YearlyReport() {
     () => spendingIntentSeries(full?.spending_intent_by_month ?? [], year),
     [full, year]
   )
+  const desireSlices = useMemo(
+    () => desireBreakdownSlices(full?.spending_intent_by_month ?? []),
+    [full]
+  )
+  const desireSliceConfig = useMemo(() => categorySliceConfig(desireSlices), [desireSlices])
   const spendingIntentRegionsForYear = useMemo(
     () => spendingIntentRegions(full?.spending_intent_by_month ?? []),
     [full]
@@ -156,13 +162,28 @@ export function YearlyReport() {
         </section>
       )}
 
+      {/* The line chart (Necessità/Desiderio over the year) and the pie chart
+          (how this year's Desideri split Sensata/Neutro/Stronzata) share a
+          row on the same "flex-wrap picks up the leftover space" terms the
+          byCategory/byMonth row below already uses — a wide chart and a
+          square one sit fine side by side there already. */}
       {spendingIntentEnabled && full && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            {t.spendingIntentByMonth}
-          </h2>
-          <SpendingIntentLineChart points={spendingIntentPoints} />
-        </section>
+        <div className="flex flex-wrap gap-6">
+          <section className="flex min-w-72 flex-[2] flex-col gap-2">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              {t.spendingIntentByMonth}
+            </h2>
+            <SpendingIntentLineChart points={spendingIntentPoints} />
+          </section>
+          {desireSlices.length > 0 && (
+            <section className="flex min-w-72 flex-1 flex-col gap-2">
+              <h2 className="text-sm font-medium text-muted-foreground">
+                {t.spendingIntentDesireBreakdown}
+              </h2>
+              <CategoryPieChart slices={desireSlices} config={desireSliceConfig} />
+            </section>
+          )}
+        </div>
       )}
 
       {/* Ticket 06: desktop only, no mobile fallback (spec story 23) — the
@@ -519,31 +540,25 @@ function MonthlyRadarChart({
   )
 }
 
-// Ticket 05: Necessity/Desire mirror each other around 100% of that month's
-// tagged spend; Wise/Bullshit are read against that month's Desire spend
-// specifically (spec's story 20), not the whole month, so a month with very
-// little Desire spend doesn't make them misleadingly tiny. Wise/Bullshit
-// borrow --credit/--destructive — the same green/red the app already spells
-// good/bad money news in — rather than the plain --chart-* pair Necessity/
-// Desire use, since those two really are a judgment, not just a category.
+// Ticket 05, narrowed: the line chart now only carries Necessity/Desire —
+// they mirror each other around 100% of that month's tagged spend. Wise/
+// Neutro/Bullshit moved to the pie chart beside it (desireBreakdownSlices
+// below), which reads better as a single year's split than as three more
+// wobbly monthly lines fighting the same 0-100 axis.
 const spendingIntentChartConfig = {
   necessity: { label: t.spendingIntentNecessity, color: "var(--chart-1)" },
   desire: { label: t.spendingIntentDesire, color: "var(--chart-2)" },
-  wise: { label: t.spendingIntentWise, color: "var(--credit)" },
-  bullshit: { label: t.spendingIntentBullshit, color: "var(--destructive)" },
 } satisfies ChartConfig
 
 type SpendingIntentPoint = {
   label: string
   necessity: number | null
   desire: number | null
-  wise: number | null
-  bullshit: number | null
 }
 
 // spendingIntentSeries turns the raw per-month cents buckets
 // (fullYearReport's spending_intent_by_month, cmd/yearreport.go) into the
-// four percentages the chart draws. A month the backend left out entirely —
+// two percentages the chart draws. A month the backend left out entirely —
 // nothing classified at all (spec story 21) — stays null on every series
 // rather than reading as a misleading 0%; recharts then draws a gap instead
 // of dipping the line to the floor (connectNulls left at its default false).
@@ -556,17 +571,43 @@ function spendingIntentSeries(
     const month = `${year}-${String(i + 1).padStart(2, "0")}`
     const row = perMonth.get(month)
     if (!row) {
-      return { label, necessity: null, desire: null, wise: null, bullshit: null }
+      return { label, necessity: null, desire: null }
     }
     const tagged = row.necessity_cents + row.desire_cents
     return {
       label,
       necessity: tagged > 0 ? (row.necessity_cents / tagged) * 100 : null,
       desire: tagged > 0 ? (row.desire_cents / tagged) * 100 : null,
-      wise: row.desire_cents > 0 ? (row.wise_cents / row.desire_cents) * 100 : null,
-      bullshit: row.desire_cents > 0 ? (row.bullshit_cents / row.desire_cents) * 100 : null,
     }
   })
+}
+
+// The year's Desideri split three ways for the pie chart beside the line
+// chart above — Sensata/Neutro/Stronzata, the same three shades the
+// picker's second row now offers. "Neutro" is desire_cents minus what Wise/
+// Bullshit already account for, not a fourth backend bucket: the server
+// only ever tracked Wise and Bullshit explicitly (cmd/yearreport.go), and a
+// plain, unrefined Desire has always been the arithmetic remainder of the
+// two. Reuses CategorySlice/CategoryPieChart wholesale — same {key, label,
+// amount, fill} shape, no reason for a second pie-chart component.
+function desireBreakdownSlices(
+  byMonth: FullYearReport["spending_intent_by_month"]
+): CategorySlice[] {
+  const totals = byMonth.reduce(
+    (acc, m) => ({
+      desire: acc.desire + m.desire_cents,
+      wise: acc.wise + m.wise_cents,
+      bullshit: acc.bullshit + m.bullshit_cents,
+    }),
+    { desire: 0, wise: 0, bullshit: 0 }
+  )
+  const neutral = totals.desire - totals.wise - totals.bullshit
+  const slices: CategorySlice[] = [
+    { key: "wise", label: t.spendingIntentWise, amount: totals.wise, fill: "var(--credit)" },
+    { key: "neutral", label: t.spendingIntentNeutral, amount: neutral, fill: "var(--muted-foreground)" },
+    { key: "bullshit", label: t.spendingIntentBullshit, amount: totals.bullshit, fill: "var(--destructive)" },
+  ]
+  return slices.filter((s) => s.amount > 0)
 }
 
 const spendingIntentTooltip = (
@@ -591,13 +632,25 @@ const spendingIntentTooltip = (
 // size rather than a formula occasionally stacking them dead center.
 type IntentRegionKey = "necessity" | "wise" | "bullshit"
 
+// textClassName is a fixed black/white call per region, not a computed one —
+// there's no way to read a CSS custom property's actual resolved color from
+// here, so each region's pick is worked out by hand against both themes'
+// values in index.css and pinned with a `dark:` override where the two
+// themes disagree. --chart-1 (necessity) is the same light blue in both
+// themes, so black text works everywhere; --credit/--destructive (wise/
+// bullshit) are a dark, saturated color in light mode but a much lighter
+// one in dark mode, so those two flip.
 const spendingIntentRegionLayout: Record<
   IntentRegionKey,
-  { center: { x: number; y: number }; color: string }
+  { center: { x: number; y: number }; color: string; textClassName: string }
 > = {
-  necessity: { center: { x: 36, y: 46 }, color: "var(--chart-1)" },
-  wise: { center: { x: 66, y: 38 }, color: "var(--credit)" },
-  bullshit: { center: { x: 54, y: 70 }, color: "var(--destructive)" },
+  necessity: { center: { x: 36, y: 46 }, color: "var(--chart-1)", textClassName: "text-black" },
+  wise: { center: { x: 66, y: 38 }, color: "var(--credit)", textClassName: "text-white dark:text-black" },
+  bullshit: {
+    center: { x: 54, y: 70 },
+    color: "var(--destructive)",
+    textClassName: "text-white dark:text-black",
+  },
 }
 
 type IntentRegion = {
@@ -607,6 +660,7 @@ type IntentRegion = {
   share: number
   center: { x: number; y: number }
   color: string
+  textClassName: string
 }
 
 // spendingIntentRegions sums the year's twelve rows into the diagram's three
@@ -659,7 +713,7 @@ function SpendingIntentDiagram({ regions }: { regions: IntentRegion[] }) {
         <div
           key={r.key}
           aria-hidden
-          className="absolute rounded-full blur-2xl"
+          className="absolute rounded-full blur-[2px]"
           style={{
             left: `${r.center.x}%`,
             top: `${r.center.y}%`,
@@ -667,20 +721,21 @@ function SpendingIntentDiagram({ regions }: { regions: IntentRegion[] }) {
             aspectRatio: "1 / 1",
             transform: "translate(-50%, -50%)",
             background: r.color,
-            opacity: 0.55,
+            opacity: 0.9,
           }}
         />
       ))}
       {regions.map((r) => (
         <div
           key={`${r.key}-label`}
-          className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center"
+          className={cn(
+            "absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center",
+            r.textClassName
+          )}
           style={{ left: `${r.center.x}%`, top: `${r.center.y}%` }}
         >
-          <span className="text-xs font-medium text-foreground">{r.label}</span>
-          <span className="font-mono text-xs tabular-nums text-muted-foreground">
-            € {formatCents(r.cents)}
-          </span>
+          <span className="text-xs font-medium">{r.label}</span>
+          <span className="font-mono text-xs tabular-nums">€ {formatCents(r.cents)}</span>
         </div>
       ))}
     </div>
@@ -710,8 +765,6 @@ function SpendingIntentLineChart({ points }: { points: SpendingIntentPoint[] }) 
         <ChartLegend content={<ChartLegendContent />} />
         <Line dataKey="necessity" type="monotone" stroke="var(--color-necessity)" strokeWidth={2} dot={false} />
         <Line dataKey="desire" type="monotone" stroke="var(--color-desire)" strokeWidth={2} dot={false} />
-        <Line dataKey="wise" type="monotone" stroke="var(--color-wise)" strokeWidth={2} dot={false} />
-        <Line dataKey="bullshit" type="monotone" stroke="var(--color-bullshit)" strokeWidth={2} dot={false} />
       </LineChart>
     </ChartContainer>
   )

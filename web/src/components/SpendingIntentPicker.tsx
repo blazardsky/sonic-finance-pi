@@ -1,4 +1,11 @@
+import { RiQuestionLine } from "@remixicon/react"
+
 import { Badge } from "@/components/ui/badge"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { t } from "@/lib/strings"
 import type { SpendingIntent } from "@/types"
@@ -11,12 +18,15 @@ function isDesireish(value: SpendingIntent | null): boolean {
   return value === "desire" || value === "desire_wise" || value === "desire_bullshit"
 }
 
-// One badge in a pair: a plain click-to-toggle button, not a native radio —
-// clicking it selects it (and its onClick decides what happens to its
-// pair-partner), clicking it again while selected is how the pair clears
-// back to nothing. The `default`/`outline` variant swap is the "dims" half
-// of the spec's "selecting one dims/disables its pair-partner": the unselected
-// side of a pair always reads as the plainer, less prominent badge.
+// One badge in a pair/trio: a plain click-to-toggle button, not a native
+// radio — clicking it selects it (and its onClick decides what happens to
+// its pair-partner(s)). The `default`/`outline` variant swap is the "dims"
+// half of the spec's "selecting one dims/disables its pair-partner": the
+// unselected side of a group always reads as the plainer, less prominent
+// badge. Sized for a thumb (h-10, generous horizontal padding) and grown to
+// fill its row with `flex-1` on the wrapping button, rather than the compact
+// chip Badge renders everywhere else it's used — this is a tap target first,
+// a label second.
 function IntentBadge({
   label,
   selected,
@@ -27,11 +37,28 @@ function IntentBadge({
   onClick: () => void
 }) {
   return (
-    <button type="button" role="radio" aria-checked={selected} onClick={onClick}>
-      <Badge variant={selected ? "default" : "outline"} className={cn(!selected && "text-muted-foreground")}>
+    <button type="button" role="radio" aria-checked={selected} onClick={onClick} className="flex-1">
+      <Badge
+        variant={selected ? "default" : "outline"}
+        className={cn("h-10 w-full justify-center px-3 text-sm", !selected && "text-muted-foreground")}
+      >
         {label}
       </Badge>
     </button>
+  )
+}
+
+// The "?" beside every Spending intent label (picker and section heading
+// alike) — the one place the values are explained, so the picker itself
+// never needs hint text of its own competing for width with the badges.
+export function SpendingIntentHelpTooltip() {
+  return (
+    <Tooltip>
+      <TooltipTrigger type="button" className="text-muted-foreground">
+        <RiQuestionLine className="size-4" />
+      </TooltipTrigger>
+      <TooltipContent className="max-w-64">{t.spendingIntentHelp}</TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -43,10 +70,14 @@ function IntentBadge({
 // same interaction.
 //
 // The whole thing is optional (spec, story 14): value is SpendingIntent |
-// null throughout, and re-tapping whichever badge is currently selected in a
-// pair is how it clears back to null (Necessity/Desire pair) or back to plain
-// "desire" (Wise/Bullshit pair) — not a separate "none" control, since a
-// click-to-toggle badge already doubles as its own undo.
+// null throughout. Re-tapping Necessità/Desiderio is how the top pair clears
+// back to null — not a separate "none" control, since a click-to-toggle
+// badge already doubles as its own undo. The second row is a true 3-way
+// radio instead: Sensata/Neutro/Stronzata always has exactly one of the
+// three selected once Desiderio is active (Neutro the moment Desiderio
+// itself is picked, same plain "desire" value this already was before
+// Neutro had its own badge) — nobody is forced to call a want either wise or
+// a mistake just to record that it *was* a want.
 export function SpendingIntentPicker({
   value,
   onChange,
@@ -58,7 +89,7 @@ export function SpendingIntentPicker({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap gap-2">
+      <div className="flex gap-2">
         <IntentBadge
           label={t.spendingIntentNecessity}
           selected={value === "necessity"}
@@ -71,16 +102,21 @@ export function SpendingIntentPicker({
         />
       </div>
       {desireish && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex gap-2">
           <IntentBadge
             label={t.spendingIntentWise}
             selected={value === "desire_wise"}
-            onClick={() => onChange(value === "desire_wise" ? "desire" : "desire_wise")}
+            onClick={() => onChange("desire_wise")}
+          />
+          <IntentBadge
+            label={t.spendingIntentNeutral}
+            selected={value === "desire"}
+            onClick={() => onChange("desire")}
           />
           <IntentBadge
             label={t.spendingIntentBullshit}
             selected={value === "desire_bullshit"}
-            onClick={() => onChange(value === "desire_bullshit" ? "desire" : "desire_bullshit")}
+            onClick={() => onChange("desire_bullshit")}
           />
         </div>
       )}

@@ -37,7 +37,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { api, apiJSON } from "@/lib/api"
 import { ColorDot } from "@/components/ColorDot"
 import { FormSidebar } from "@/components/form-sidebar"
-import { SpendingIntentPicker } from "@/components/SpendingIntentPicker"
+import { SpendingIntentHelpTooltip, SpendingIntentPicker } from "@/components/SpendingIntentPicker"
 import { cn } from "@/lib/utils"
 import { colorSlots, paletteVar, type ColorSlot } from "@/lib/palette"
 import { toast } from "@/lib/toast"
@@ -718,7 +718,10 @@ export function Categories() {
 
             {!isSubcategory && spendingIntentEnabled && (
               <Field>
-                <FieldLabel>{t.spendingIntentDefault}</FieldLabel>
+                <FieldLabel className="items-center gap-1.5">
+                  {t.spendingIntentDefault}
+                  <SpendingIntentHelpTooltip />
+                </FieldLabel>
                 <SpendingIntentPicker value={spendingIntent} onChange={setSpendingIntent} />
               </Field>
             )}
@@ -883,7 +886,10 @@ export function Categories() {
           {editingIntentCategory && (
             <>
               <DialogHeader>
-                <DialogTitle>{t.spendingIntentDefault}</DialogTitle>
+                <DialogTitle className="flex items-center gap-1.5">
+                  {t.spendingIntentDefault}
+                  <SpendingIntentHelpTooltip />
+                </DialogTitle>
                 <DialogDescription>{editingIntentCategory.name}</DialogDescription>
               </DialogHeader>
               <SpendingIntentPicker value={pendingIntent} onChange={setPendingIntent} />

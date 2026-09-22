@@ -29,7 +29,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/lib/api"
 import { ColorDot } from "@/components/ColorDot"
 import { FormSidebar } from "@/components/form-sidebar"
-import { SpendingIntentPicker } from "@/components/SpendingIntentPicker"
+import { SpendingIntentHelpTooltip, SpendingIntentPicker } from "@/components/SpendingIntentPicker"
 import { toast } from "@/lib/toast"
 import {
   formatCents,
@@ -644,7 +644,10 @@ export function RecurringExpenses() {
                 switch is on, and genuinely optional. */}
             {lists.spending_intent_enabled && (
               <Field>
-                <FieldLabel>{t.spendingIntent}</FieldLabel>
+                <FieldLabel className="items-center gap-1.5">
+                  {t.spendingIntent}
+                  <SpendingIntentHelpTooltip />
+                </FieldLabel>
                 <SpendingIntentPicker
                   value={draft.spending_intent}
                   onChange={(v: SpendingIntent | null) => {
