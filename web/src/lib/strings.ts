@@ -521,6 +521,7 @@ export const t = {
   replaceManualLotHint:
     "Le quote e il prezzo medio inseriti diventano il nuovo totale, al posto di quello calcolato finora. Lascia le quote vuote per correggere solo il prezzo medio, mantenendo invariate le quote possedute.",
   invalidManualLot: "Inserisci sia le quote che il prezzo medio, oppure lascia entrambi i campi vuoti.",
+  invalidAveragePrice: "Prezzo medio non valido.",
 
   // Risparmi — read-only recap (ticket 07): total Savings, starting balance,
   // and the portfolio breakdown from GET /api/reports/savings. No entries are

@@ -16,6 +16,17 @@ export function toCents(typed: string): number | null {
   return Number(m[1] || "0") * 100 + Number((m[2] ?? "").padEnd(2, "0"))
 }
 
+// toCentsRounded is toCents without the two-decimal-digit cap, for a typed
+// price that is an average rather than a till amount — an average purchase
+// price can legitimately carry more precision than the till ever would
+// ("4,999"), and price_per_unit_cents is still whole cents on the server
+// (cmd/holding.go), so this rounds to the nearest one instead of refusing.
+export function toCentsRounded(typed: string): number | null {
+  const m = typed.trim().replace(",", ".").match(/^(\d*)(?:\.(\d*))?$/)
+  if (!m || (!m[1] && !m[2])) return null
+  return Math.round(Number(m[1] || "0") * 100 + Number(m[2] ?? "0") * 100 / 10 ** (m[2]?.length ?? 0))
+}
+
 // formatCents renders whole cents Italian-style — 123456 becomes "1.234,56".
 // Still no float: the euros and the cents are two integers, the euros grouped
 // by Intl and the cents padded, with a comma between them.

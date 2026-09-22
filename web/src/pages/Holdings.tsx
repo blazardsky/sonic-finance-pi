@@ -34,6 +34,7 @@ import {
   formatPricePerUnit,
   quantityTyped,
   toCents,
+  toCentsRounded,
   toQuantity,
   toTyped,
 } from "@/lib/money"
@@ -96,8 +97,8 @@ function parseLot(
   const priceEmpty = priceTyped.trim() === ""
   if (quantityEmpty && priceEmpty) return null
   if (priceEmpty) throw new Error(t.invalidManualLot)
-  const price = toCents(priceTyped)
-  if (price === null) throw new Error(t.invalidManualLot)
+  const price = toCentsRounded(priceTyped)
+  if (price === null) throw new Error(t.invalidAveragePrice)
   if (quantityEmpty) {
     if (!replace) throw new Error(t.invalidManualLot)
     return { quantity: 0, price_per_unit_cents: price }
