@@ -9,8 +9,9 @@ import (
 // The two configured lists as the API hands them out: labels, in the order the
 // picker should offer them.
 type listsJSON struct {
-	Payers         []string `json:"payers"`
-	PaymentMethods []string `json:"payment_methods"`
+	Payers                []string `json:"payers"`
+	PaymentMethods        []string `json:"payment_methods"`
+	SpendingIntentEnabled bool     `json:"spending_intent_enabled"`
 }
 
 func (a *testApp) lists(t *testing.T) listsJSON {
@@ -40,6 +41,41 @@ func TestAFreshDatabaseSeedsBothLists(t *testing.T) {
 	}
 	if len(got.PaymentMethods) != 3 {
 		t.Errorf("payment_methods = %v, want cash, credit card and debit card", got.PaymentMethods)
+	}
+}
+
+// Ticket 01: the feature's single switch is off on a fresh database, round
+// trips through PUT/GET, and setting it leaves every other setting on the
+// same payload — the two lists included — untouched. Same pattern
+// TestStartingBalanceRoundTripsThroughSettingsAndFoldsIntoSavings already
+// exercises for a different field riding this payload.
+func TestSpendingIntentEnabledDefaultsFalseAndRoundTripsWithoutDisturbingOtherSettings(t *testing.T) {
+	a := newTestApp(t)
+	before := a.lists(t)
+	if before.SpendingIntentEnabled {
+		t.Errorf("spending_intent_enabled = true on a fresh database, want false")
+	}
+
+	if res := a.put(t, settingsPath, map[string]any{"spending_intent_enabled": true}, nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("PUT %s = %d, want 200", settingsPath, res.StatusCode)
+	}
+
+	after := a.lists(t)
+	if !after.SpendingIntentEnabled {
+		t.Errorf("spending_intent_enabled = false after turning it on, want true")
+	}
+	if !slices.Equal(after.Payers, before.Payers) {
+		t.Errorf("payers = %v, want the untouched %v", after.Payers, before.Payers)
+	}
+	if !slices.Equal(after.PaymentMethods, before.PaymentMethods) {
+		t.Errorf("payment_methods = %v, want the untouched %v", after.PaymentMethods, before.PaymentMethods)
+	}
+
+	if res := a.put(t, settingsPath, map[string]any{"spending_intent_enabled": false}, nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("PUT %s = %d, want 200", settingsPath, res.StatusCode)
+	}
+	if got := a.lists(t); got.SpendingIntentEnabled {
+		t.Errorf("spending_intent_enabled = true after turning it back off, want false")
 	}
 }
 

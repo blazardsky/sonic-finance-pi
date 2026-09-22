@@ -15,14 +15,25 @@ type monthCategoryLineJSON struct {
 	AmountCents int64  `json:"amount_cents"`
 }
 
+// One month's Spending intent split (ticket 05) — the line chart's own row
+// shape, four cents buckets already grouped server-side.
+type spendingIntentMonthJSON struct {
+	Month          string `json:"month"`
+	NecessityCents int64  `json:"necessity_cents"`
+	DesireCents    int64  `json:"desire_cents"`
+	WiseCents      int64  `json:"wise_cents"`
+	BullshitCents  int64  `json:"bullshit_cents"`
+}
+
 type fullYearJSON struct {
-	Year                     string                  `json:"year"`
-	ByMonth                  []monthCategoryLineJSON `json:"by_month"`
-	ExpenseExcludingTaxCents int64                   `json:"expense_excluding_tax_cents"`
-	SavingsAtStartCents      int64                   `json:"savings_at_start_cents"`
-	MedianExpenseCents       int64                   `json:"median_expense_cents"`
-	MedianIncomeCents        int64                   `json:"median_income_cents"`
-	MedianNetCents           int64                   `json:"median_net_cents"`
+	Year                     string                    `json:"year"`
+	ByMonth                  []monthCategoryLineJSON   `json:"by_month"`
+	SpendingIntentByMonth    []spendingIntentMonthJSON `json:"spending_intent_by_month"`
+	ExpenseExcludingTaxCents int64                     `json:"expense_excluding_tax_cents"`
+	SavingsAtStartCents      int64                     `json:"savings_at_start_cents"`
+	MedianExpenseCents       int64                     `json:"median_expense_cents"`
+	MedianIncomeCents        int64                     `json:"median_income_cents"`
+	MedianNetCents           int64                     `json:"median_net_cents"`
 }
 
 func (a *testApp) fullYear(t *testing.T, year string) fullYearJSON {
@@ -105,6 +116,78 @@ func TestTheFullYearBreakdownAttributesItemsAcrossMonths(t *testing.T) {
 	}
 }
 
+// Ticket 05's own grouped query: an Expense's amount lands in the right
+// month and the right bucket — necessity_cents for a plain Necessity,
+// desire_cents for a plain Desire (and nowhere else), and both desire_cents
+// and wise_cents/bullshit_cents for a refined Desire — the spec's "counted
+// from desire_wise/desire_bullshit rows only, a plain desire counts toward
+// desire_cents but neither of the other two" rule, plus a same-month sum.
+func TestSpendingIntentByMonthSumsExpensesIntoTheRightBuckets(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-01-10", "amount_cents": 4000, "category_id": alimentari.ID,
+		"spending_intent": "necessity",
+	})
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-01-20", "amount_cents": 1000, "category_id": alimentari.ID,
+		"spending_intent": "desire",
+	})
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-01-25", "amount_cents": 2000, "category_id": alimentari.ID,
+		"spending_intent": "desire_wise",
+	})
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-01-28", "amount_cents": 500, "category_id": alimentari.ID,
+		"spending_intent": "desire_bullshit",
+	})
+	// Unclassified: must contribute to none of the four buckets.
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-01-30", "amount_cents": 999999, "category_id": alimentari.ID,
+	})
+	// A different month, kept separate from January's row.
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-02-05", "amount_cents": 3000, "category_id": alimentari.ID,
+		"spending_intent": "necessity",
+	})
+	// Income never carries a Spending intent — confirms it cannot leak in.
+	a.addIncome(t, map[string]any{
+		"amount_cents": 500000, "category_id": a.freelance(t).ID, "payment_date": "2026-01-15",
+	})
+
+	got := a.fullYear(t, "2026")
+	want := []spendingIntentMonthJSON{
+		{Month: "2026-01", NecessityCents: 4000, DesireCents: 1000 + 2000 + 500, WiseCents: 2000, BullshitCents: 500},
+		{Month: "2026-02", NecessityCents: 3000, DesireCents: 0, WiseCents: 0, BullshitCents: 0},
+	}
+	if len(got.SpendingIntentByMonth) != len(want) {
+		t.Fatalf("spending_intent_by_month = %+v, want %+v", got.SpendingIntentByMonth, want)
+	}
+	for i, line := range want {
+		if got.SpendingIntentByMonth[i] != line {
+			t.Errorf("spending_intent_by_month[%d] = %+v, want %+v", i, got.SpendingIntentByMonth[i], line)
+		}
+	}
+}
+
+// A month with nothing classified at all has no row — the spec's story 21
+// (a flat/empty line, not a misleading zero) starts with the backend simply
+// never answering a row for it.
+func TestAMonthWithNothingClassifiedHasNoSpendingIntentRow(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2026-04-10", "amount_cents": 1500, "category_id": alimentari.ID,
+	})
+
+	got := a.fullYear(t, "2026")
+	if len(got.SpendingIntentByMonth) != 0 {
+		t.Errorf("spending_intent_by_month = %+v, want empty — nothing was classified", got.SpendingIntentByMonth)
+	}
+}
+
 // An empty year has an empty breakdown, marshalled as [] rather than null —
 // the same bargain every other list report here makes.
 func TestAnEmptyYearHasAnEmptyFullYearBreakdown(t *testing.T) {
@@ -114,11 +197,15 @@ func TestAnEmptyYearHasAnEmptyFullYearBreakdown(t *testing.T) {
 		t.Errorf("by_month = %+v, want empty", got.ByMonth)
 	}
 	var raw struct {
-		ByMonth *[]monthCategoryLineJSON `json:"by_month"`
+		ByMonth               *[]monthCategoryLineJSON   `json:"by_month"`
+		SpendingIntentByMonth *[]spendingIntentMonthJSON `json:"spending_intent_by_month"`
 	}
 	a.get(t, "/api/reports/year/2019/full", &raw)
 	if raw.ByMonth == nil {
 		t.Error("by_month came back as null, want []")
+	}
+	if raw.SpendingIntentByMonth == nil {
+		t.Error("spending_intent_by_month came back as null, want []")
 	}
 }
 

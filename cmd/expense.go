@@ -70,6 +70,18 @@ type expense struct {
 	// ticket 01 enforces quantity/unit on an Item; a stray value on a non-buy
 	// Expense is simply never read by anything).
 	Quantity *float64 `json:"quantity"`
+
+	// This Expense's own Spending intent (spending_intent.go, ticket 03), one
+	// of spendingIntents or nil for "not classified". Independent of its
+	// Category's own default (ticket 02): the frontend reads that default only
+	// once, to pre-fill this field at creation time, and from then on this is
+	// the only value anything reads — a later change to the Category's
+	// default never reaches back into an Expense already saved (spec's
+	// Further Notes). PATCH decodes straight onto the loaded row (unlike
+	// Category's handlePatchCategory), so the same *string omitted-vs-null
+	// distinction falls out for free: an omitted key leaves it as loaded, an
+	// explicit null clears it.
+	SpendingIntent *string `json:"spending_intent"`
 }
 
 // The fixed list a quantity's unit is picked from, the same one-of-a-fixed-
@@ -300,10 +312,10 @@ func handleCreateExpense(db *sql.DB, now func() time.Time) http.HandlerFunc {
 
 		res, err := tx.Exec(`INSERT INTO expense
 			(occurred_on, amount_cents, category_id, store, payer, payment_method, note,
-			 tax_year, holding_id, subcategory_id, quantity, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 tax_year, holding_id, subcategory_id, quantity, spending_intent, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			e.OccurredOn, e.AmountCents, e.CategoryID, e.Store, e.Payer, e.PaymentMethod,
-			e.Note, nullYear(e.TaxYear), e.HoldingID, e.SubcategoryID, e.Quantity, now().Format(time.RFC3339))
+			e.Note, nullYear(e.TaxYear), e.HoldingID, e.SubcategoryID, e.Quantity, e.SpendingIntent, now().Format(time.RFC3339))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -329,14 +341,14 @@ func handleCreateExpense(db *sql.DB, now func() time.Time) http.HandlerFunc {
 }
 
 const expenseSelect = `SELECT id, occurred_on, amount_cents, category_id,
-	store, payer, payment_method, note, COALESCE(tax_year, 0), holding_id, subcategory_id, quantity FROM expense`
+	store, payer, payment_method, note, COALESCE(tax_year, 0), holding_id, subcategory_id, quantity, spending_intent FROM expense`
 
 func scanExpense(row interface{ Scan(...any) error }) (expense, error) {
 	// The frontend maps over the breakdown, so an Expense without one has to
 	// marshal as [] rather than null. The caller fills in any Items there are.
 	e := expense{Items: []item{}}
 	err := row.Scan(&e.ID, &e.OccurredOn, &e.AmountCents, &e.CategoryID,
-		&e.Store, &e.Payer, &e.PaymentMethod, &e.Note, &e.TaxYear, &e.HoldingID, &e.SubcategoryID, &e.Quantity)
+		&e.Store, &e.Payer, &e.PaymentMethod, &e.Note, &e.TaxYear, &e.HoldingID, &e.SubcategoryID, &e.Quantity, &e.SpendingIntent)
 	return e, err
 }
 
@@ -377,6 +389,13 @@ func (e *expense) validate() error {
 		if err := validYear("tax_year", strconv.Itoa(e.TaxYear)); err != nil {
 			return err
 		}
+	}
+	// Ticket 03: checked here, same convention as holding.validate() and
+	// Category's own validate() — an unrecognized value is a 400 at the door
+	// rather than the 500 the column's own CHECK would otherwise turn it
+	// into.
+	if !validSpendingIntent(e.SpendingIntent) {
+		return fmt.Errorf("spending_intent must be one of %v", spendingIntents)
 	}
 
 	// The breakdown marshals as [] rather than null, and is checked against
@@ -481,9 +500,9 @@ func handlePatchExpense(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		if _, err := tx.Exec(`UPDATE expense SET occurred_on = ?, amount_cents = ?, category_id = ?,
-			store = ?, payer = ?, payment_method = ?, note = ?, tax_year = ?, holding_id = ?, subcategory_id = ?, quantity = ? WHERE id = ?`,
+			store = ?, payer = ?, payment_method = ?, note = ?, tax_year = ?, holding_id = ?, subcategory_id = ?, quantity = ?, spending_intent = ? WHERE id = ?`,
 			e.OccurredOn, e.AmountCents, e.CategoryID, e.Store, e.Payer, e.PaymentMethod,
-			e.Note, nullYear(e.TaxYear), e.HoldingID, e.SubcategoryID, e.Quantity, e.ID); err != nil {
+			e.Note, nullYear(e.TaxYear), e.HoldingID, e.SubcategoryID, e.Quantity, e.SpendingIntent, e.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}

@@ -4,6 +4,16 @@ import type { ColorSlot } from "@/lib/palette"
 
 export type Applies = "expense" | "income" | "both"
 
+// The four values Spending intent can hold (spec's Implementation Decisions →
+// Schema) — a single enum rather than two flags, so "necessity, but also
+// wise" is simply not a representable value. null (on Category, Expense and
+// Recurring expense alike) means "nothing recorded", the ordinary case.
+export type SpendingIntent =
+  | "necessity"
+  | "desire"
+  | "desire_wise"
+  | "desire_bullshit"
+
 export type Category = {
   id: number
   name: string
@@ -26,6 +36,11 @@ export type Category = {
   // Base narrowed the same way, to the Investments category — the one the
   // PAC badge reads, without matching on its (renameable) name.
   investments: boolean
+  // The Category's default Spending intent (ticket 02) — a pure client-side
+  // seed for a new Expense's own value, resolved only at Expense-creation
+  // time. null means no default is set; changing this later never touches
+  // any Expense already saved under this Category.
+  spending_intent: SpendingIntent | null
 }
 
 // A second, independent tag an Expense (or a Recurring expense) can carry
@@ -137,6 +152,11 @@ export type Expense = {
   // How many units of holding_id this Expense bought, or null. Meaningless
   // without a holding_id alongside it — nothing enforces that pairing.
   quantity: number | null
+  // This Expense's own Spending intent (ticket 03), independent of its
+  // Category's default — that default only ever pre-fills this field at
+  // creation time (see Category.spending_intent); from then on this is the
+  // one value anything reads. null means "not classified".
+  spending_intent: SpendingIntent | null
 }
 
 // A part of an Expense under its own Category. No id: an Item is saved as one
@@ -173,6 +193,10 @@ export type Lists = {
   // The total the household wants Savings plus its portfolio to reach, on
   // the same terms as the starting balance above.
   net_worth_target_cents: number
+  // Spending intent's single on/off switch (ticket 01) — off by default;
+  // turning it off hides the feature's UI everywhere without touching any
+  // Spending intent already recorded.
+  spending_intent_enabled: boolean
 }
 
 // Budget (computed), Target and Goal (household-set) — cmd/budget.go's
@@ -375,6 +399,19 @@ export type MonthCategoryTotal = {
   amount_cents: number
 }
 
+// One month's Spending intent split (ticket 05) — already grouped
+// server-side into the four buckets the year-review line chart (and ticket
+// 06's diagram, summed across the year) derive their shares from. A month
+// with nothing classified at all has no entry here, not a row of zeros —
+// spec story 21's "flat/empty" rather than a misleading zero.
+export type SpendingIntentMonthTotal = {
+  month: string
+  necessity_cents: number
+  desire_cents: number
+  wise_cents: number
+  bullshit_cents: number
+}
+
 // The full yearly report (ticket 07): everything Year.tsx's own
 // /api/reports/year/{year} does not already answer. The page reads both
 // endpoints together — this one for the Category grid and the figures below,
@@ -382,6 +419,8 @@ export type MonthCategoryTotal = {
 export type FullYearReport = {
   year: string
   by_month: MonthCategoryTotal[]
+  // Ticket 05/06's own field, behind spending_intent_enabled on the page.
+  spending_intent_by_month: SpendingIntentMonthTotal[]
   // The year's Expense with Taxes left out — what was actually spent living.
   expense_excluding_tax_cents: number
   // Savings (SavingsReport.savings_cents' own formula) as it stood on
@@ -485,6 +524,9 @@ export type Recurring = {
   // A second, independent tag alongside category_id, copied onto each
   // generated Expense the same way holding_id is — see Subcategory.
   subcategory_id: number | null
+  // Ticket 04: this Recurring expense's own Spending intent, copied onto
+  // each generated Expense the same way category_id is.
+  spending_intent: SpendingIntent | null
 }
 
 // A labeled on/off toggle for a manual action the app doesn't automate — a

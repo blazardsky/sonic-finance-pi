@@ -19,6 +19,9 @@ type categoryJSON struct {
 	Gift        bool   `json:"gift"`
 	Freelance   bool   `json:"freelance"`
 	Investments bool   `json:"investments"`
+	// The Category's default Spending intent (ticket 02) — nil when none is
+	// set, same as the column itself.
+	SpendingIntent *string `json:"spending_intent"`
 }
 
 // categoryPath addresses one Category the way the API does.
@@ -359,14 +362,16 @@ func TestCategoryWritesAreValidated(t *testing.T) {
 		body         any
 		want         int
 	}{
-		"an empty name":                {"POST", "/api/categories", map[string]any{"name": "  ", "applies_to": appliesExpense}, http.StatusBadRequest},
-		"a missing applies_to":         {"POST", "/api/categories", map[string]any{"name": "Bici"}, http.StatusBadRequest},
-		"an unknown applies_to":        {"POST", "/api/categories", map[string]any{"name": "Bici", "applies_to": "elsewhere"}, http.StatusBadRequest},
-		"an out-of-set color":          {"POST", "/api/categories", map[string]any{"name": "Bici", "applies_to": appliesExpense, "color": "chartreuse"}, http.StatusBadRequest},
-		"a rename to nothing":          {"PATCH", id, map[string]any{"name": ""}, http.StatusBadRequest},
-		"an out-of-set color on patch": {"PATCH", id, map[string]any{"color": "chartreuse"}, http.StatusBadRequest},
-		"a patch of an unknown id":     {"PATCH", "/api/categories/9999", map[string]any{"name": "Bici"}, http.StatusNotFound},
-		"a patch of a non-numeric id":  {"PATCH", "/api/categories/abc", map[string]any{"name": "Bici"}, http.StatusNotFound},
+		"an empty name":                            {"POST", "/api/categories", map[string]any{"name": "  ", "applies_to": appliesExpense}, http.StatusBadRequest},
+		"a missing applies_to":                     {"POST", "/api/categories", map[string]any{"name": "Bici"}, http.StatusBadRequest},
+		"an unknown applies_to":                    {"POST", "/api/categories", map[string]any{"name": "Bici", "applies_to": "elsewhere"}, http.StatusBadRequest},
+		"an out-of-set color":                      {"POST", "/api/categories", map[string]any{"name": "Bici", "applies_to": appliesExpense, "color": "chartreuse"}, http.StatusBadRequest},
+		"an unrecognized spending_intent":          {"POST", "/api/categories", map[string]any{"name": "Bici", "applies_to": appliesExpense, "spending_intent": "meh"}, http.StatusBadRequest},
+		"a rename to nothing":                      {"PATCH", id, map[string]any{"name": ""}, http.StatusBadRequest},
+		"an out-of-set color on patch":             {"PATCH", id, map[string]any{"color": "chartreuse"}, http.StatusBadRequest},
+		"an unrecognized spending_intent on patch": {"PATCH", id, map[string]any{"spending_intent": "meh"}, http.StatusBadRequest},
+		"a patch of an unknown id":                 {"PATCH", "/api/categories/9999", map[string]any{"name": "Bici"}, http.StatusNotFound},
+		"a patch of a non-numeric id":              {"PATCH", "/api/categories/abc", map[string]any{"name": "Bici"}, http.StatusNotFound},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -429,6 +434,60 @@ func TestCategoryColorRoundTripsOnPatch(t *testing.T) {
 	}
 	if got := a.category(t, seedFreelanceName).Color; got != "red" {
 		t.Errorf("base category color = %q after the patch, want %q", got, "red")
+	}
+}
+
+// A Category's default Spending intent (ticket 02) round-trips through
+// create and update, independently of every other field, an unset one reads
+// back null rather than an empty string or an invented default, and it is
+// clearable back to null again — a PATCH that never mentions it leaves the
+// stored default alone, while one that explicitly sends null clears it, the
+// same distinction handlePatchCategory has to make for name/applies_to/color.
+func TestCategorySpendingIntentRoundTripsThroughCreateAndUpdate(t *testing.T) {
+	a := newTestApp(t)
+
+	var noDefault categoryJSON
+	res := a.post(t, "/api/categories", map[string]any{"name": "Bici", "applies_to": appliesExpense}, &noDefault)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", res.StatusCode)
+	}
+	if noDefault.SpendingIntent != nil {
+		t.Errorf("spending_intent = %v on create with nothing picked, want nil", *noDefault.SpendingIntent)
+	}
+
+	var withDefault categoryJSON
+	res = a.post(t, "/api/categories", map[string]any{
+		"name": "Vestiti", "applies_to": appliesExpense, "spending_intent": "desire_wise",
+	}, &withDefault)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", res.StatusCode)
+	}
+	if withDefault.SpendingIntent == nil || *withDefault.SpendingIntent != "desire_wise" {
+		t.Errorf("spending_intent = %v, want %q", withDefault.SpendingIntent, "desire_wise")
+	}
+
+	id := categoryPath(withDefault.ID)
+	if res := a.patch(t, id, map[string]any{"spending_intent": "necessity"}, nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH spending_intent = %d, want 200", res.StatusCode)
+	}
+	if got := a.category(t, "Vestiti").SpendingIntent; got == nil || *got != "necessity" {
+		t.Errorf("spending_intent after patch = %v, want %q", got, "necessity")
+	}
+
+	// A PATCH silent about spending_intent leaves it exactly where it was.
+	if res := a.patch(t, id, map[string]any{"hidden": true}, nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("an unrelated PATCH = %d, want 200", res.StatusCode)
+	}
+	if got := a.category(t, "Vestiti").SpendingIntent; got == nil || *got != "necessity" {
+		t.Errorf("spending_intent after an unrelated patch = %v, want it left alone at %q", got, "necessity")
+	}
+
+	// An explicit null clears it.
+	if res := a.patch(t, id, map[string]any{"spending_intent": nil}, nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH spending_intent to null = %d, want 200", res.StatusCode)
+	}
+	if got := a.category(t, "Vestiti").SpendingIntent; got != nil {
+		t.Errorf("spending_intent after clearing = %v, want nil", *got)
 	}
 }
 

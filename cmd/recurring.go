@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -65,6 +66,12 @@ type recurringExpense struct {
 	// carries — materialise copies it onto every generated Expense, the same
 	// as HoldingID.
 	SubcategoryID *int64 `json:"subcategory_id"`
+
+	// Ticket 04: this Recurring expense's own Spending intent, seeded from its
+	// Category's default the same way an Expense's is (client-side only,
+	// spending_intent.go) — materialise copies it onto every generated
+	// Expense, the same as CategoryID.
+	SpendingIntent *string `json:"spending_intent"`
 }
 
 // migrateRecurring is schema step 7. It also adds the expense column ticket
@@ -179,11 +186,11 @@ func handleCreateRecurring(db *sql.DB, now func() time.Time) http.HandlerFunc {
 
 		res, err := db.Exec(`INSERT INTO recurring_expense
 			(amount_cents, category_id, store, payer, payment_method, note,
-			 day_of_month, start_month, end_month, holding_id, subcategory_id, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 day_of_month, start_month, end_month, holding_id, subcategory_id, spending_intent, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			rec.AmountCents, rec.CategoryID, rec.Store, rec.Payer, rec.PaymentMethod,
 			rec.Note, rec.DayOfMonth, rec.StartMonth, nullDate(rec.EndMonth), rec.HoldingID,
-			rec.SubcategoryID, now().Format(time.RFC3339))
+			rec.SubcategoryID, rec.SpendingIntent, now().Format(time.RFC3339))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -232,10 +239,10 @@ func handlePatchRecurring(db *sql.DB) http.HandlerFunc {
 
 		if _, err := db.Exec(`UPDATE recurring_expense SET amount_cents = ?, category_id = ?,
 			store = ?, payer = ?, payment_method = ?, note = ?,
-			day_of_month = ?, start_month = ?, end_month = ?, holding_id = ?, subcategory_id = ? WHERE id = ?`,
+			day_of_month = ?, start_month = ?, end_month = ?, holding_id = ?, subcategory_id = ?, spending_intent = ? WHERE id = ?`,
 			rec.AmountCents, rec.CategoryID, rec.Store, rec.Payer, rec.PaymentMethod,
 			rec.Note, rec.DayOfMonth, rec.StartMonth, nullDate(rec.EndMonth), rec.HoldingID,
-			rec.SubcategoryID, rec.ID); err != nil {
+			rec.SubcategoryID, rec.SpendingIntent, rec.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -287,14 +294,14 @@ func findRecurring(w http.ResponseWriter, db *sql.DB, rawID string) (recurringEx
 // is flattened to ” on the way out, because that is the shape the API
 // publishes and the shape a PATCH merges onto.
 const recurringSelect = `SELECT id, amount_cents, category_id, store, payer,
-	payment_method, note, day_of_month, start_month, COALESCE(end_month, ''), holding_id, subcategory_id
+	payment_method, note, day_of_month, start_month, COALESCE(end_month, ''), holding_id, subcategory_id, spending_intent
 	FROM recurring_expense`
 
 func scanRecurring(row interface{ Scan(...any) error }) (recurringExpense, error) {
 	var rec recurringExpense
 	err := row.Scan(&rec.ID, &rec.AmountCents, &rec.CategoryID, &rec.Store, &rec.Payer,
 		&rec.PaymentMethod, &rec.Note, &rec.DayOfMonth, &rec.StartMonth, &rec.EndMonth, &rec.HoldingID,
-		&rec.SubcategoryID)
+		&rec.SubcategoryID, &rec.SpendingIntent)
 	return rec, err
 }
 
@@ -319,6 +326,11 @@ func (rec *recurringExpense) validate() error {
 	}
 	if err := validMonth("start_month", rec.StartMonth); err != nil {
 		return err
+	}
+	// Ticket 04: same validation as Expense/Category — an unrecognized string
+	// is a 400, matching the DB CHECK rather than surfacing as a 500.
+	if !validSpendingIntent(rec.SpendingIntent) {
+		return fmt.Errorf("spending_intent must be one of %v", spendingIntents)
 	}
 	if rec.EndMonth == "" {
 		return nil
@@ -451,9 +463,9 @@ func materialise(db *sql.DB, now func() time.Time, month string) error {
 	// NULL here.
 	_, err = db.Exec(`INSERT INTO expense
 		(occurred_on, amount_cents, category_id, store, payer, payment_method,
-		 note, recurring_id, holding_id, subcategory_id, created_at)
+		 note, recurring_id, holding_id, subcategory_id, spending_intent, created_at)
 		SELECT printf('%s-%02d', ?, min(r.day_of_month, ?)), r.amount_cents, r.category_id,
-			r.store, r.payer, r.payment_method, r.note, r.id, r.holding_id, r.subcategory_id, ?
+			r.store, r.payer, r.payment_method, r.note, r.id, r.holding_id, r.subcategory_id, r.spending_intent, ?
 		FROM recurring_expense r
 		WHERE r.start_month <= ? AND ? <= COALESCE(r.end_month, ?)
 		AND NOT EXISTS (SELECT 1 FROM expense e

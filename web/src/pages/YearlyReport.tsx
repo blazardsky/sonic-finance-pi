@@ -9,6 +9,7 @@ import {
   Radar,
   RadarChart,
   XAxis,
+  YAxis,
 } from "recharts"
 
 import { PeriodLabel, PeriodStepper } from "@/components/PeriodStepper"
@@ -34,7 +35,8 @@ import { formatCents, thisMonth, thisYear } from "@/lib/money"
 import { paletteVar } from "@/lib/palette"
 import { colorOf } from "@/lib/pickers"
 import { t } from "@/lib/strings"
-import type { Category, FullYearReport, MonthRow, YearTotals } from "@/types"
+import { cn } from "@/lib/utils"
+import type { Category, FullYearReport, Lists, MonthRow, YearTotals } from "@/types"
 
 // ADR-0011: this page, and only this page, is allowed to ask for a whole
 // year's Category breakdown — a query the ticket that added Year.tsx's own
@@ -47,6 +49,10 @@ export function YearlyReport() {
   const [totals, setTotals] = useState<YearTotals | null>(null)
   const [full, setFull] = useState<FullYearReport | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
+  // Ticket 05: gates the Spending intent line chart, same toggle every other
+  // page reads off /api/settings. Read once at mount, same as Categories
+  // below — the switch itself lives on Settings.tsx, not here.
+  const [spendingIntentEnabled, setSpendingIntentEnabled] = useState(false)
   const [error, setError] = useState("")
 
   useEffect(() => {
@@ -81,6 +87,13 @@ export function YearlyReport() {
       .catch(() => setCategories([]))
   }, [])
 
+  // Same reasoning: the toggle isn't year-scoped either.
+  useEffect(() => {
+    apiJSON<Lists>("/api/settings")
+      .then((l) => setSpendingIntentEnabled(l.spending_intent_enabled))
+      .catch(() => setSpendingIntentEnabled(false))
+  }, [])
+
   const grid = useMemo(() => pivotByMonth(full?.by_month ?? [], year), [full, year])
   const path = useMemo(() => cumulativePath(totals?.months ?? []), [totals])
   const monthly = useMemo(() => monthlyTotals(totals?.months ?? []), [totals])
@@ -89,6 +102,19 @@ export function YearlyReport() {
     [full, categories]
   )
   const sliceConfig = useMemo(() => categorySliceConfig(slices), [slices])
+  const spendingIntentPoints = useMemo(
+    () => spendingIntentSeries(full?.spending_intent_by_month ?? [], year),
+    [full, year]
+  )
+  const desireSlices = useMemo(
+    () => desireBreakdownSlices(full?.spending_intent_by_month ?? []),
+    [full]
+  )
+  const desireSliceConfig = useMemo(() => categorySliceConfig(desireSlices), [desireSlices])
+  const spendingIntentRegionsForYear = useMemo(
+    () => spendingIntentRegions(full?.spending_intent_by_month ?? []),
+    [full]
+  )
   const step = (by: number) => setYear(String(Number(year) + by))
 
   return (
@@ -133,6 +159,43 @@ export function YearlyReport() {
             {t.financesPath}
           </h2>
           <FinancesPathChart path={path} />
+        </section>
+      )}
+
+      {/* The line chart (Necessità/Desiderio over the year) and the pie chart
+          (how this year's Desideri split Sensata/Neutro/Stronzata) share a
+          row on the same "flex-wrap picks up the leftover space" terms the
+          byCategory/byMonth row below already uses — a wide chart and a
+          square one sit fine side by side there already. */}
+      {spendingIntentEnabled && full && (
+        <div className="flex flex-wrap gap-6">
+          <section className="flex min-w-72 flex-[2] flex-col gap-2">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              {t.spendingIntentByMonth}
+            </h2>
+            <SpendingIntentLineChart points={spendingIntentPoints} />
+          </section>
+          {desireSlices.length > 0 && (
+            <section className="flex min-w-72 flex-1 flex-col gap-2">
+              <h2 className="text-sm font-medium text-muted-foreground">
+                {t.spendingIntentDesireBreakdown}
+              </h2>
+              <CategoryPieChart slices={desireSlices} config={desireSliceConfig} />
+            </section>
+          )}
+        </div>
+      )}
+
+      {/* Ticket 06: desktop only, no mobile fallback (spec story 23) — the
+          blurred overlap only reads once there is room to keep three blobs
+          apart, so the section is hidden outright below `md` rather than
+          shrunk into something illegible. */}
+      {spendingIntentEnabled && spendingIntentRegionsForYear.length > 0 && (
+        <section className="hidden flex-col gap-2 md:flex">
+          <h2 className="text-sm font-medium text-muted-foreground">
+            {t.spendingIntentDiagram}
+          </h2>
+          <SpendingIntentDiagram regions={spendingIntentRegionsForYear} />
         </section>
       )}
 
@@ -473,6 +536,236 @@ function MonthlyRadarChart({
         />
         <ChartLegend className="mt-8" content={<ChartLegendContent />} />
       </RadarChart>
+    </ChartContainer>
+  )
+}
+
+// Ticket 05, narrowed: the line chart now only carries Necessity/Desire —
+// they mirror each other around 100% of that month's tagged spend. Wise/
+// Neutro/Bullshit moved to the pie chart beside it (desireBreakdownSlices
+// below), which reads better as a single year's split than as three more
+// wobbly monthly lines fighting the same 0-100 axis.
+const spendingIntentChartConfig = {
+  necessity: { label: t.spendingIntentNecessity, color: "var(--chart-1)" },
+  desire: { label: t.spendingIntentDesire, color: "var(--chart-2)" },
+} satisfies ChartConfig
+
+type SpendingIntentPoint = {
+  label: string
+  necessity: number | null
+  desire: number | null
+}
+
+// spendingIntentSeries turns the raw per-month cents buckets
+// (fullYearReport's spending_intent_by_month, cmd/yearreport.go) into the
+// two percentages the chart draws. A month the backend left out entirely —
+// nothing classified at all (spec story 21) — stays null on every series
+// rather than reading as a misleading 0%; recharts then draws a gap instead
+// of dipping the line to the floor (connectNulls left at its default false).
+function spendingIntentSeries(
+  byMonth: FullYearReport["spending_intent_by_month"],
+  year: string
+): SpendingIntentPoint[] {
+  const perMonth = new Map(byMonth.map((m) => [m.month, m]))
+  return t.monthsShort.map((label, i) => {
+    const month = `${year}-${String(i + 1).padStart(2, "0")}`
+    const row = perMonth.get(month)
+    if (!row) {
+      return { label, necessity: null, desire: null }
+    }
+    const tagged = row.necessity_cents + row.desire_cents
+    return {
+      label,
+      necessity: tagged > 0 ? (row.necessity_cents / tagged) * 100 : null,
+      desire: tagged > 0 ? (row.desire_cents / tagged) * 100 : null,
+    }
+  })
+}
+
+// The year's Desideri split three ways for the pie chart beside the line
+// chart above — Sensata/Neutro/Stronzata, the same three shades the
+// picker's second row now offers. "Neutro" is desire_cents minus what Wise/
+// Bullshit already account for, not a fourth backend bucket: the server
+// only ever tracked Wise and Bullshit explicitly (cmd/yearreport.go), and a
+// plain, unrefined Desire has always been the arithmetic remainder of the
+// two. Reuses CategorySlice/CategoryPieChart wholesale — same {key, label,
+// amount, fill} shape, no reason for a second pie-chart component.
+function desireBreakdownSlices(
+  byMonth: FullYearReport["spending_intent_by_month"]
+): CategorySlice[] {
+  const totals = byMonth.reduce(
+    (acc, m) => ({
+      desire: acc.desire + m.desire_cents,
+      wise: acc.wise + m.wise_cents,
+      bullshit: acc.bullshit + m.bullshit_cents,
+    }),
+    { desire: 0, wise: 0, bullshit: 0 }
+  )
+  const neutral = totals.desire - totals.wise - totals.bullshit
+  const slices: CategorySlice[] = [
+    { key: "wise", label: t.spendingIntentWise, amount: totals.wise, fill: "var(--credit)" },
+    { key: "neutral", label: t.spendingIntentNeutral, amount: neutral, fill: "var(--muted-foreground)" },
+    { key: "bullshit", label: t.spendingIntentBullshit, amount: totals.bullshit, fill: "var(--destructive)" },
+  ]
+  return slices.filter((s) => s.amount > 0)
+}
+
+const spendingIntentTooltip = (
+  <ChartTooltipContent
+    formatter={(value, name) => (
+      <div className="flex flex-1 justify-between gap-2 leading-none">
+        <span className="text-muted-foreground">
+          {spendingIntentChartConfig[name as keyof typeof spendingIntentChartConfig]
+            ?.label ?? name}
+        </span>
+        <span className="font-mono font-medium tabular-nums">
+          {Number(value).toFixed(0)}%
+        </span>
+      </div>
+    )}
+  />
+)
+
+// Ticket 06's diagram: three fixed positions in a relative square, one per
+// region. "By feel" per the spec — a hand-placed triangle, not a computed
+// Venn/Euler layout — so the three blobs stay visually separable at every
+// size rather than a formula occasionally stacking them dead center.
+type IntentRegionKey = "necessity" | "wise" | "bullshit"
+
+// textClassName is a fixed black/white call per region, not a computed one —
+// there's no way to read a CSS custom property's actual resolved color from
+// here, so each region's pick is worked out by hand against both themes'
+// values in index.css and pinned with a `dark:` override where the two
+// themes disagree. --chart-1 (necessity) is the same light blue in both
+// themes, so black text works everywhere; --credit/--destructive (wise/
+// bullshit) are a dark, saturated color in light mode but a much lighter
+// one in dark mode, so those two flip.
+const spendingIntentRegionLayout: Record<
+  IntentRegionKey,
+  { center: { x: number; y: number }; color: string; textClassName: string }
+> = {
+  necessity: { center: { x: 36, y: 46 }, color: "var(--chart-1)", textClassName: "text-black" },
+  wise: { center: { x: 66, y: 38 }, color: "var(--credit)", textClassName: "text-white dark:text-black" },
+  bullshit: {
+    center: { x: 54, y: 70 },
+    color: "var(--destructive)",
+    textClassName: "text-white dark:text-black",
+  },
+}
+
+type IntentRegion = {
+  key: IntentRegionKey
+  label: string
+  cents: number
+  share: number
+  center: { x: number; y: number }
+  color: string
+  textClassName: string
+}
+
+// spendingIntentRegions sums the year's twelve rows into the diagram's three
+// classified buckets (spec story 22). A plain `desire` row with no Wise/
+// Bullshit refinement is deliberately left out of every bucket — same as an
+// untagged Expense (spec story 24) — the diagram only ever shows what was
+// actually judged, never a raw, unrefined Desire total. An empty array means
+// nothing was classified all year; the caller hides the section on that.
+function spendingIntentRegions(
+  byMonth: FullYearReport["spending_intent_by_month"]
+): IntentRegion[] {
+  const totals = byMonth.reduce(
+    (acc, m) => ({
+      necessity: acc.necessity + m.necessity_cents,
+      wise: acc.wise + m.wise_cents,
+      bullshit: acc.bullshit + m.bullshit_cents,
+    }),
+    { necessity: 0, wise: 0, bullshit: 0 }
+  )
+  const grandTotal = totals.necessity + totals.wise + totals.bullshit
+  if (grandTotal === 0) return []
+
+  const labels: Record<IntentRegionKey, string> = {
+    necessity: t.spendingIntentNecessity,
+    wise: t.spendingIntentDesireWise,
+    bullshit: t.spendingIntentDesireBullshit,
+  }
+  return (Object.keys(totals) as IntentRegionKey[])
+    .filter((key) => totals[key] > 0)
+    .map((key) => ({
+      key,
+      label: labels[key],
+      cents: totals[key],
+      share: totals[key] / grandTotal,
+      ...spendingIntentRegionLayout[key],
+    }))
+}
+
+// Diameter is driven by the *square root* of each region's share, so its
+// area — not its raw diameter — is what reads as proportional (a bubble
+// chart's usual convention); a floor keeps a genuinely tiny sliver visible
+// as a soft dot rather than vanishing outright.
+const MIN_BLOB_DIAMETER_PCT = 28
+const MAX_BLOB_DIAMETER_PCT = 80
+
+function SpendingIntentDiagram({ regions }: { regions: IntentRegion[] }) {
+  return (
+    <div className="relative mx-auto aspect-square max-h-80 w-full max-w-80">
+      {regions.map((r) => (
+        <div
+          key={r.key}
+          aria-hidden
+          className="absolute rounded-full blur-[2px]"
+          style={{
+            left: `${r.center.x}%`,
+            top: `${r.center.y}%`,
+            width: `${MIN_BLOB_DIAMETER_PCT + (MAX_BLOB_DIAMETER_PCT - MIN_BLOB_DIAMETER_PCT) * Math.sqrt(r.share)}%`,
+            aspectRatio: "1 / 1",
+            transform: "translate(-50%, -50%)",
+            background: r.color,
+            opacity: 0.9,
+          }}
+        />
+      ))}
+      {regions.map((r) => (
+        <div
+          key={`${r.key}-label`}
+          className={cn(
+            "absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center",
+            r.textClassName
+          )}
+          style={{ left: `${r.center.x}%`, top: `${r.center.y}%` }}
+        >
+          <span className="text-xs font-medium">{r.label}</span>
+          <span className="font-mono text-xs tabular-nums">€ {formatCents(r.cents)}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function SpendingIntentLineChart({ points }: { points: SpendingIntentPoint[] }) {
+  return (
+    <ChartContainer config={spendingIntentChartConfig} className="aspect-auto h-64 w-full">
+      <LineChart data={points} margin={{ top: 4, right: 8, left: 8, bottom: 0 }}>
+        <XAxis
+          dataKey="label"
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          interval="preserveStartEnd"
+        />
+        <YAxis
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          domain={[0, 100]}
+          tickFormatter={(value: number) => `${value}%`}
+          width={40}
+        />
+        <ChartTooltip cursor={false} content={spendingIntentTooltip} />
+        <ChartLegend content={<ChartLegendContent />} />
+        <Line dataKey="necessity" type="monotone" stroke="var(--color-necessity)" strokeWidth={2} dot={false} />
+        <Line dataKey="desire" type="monotone" stroke="var(--color-desire)" strokeWidth={2} dot={false} />
+      </LineChart>
     </ChartContainer>
   )
 }

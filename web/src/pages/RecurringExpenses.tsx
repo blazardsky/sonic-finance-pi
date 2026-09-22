@@ -29,6 +29,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { api, apiJSON } from "@/lib/api"
 import { ColorDot } from "@/components/ColorDot"
 import { FormSidebar } from "@/components/form-sidebar"
+import { SpendingIntentHelpTooltip, SpendingIntentPicker } from "@/components/SpendingIntentPicker"
 import { toast } from "@/lib/toast"
 import {
   formatCents,
@@ -45,7 +46,7 @@ import {
   withSaved,
 } from "@/lib/pickers"
 import { t } from "@/lib/strings"
-import type { Category, Holding, Lists, Recurring, Subcategory } from "@/types"
+import type { Category, Holding, Lists, Recurring, SpendingIntent, Subcategory } from "@/types"
 
 // Payer and Payment method are both optional here (unlike Expenses/Incomes'
 // required Payer) and default to "—" — Radix Select refuses an empty-string
@@ -84,6 +85,7 @@ const blankDraft = (): Draft => ({
   end_month: "",
   holding_id: "",
   subcategory_id: null,
+  spending_intent: null,
 })
 
 const draftOf = (r: Recurring): Draft => ({
@@ -98,6 +100,7 @@ const draftOf = (r: Recurring): Draft => ({
   end_month: r.end_month,
   holding_id: r.holding_id ?? "",
   subcategory_id: r.subcategory_id,
+  spending_intent: r.spending_intent,
 })
 
 // Still running is the window against the current month, not a stored flag —
@@ -135,6 +138,7 @@ export function RecurringExpenses() {
     goal_cents: 0,
     savings_starting_balance_cents: 0,
     net_worth_target_cents: 0,
+    spending_intent_enabled: false,
   })
   const [error, setError] = useState("")
 
@@ -142,6 +146,10 @@ export function RecurringExpenses() {
   const [editing, setEditing] = useState<number | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  // Ticket 04: same "touched this session" guard Expenses.tsx (ticket 03)
+  // uses — a Category change re-seeds the Spending intent pre-fill on create
+  // only, until the badges have been touched by hand.
+  const [spendingIntentTouched, setSpendingIntentTouched] = useState(false)
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
@@ -154,6 +162,7 @@ export function RecurringExpenses() {
     setDraft(draftOf(r))
     setDetailsOpen(true)
     setSidebarOpen(true)
+    setSpendingIntentTouched(false)
   }
 
   const load = useCallback(
@@ -260,6 +269,7 @@ export function RecurringExpenses() {
     setEditing(null)
     setDraft(blankDraft())
     setDetailsOpen(false)
+    setSpendingIntentTouched(false)
   }
 
   // Deactivating: the end month becomes the current one, and that is the whole
@@ -292,6 +302,7 @@ export function RecurringExpenses() {
     })
     setDetailsOpen(false)
     setSidebarOpen(true)
+    setSpendingIntentTouched(false)
   }
 
   async function removeRecurring(r: Recurring) {
@@ -528,6 +539,7 @@ export function RecurringExpenses() {
                     setEditing(null)
                     setDraft(blankDraft())
                     setDetailsOpen(false)
+                    setSpendingIntentTouched(false)
                   }}
                 >
                   {t.cancel}
@@ -568,7 +580,18 @@ export function RecurringExpenses() {
                 // SelectItem, so SelectValue's placeholder shows correctly
                 // while the Select itself stays controlled throughout.
                 value={draft.category_id === "" ? NONE : String(draft.category_id)}
-                onValueChange={(v) => set("category_id", v === NONE ? "" : Number(v))}
+                onValueChange={(v) => {
+                  const categoryId = v === NONE ? "" : Number(v)
+                  set("category_id", categoryId)
+                  // Ticket 04: same re-seed Expenses.tsx (ticket 03) does — on
+                  // create only, and only until the badges have been touched
+                  // by hand, a Category change re-seeds Spending intent from
+                  // the newly picked one's own default.
+                  if (editing === null && !spendingIntentTouched) {
+                    const category = categories.find((c) => c.id === categoryId)
+                    set("spending_intent", category?.spending_intent ?? null)
+                  }
+                }}
                 required
               >
                 <SelectTrigger id="category" className="h-10 w-full">
@@ -615,6 +638,25 @@ export function RecurringExpenses() {
                 </SelectContent>
               </Select>
             </Field>
+
+            {/* Ticket 04: same placement and gating Expenses.tsx (ticket 03)
+                gives it — rendered only while the feature's own settings
+                switch is on, and genuinely optional. */}
+            {lists.spending_intent_enabled && (
+              <Field>
+                <FieldLabel className="items-center gap-1.5">
+                  {t.spendingIntent}
+                  <SpendingIntentHelpTooltip />
+                </FieldLabel>
+                <SpendingIntentPicker
+                  value={draft.spending_intent}
+                  onChange={(v: SpendingIntent | null) => {
+                    setSpendingIntentTouched(true)
+                    set("spending_intent", v)
+                  }}
+                />
+              </Field>
+            )}
 
             <Field>
               <FieldLabel htmlFor="day_of_month">{t.dayOfMonth}</FieldLabel>

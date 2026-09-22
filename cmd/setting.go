@@ -45,6 +45,19 @@ func putSettingCents(db *sql.DB, key string, cents int64) error {
 	return setSetting(db, key, strconv.FormatInt(cents, 10))
 }
 
+// getSettingBool reads a setting stored as "true"/"false", defaulting to
+// false when it has never been set — the same "" -> zero-value bargain
+// getSettingCents makes, so a fresh database needs no seed row for a switch
+// that is off until the household turns it on.
+func getSettingBool(db *sql.DB, key string) (bool, error) {
+	v, err := getSetting(db, key)
+	return v == "true", err
+}
+
+func putSettingBool(db *sql.DB, key string, on bool) error {
+	return setSetting(db, key, strconv.FormatBool(on))
+}
+
 // settingsPath is the endpoint the spec's API section gives the editable
 // settings: today the two label lists, read together by the Expense form and
 // written together by the settings screen.
@@ -54,6 +67,31 @@ const (
 	payersKey         = "payers"
 	paymentMethodsKey = "payment_methods"
 )
+
+// The Spending intent feature's single on/off switch (ticket 01). Off on a
+// fresh database and until the household explicitly turns it on — trying the
+// feature must cost the other household member nothing.
+const spendingIntentEnabledKey = "spending_intent_enabled"
+
+// migrateSpendingIntent is schema step 21 (ticket 01): category, expense and
+// recurring_expense each gain the identical nullable spending_intent column.
+// One column rather than two (necessity/desire flag plus wise/bullshit flag)
+// because the enum directly encodes the spec's conditional tree — "necessity,
+// but also wise" is simply not a representable value, no app-level
+// cross-validation needed. NULL means "no Spending intent recorded", not
+// seeded here or anywhere: every existing row simply starts unclassified.
+//
+// No new setting row for spendingIntentEnabledKey either — getSettingBool
+// already reads an absent key as false, the off-by-default the spec asks for.
+func migrateSpendingIntent(tx *sql.Tx) error {
+	ddl := ` TEXT CHECK (spending_intent IS NULL OR spending_intent IN ('necessity', 'desire', 'desire_wise', 'desire_bullshit'))`
+	for _, table := range []string{"category", "expense", "recurring_expense"} {
+		if _, err := tx.Exec(`ALTER TABLE ` + table + ` ADD COLUMN spending_intent` + ddl); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // The two Payers that are not people. A shared bill and a payment somebody
 // outside the household made must not need a fake person invented for them.
@@ -93,6 +131,11 @@ type lists struct {
 
 	// The net worth target, on the same bargain again (cmd/savings.go).
 	NetWorthTargetCents int64 `json:"net_worth_target_cents"`
+
+	// Spending intent's single on/off switch (ticket 01) — off by default, so
+	// the feature costs the other household member nothing until it is turned
+	// on, and off never touches any Spending intent already recorded.
+	SpendingIntentEnabled bool `json:"spending_intent_enabled"`
 }
 
 // migrateLists is schema step 3: the seed values for both lists. Seeding
@@ -152,7 +195,10 @@ func readLists(db *sql.DB) (lists, error) {
 	if l.StartingBalanceCents, err = getSettingCents(db, savingsStartingBalanceCentsKey); err != nil {
 		return l, err
 	}
-	l.NetWorthTargetCents, err = getSettingCents(db, netWorthTargetCentsKey)
+	if l.NetWorthTargetCents, err = getSettingCents(db, netWorthTargetCentsKey); err != nil {
+		return l, err
+	}
+	l.SpendingIntentEnabled, err = getSettingBool(db, spendingIntentEnabledKey)
 	return l, err
 }
 
@@ -211,6 +257,10 @@ func handlePutLists(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		if err := putSettingCents(db, netWorthTargetCentsKey, l.NetWorthTargetCents); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if err := putSettingBool(db, spendingIntentEnabledKey, l.SpendingIntentEnabled); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
