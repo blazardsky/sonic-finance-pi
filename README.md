@@ -41,5 +41,6 @@ Run the command `pnpm --dir web dev` for the Vite app, run the command `go run .
 
 ## Deploying, and TLS
 
-See [docs/guides/PI_DEPLOY_GUIDE.md](docs/guides/PI_DEPLOY_GUIDE.md) — publishing a release deploys
-itself; that file also covers the manual fallback and setting up HTTPS.
+See [PI_DEPLOY_GUIDE](docs/guides/PI_DEPLOY_GUIDE.md) — publishing a release deploys itself; that file also covers the manual fallback and setting up HTTPS.
+
+PS: If you want to deploy somewhere else, take a look at: [OTHER_DEPLOY_METHODS](docs/guides/OTHER_DEPLOY_METHODS.md)
