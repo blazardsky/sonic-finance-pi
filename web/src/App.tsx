@@ -10,6 +10,7 @@ import { Investments } from "@/pages/Investments"
 import { Login } from "@/pages/Login"
 import { Month } from "@/pages/Month"
 import { RecurringExpenses } from "@/pages/RecurringExpenses"
+import { PlannedPurchases } from "@/pages/PlannedPurchases"
 import { Savings } from "@/pages/Savings"
 import { Settings } from "@/pages/Settings"
 import { Suggestions } from "@/pages/Suggestions"
@@ -40,6 +41,7 @@ export type Screen =
   | "expenses"
   | "incomes"
   | "recurring"
+  | "planned"
   | "investments"
   | "savings"
   | "categories"
@@ -156,6 +158,7 @@ export function App() {
             {screen === "expenses" && <Expenses quickAdd={expensesQuickAdd} />}
             {screen === "incomes" && <Incomes editIncomeId={incomeToEdit} />}
             {screen === "recurring" && <RecurringExpenses />}
+            {screen === "planned" && <PlannedPurchases />}
             {screen === "investments" && <Investments />}
             {screen === "savings" && <Savings />}
             {screen === "categories" && <Categories />}

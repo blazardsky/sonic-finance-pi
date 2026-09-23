@@ -378,6 +378,19 @@ export const t = {
   contractsDueHint:
     "Clienti con un contratto attivo a cui manca ancora la fattura di questo mese.",
 
+  // Planned purchases — what the household intends to buy soon, in priority
+  // order (CONTEXT.md: Planned purchase, Headroom)
+  planned: "Acquisti programmati",
+  addPlanned: "Aggiungi acquisto",
+  editPlanned: "Modifica acquisto",
+  plannedLabel: "Cosa",
+  noPlannedYet: "Nessun acquisto programmato.",
+  plannedNotSaved: "Acquisto non salvato. Riprova.",
+  confirmDeletePlanned: (label: string) => `Eliminare "${label}"?`,
+  moveUp: "Sposta su",
+  moveDown: "Sposta giù",
+  priority: "Priorità",
+
   // Recurring expenses — the rent, defined once
   recurring: "Ricorrenti",
   addRecurring: "Aggiungi spesa ricorrente",

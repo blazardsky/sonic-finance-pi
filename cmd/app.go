@@ -126,6 +126,12 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 	mux.HandleFunc("PATCH /api/reminders/{id}", handlePatchReminder(db, now))
 	mux.HandleFunc("DELETE /api/reminders/{id}", handleDeleteReminder(db))
 
+	mux.HandleFunc("GET /api/planned-purchases", handleListPlanned(db))
+	mux.HandleFunc("POST /api/planned-purchases", handleCreatePlanned(db))
+	mux.HandleFunc("PUT /api/planned-purchases/{id}", handleUpdatePlanned(db))
+	mux.HandleFunc("DELETE /api/planned-purchases/{id}", handleDeletePlanned(db))
+	mux.HandleFunc("POST /api/planned-purchases/{id}/move", handleMovePlanned(db))
+
 	mux.HandleFunc("GET "+settingsPath, handleGetLists(db))
 	mux.HandleFunc("PUT "+settingsPath, handlePutLists(db))
 	mux.HandleFunc("POST "+settingsPath+"/password", handleChangePassword(db, now))

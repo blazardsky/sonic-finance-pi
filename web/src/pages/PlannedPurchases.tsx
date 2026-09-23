@@ -1,0 +1,351 @@
+import { useCallback, useEffect, useState } from "react"
+import {
+  RiArrowDownLine,
+  RiArrowUpLine,
+  RiDeleteBinLine,
+  RiEditLine,
+  RiMoreLine,
+} from "@remixicon/react"
+
+import { ColorDot } from "@/components/ColorDot"
+import { FormSidebar } from "@/components/form-sidebar"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Field, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { api, apiJSON } from "@/lib/api"
+import { formatCents, toCents, toTyped } from "@/lib/money"
+import { pickableCategories } from "@/lib/pickers"
+import { t } from "@/lib/strings"
+import { toast } from "@/lib/toast"
+import type { Category, PlannedPurchase } from "@/types"
+
+type Draft = {
+  label: string
+  amount: string
+  category_id: number | null
+}
+
+const blankDraft = (): Draft => ({ label: "", amount: "", category_id: null })
+
+// The Acquisti programmati page: the household's priority-ordered list of
+// Planned purchases (CONTEXT.md). Not a DataTable: its sorting and filters
+// would fight the one order that matters here, the household's own, which
+// only the up/down controls change.
+export function PlannedPurchases() {
+  const [planned, setPlanned] = useState<PlannedPurchase[] | null>(null)
+  const [categories, setCategories] = useState<Category[]>([])
+  const [draft, setDraft] = useState(blankDraft)
+  const [editing, setEditing] = useState<number | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [error, setError] = useState("")
+
+  const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
+    setDraft((d) => ({ ...d, [key]: value }))
+
+  const load = useCallback(
+    () =>
+      Promise.all([
+        apiJSON<PlannedPurchase[]>("/api/planned-purchases"),
+        apiJSON<Category[]>("/api/categories"),
+      ])
+        .then(([p, c]) => {
+          setPlanned(p)
+          setCategories(c)
+        })
+        .catch(() => toast(t.serverUnreachable)),
+    []
+  )
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  async function write(path: string, init: RequestInit) {
+    try {
+      await api(path, init)
+      await load()
+      return true
+    } catch {
+      toast(t.plannedNotSaved)
+      return false
+    }
+  }
+
+  function select(p: PlannedPurchase) {
+    setEditing(p.id)
+    setDraft({
+      label: p.label,
+      amount: toTyped(p.amount_cents),
+      category_id: p.category_id,
+    })
+    setError("")
+    setSidebarOpen(true)
+  }
+
+  function reset() {
+    setEditing(null)
+    setDraft(blankDraft())
+    setError("")
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    const cents = toCents(draft.amount)
+    if (cents === null || cents <= 0) {
+      setError(t.invalidAmount)
+      return
+    }
+    const ok = await write(
+      editing === null
+        ? "/api/planned-purchases"
+        : `/api/planned-purchases/${editing}`,
+      {
+        method: editing === null ? "POST" : "PUT",
+        body: JSON.stringify({
+          label: draft.label,
+          amount_cents: cents,
+          category_id: draft.category_id,
+        }),
+      }
+    )
+    if (!ok) return
+    if (editing === null) toast(t.added)
+    reset()
+  }
+
+  async function remove(p: PlannedPurchase) {
+    if (!confirm(t.confirmDeletePlanned(p.label))) return
+    if (await write(`/api/planned-purchases/${p.id}`, { method: "DELETE" })) {
+      if (editing === p.id) reset()
+    }
+  }
+
+  const move = (p: PlannedPurchase, direction: "up" | "down") =>
+    write(`/api/planned-purchases/${p.id}/move`, {
+      method: "POST",
+      body: JSON.stringify({ direction }),
+    })
+
+  const pickable = pickableCategories(
+    categories,
+    "expense",
+    categories.find((c) => c.id === draft.category_id)
+  )
+  const list = planned ?? []
+
+  return (
+    <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
+      <h1 className="font-medium">{t.planned}</h1>
+
+      <div className="flex flex-1 flex-wrap gap-6">
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
+          {planned?.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t.noPlannedYet}</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10">{t.priority}</TableHead>
+                  <TableHead>{t.plannedLabel}</TableHead>
+                  <TableHead className="text-right">{t.amount}</TableHead>
+                  <TableHead className="w-28 text-right">{t.actions}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {list.map((p, i) => {
+                  const category = categories.find(
+                    (c) => c.id === p.category_id
+                  )
+                  return (
+                    <TableRow key={p.id}>
+                      <TableCell className="tabular-nums text-muted-foreground">
+                        {i + 1}
+                      </TableCell>
+                      <TableCell>
+                        <span className="flex items-center gap-2">
+                          {category && <ColorDot color={category.color} />}
+                          {p.label}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right font-medium tabular-nums">
+                        € {formatCents(p.amount_cents)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-end">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={t.moveUp}
+                            title={t.moveUp}
+                            disabled={i === 0}
+                            onClick={() => void move(p, "up")}
+                          >
+                            <RiArrowUpLine />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={t.moveDown}
+                            title={t.moveDown}
+                            disabled={i === list.length - 1}
+                            onClick={() => void move(p, "down")}
+                          >
+                            <RiArrowDownLine />
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={t.actions}
+                              >
+                                <RiMoreLine />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => select(p)}>
+                                <RiEditLine /> {t.editPlanned}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onClick={() => void remove(p)}
+                              >
+                                <RiDeleteBinLine /> {t.delete}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </div>
+
+        <FormSidebar
+          title={editing === null ? t.addPlanned : t.editPlanned}
+          open={sidebarOpen}
+          onOpenChange={setSidebarOpen}
+          openMobileWhen={editing}
+          footer={
+            <div className="flex flex-col gap-2">
+              <Button
+                type="submit"
+                form="planned-form"
+                size="lg"
+                className="h-12 text-base"
+              >
+                {editing === null ? t.addPlanned : t.save}
+              </Button>
+              {editing !== null && (
+                <Button type="button" variant="ghost" onClick={reset}>
+                  {t.cancel}
+                </Button>
+              )}
+            </div>
+          }
+        >
+          <form
+            id="planned-form"
+            onSubmit={submit}
+            className="flex flex-col gap-3"
+          >
+            <Field>
+              <FieldLabel htmlFor="planned-label">{t.plannedLabel}</FieldLabel>
+              <Input
+                id="planned-label"
+                value={draft.label}
+                onChange={(e) => set("label", e.target.value)}
+                required
+                className="h-10"
+              />
+            </Field>
+
+            <Field>
+              <FieldLabel htmlFor="planned-amount">{t.amount}</FieldLabel>
+              <InputGroup className="h-12">
+                <InputGroupAddon className="text-xl">€</InputGroupAddon>
+                <InputGroupInput
+                  id="planned-amount"
+                  type="text"
+                  inputMode="decimal"
+                  value={draft.amount}
+                  onChange={(e) => set("amount", e.target.value)}
+                  placeholder="0,00"
+                  required
+                  className="text-2xl"
+                />
+              </InputGroup>
+            </Field>
+
+            <Field>
+              <FieldLabel htmlFor="planned-category">{t.category}</FieldLabel>
+              <Select
+                value={
+                  draft.category_id === null
+                    ? "none"
+                    : String(draft.category_id)
+                }
+                onValueChange={(v) =>
+                  set("category_id", v === "none" ? null : Number(v))
+                }
+              >
+                <SelectTrigger id="planned-category" className="h-10 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{t.chooseSubcategory}</SelectItem>
+                  {pickable.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      <span className="flex items-center gap-2">
+                        <ColorDot color={c.color} />
+                        {c.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            {error && (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
+          </form>
+        </FormSidebar>
+      </div>
+    </div>
+  )
+}

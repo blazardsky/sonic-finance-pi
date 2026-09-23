@@ -12,6 +12,7 @@ import {
   RiRepeatLine,
   RiSettings3Line,
   RiShoppingBag3Line,
+  RiShoppingCartLine,
   RiTeamLine,
   RiWallet3Line,
 } from "@remixicon/react"
@@ -45,6 +46,7 @@ const icons: Record<Screen, typeof RiDashboardLine> = {
   expenses: RiShoppingBag3Line,
   incomes: RiWallet3Line,
   recurring: RiRepeatLine,
+  planned: RiShoppingCartLine,
   investments: RiExchangeFundsLine,
   savings: RiPieChartLine,
   categories: RiPriceTag3Line,
@@ -68,7 +70,7 @@ const groups: { label: string; screens: Screen[] }[] = [
   },
   {
     label: t.navEntries,
-    screens: ["expenses", "incomes", "recurring", "investments"],
+    screens: ["expenses", "incomes", "recurring", "planned", "investments"],
   },
   {
     label: t.navManagement,

@@ -619,3 +619,13 @@ export type TrackerItem = {
   stores: TrackerStorePrice[]
   yearly_average: TrackerYearlyPrice[]
 }
+
+// A Planned purchase (CONTEXT.md): something the household intends to buy
+// soon. The list comes back in priority order; position is that order.
+export type PlannedPurchase = {
+  id: number
+  label: string
+  amount_cents: number
+  category_id: number | null
+  position: number
+}
