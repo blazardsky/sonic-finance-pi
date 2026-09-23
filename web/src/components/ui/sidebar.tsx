@@ -323,13 +323,16 @@ function Sidebar({
           // SheetContent's own data-[side=*]:w-3/4 is a higher-specificity
           // selector than a plain w-(--sidebar-width) override, so matching
           // its selector shape here is what actually lets mobileWidth win.
-          className={`data-[side=left]:w-(--sidebar-width) data-[side=right]:w-(--sidebar-width) data-[side=left]:sm:max-w-none data-[side=right]:sm:max-w-none ${bg} p-0 ${fg} [&>button]:hidden${instant ? " data-open:animate-none! data-closed:animate-none! duration-0!" : ""}`}
+          className={`data-[side=left]:w-(--sidebar-width) data-[side=right]:w-(--sidebar-width) data-[side=left]:sm:max-w-none data-[side=right]:sm:max-w-none ${bg} p-0 ${fg}${instant ? " data-open:animate-none! data-closed:animate-none! duration-0!" : ""}`}
           style={
             {
               "--sidebar-width": isMobile ? mobileWidth : overlayWidth,
             } as React.CSSProperties
           }
           side={side}
+          // FormSidebar puts its own close in the header; the Sheet's stock X
+          // would be a second one.
+          showCloseButton={false}
         >
           <SheetHeader className="sr-only">
             <SheetTitle>Sidebar</SheetTitle>

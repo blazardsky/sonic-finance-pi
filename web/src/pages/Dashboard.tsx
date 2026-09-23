@@ -15,6 +15,7 @@ import {
 } from "@remixicon/react"
 import { Area, AreaChart } from "recharts"
 
+import { Row } from "@/pages/Month"
 import { running } from "@/pages/RecurringExpenses"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -57,6 +58,7 @@ import { paletteVar } from "@/lib/palette"
 import { t } from "@/lib/strings"
 import { addDays, categoriesIn, dailyBuckets } from "@/lib/trend"
 import type {
+  BudgetReport,
   Category,
   DailyCategoryTotal,
   EstimateReport,
@@ -237,6 +239,7 @@ export function Dashboard({
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
         <div className="flex flex-col gap-4">
           <UpcomingCard loading={loading} upcoming={upcoming} categories={categories} />
+          <BudgetCard />
           {loading ? (
             <Skeleton className="h-32 w-full" />
           ) : (
@@ -1030,6 +1033,43 @@ function RecentList({
             })}
           </ul>
         )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// Budget (computed), Target and Goal (household-set) — ticket 04. They
+// describe the current month, so they live here with the rest of "now"
+// rather than on the Month page, where a past month has no target to show.
+// Own fetch, outside Dashboard's Promise.all: a budget that fails to load
+// just leaves the card out instead of blanking the whole overview.
+function BudgetCard() {
+  const [budget, setBudget] = useState<BudgetReport | null>(null)
+  useEffect(() => {
+    apiJSON<BudgetReport>("/api/reports/budget")
+      .then(setBudget)
+      .catch(() => setBudget(null))
+  }, [])
+  if (!budget) return null
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t.budgetTargetGoal}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {/* Target/Goal show even when Budget has too little history: they
+            are just settings, only Budget's own row waits for data. */}
+        <dl className="flex flex-col divide-y divide-border">
+          {budget.available ? (
+            <Row label={t.budget} cents={budget.budget_cents} />
+          ) : (
+            <p className="py-3 text-sm text-muted-foreground">
+              {t.budgetUnavailable}
+            </p>
+          )}
+          <Row label={t.target} cents={budget.target_cents} />
+          <Row label={t.savingsGoal} cents={budget.goal_cents} />
+        </dl>
       </CardContent>
     </Card>
   )

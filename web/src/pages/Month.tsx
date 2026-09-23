@@ -1,18 +1,24 @@
 import { useEffect, useState } from "react"
+import { format } from "date-fns"
+import { it } from "date-fns/locale"
 
 import { PendingPayments } from "@/pages/PendingPayments"
 import { Figure } from "@/pages/YearlyReport"
 import { CategoryTrendChart } from "@/components/CategoryTrendChart"
-import { PeriodStepper } from "@/components/PeriodStepper"
+import { PeriodLabel, PeriodStepper } from "@/components/PeriodStepper"
 import { SpoilerAmount } from "@/components/SpoilerAmount"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { apiJSON } from "@/lib/api"
 import { formatCents, formatDate, shiftMonth, thisMonth } from "@/lib/money"
 import { t } from "@/lib/strings"
 import { categoriesIn, weeklyBuckets } from "@/lib/trend"
 import type {
-  BudgetReport,
   Category,
   DailyCategoryTotal,
   MonthTotals,
@@ -24,8 +30,8 @@ import type {
 // question, the breakdown says what made it, and the strip at the bottom
 // confirms what was just entered.
 //
-// The two arrows step through the months either side, and the month itself is
-// a native picker: a comparison against a month three years back should not be
+// The two arrows step through the months either side, and the month label
+// opens a month grid: a comparison against a month three years back should not be
 // thirty-six taps of an arrow. Both ways of moving stop at the current month,
 // because there is no such thing as next month's total.
 //
@@ -38,7 +44,6 @@ export function Month() {
   const [recent, setRecent] = useState<RecentEntry[]>([])
   const [daily, setDaily] = useState<DailyCategoryTotal[]>([])
   const [categories, setCategories] = useState<Category[]>([])
-  const [budget, setBudget] = useState<BudgetReport | null>(null)
   const [error, setError] = useState("")
 
   // The last few entries are not this month's — they are the last few typed,
@@ -97,26 +102,6 @@ export function Month() {
     }
   }, [month])
 
-  // Budget/Target/Goal describe "now," not an arbitrary month (ticket 04) —
-  // fetched only while the current real month is on screen, and cleared the
-  // moment the household steps away from it so a past month never shows this
-  // month's figures under its own heading.
-  useEffect(() => {
-    let current = true
-    if (month === thisMonth()) {
-      apiJSON<BudgetReport>("/api/reports/budget")
-        .then((b) => current && setBudget(b))
-        .catch(() => current && setBudget(null))
-    } else {
-      // setState belongs in a callback, not the effect body itself — deferred
-      // the same way the fetch above defers it, just with nothing to await.
-      Promise.resolve().then(() => current && setBudget(null))
-    }
-    return () => {
-      current = false
-    }
-  }, [month])
-
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6">
       <PeriodStepper
@@ -128,16 +113,7 @@ export function Month() {
         nextDisabled={month >= thisMonth()}
         onNext={() => setMonth(shiftMonth(month, 1))}
       >
-        <Input
-          type="month"
-          aria-label={t.month}
-          value={month}
-          // An empty value is what a cleared picker sends, and there is no
-          // month it could mean — the one on screen stays.
-          onChange={(e) => e.target.value && setMonth(e.target.value)}
-          max={thisMonth()}
-          className="h-10 w-auto text-center"
-        />
+        <MonthPicker month={month} onChange={setMonth} />
       </PeriodStepper>
 
       {error && (
@@ -152,8 +128,10 @@ export function Month() {
           stacks them, same content either way. */}
       <div className="flex flex-wrap items-start gap-6">
         {totals && (
-          <Card className="min-w-72 flex-1">
-            <CardContent className="@container">
+          // No frame of its own: each Figure is already a Card, and a card
+          // around cards just doubles the border and padding.
+          <Card className="min-w-72 flex-1 bg-transparent py-0 ring-0">
+            <CardContent className="@container px-0">
               {/* Three small boxes, the same reading YearlyReport's own
                   figures use, rather than the plain label/value rows every
                   other card here still is — the totals get to look like the
@@ -169,32 +147,6 @@ export function Month() {
                 <Figure label={t.incomes} cents={totals.income_cents} />
                 <Figure label={t.expenses} cents={totals.expense_cents} />
                 <Figure label={t.difference} cents={totals.net_cents} />
-              </dl>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Budget (computed), Target and Goal (household-set) — ticket 04.
-            Only for the current real month: a past or future month has no
-            "this month's target" to speak of. Target/Goal show even when
-            Budget itself has too little history, since they are just
-            settings; only Budget's own row waits for enough data. */}
-        {budget && (
-          <Card className="min-w-64 flex-1">
-            <CardHeader>
-              <CardTitle>{t.budgetTargetGoal}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl className="flex flex-col divide-y divide-border">
-                {budget.available ? (
-                  <Row label={t.budget} cents={budget.budget_cents} />
-                ) : (
-                  <p className="py-3 text-sm text-muted-foreground">
-                    {t.budgetUnavailable}
-                  </p>
-                )}
-                <Row label={t.target} cents={budget.target_cents} />
-                <Row label={t.savingsGoal} cents={budget.goal_cents} />
               </dl>
             </CardContent>
           </Card>
@@ -314,6 +266,77 @@ export function Month() {
         </Card>
       </div>
     </div>
+  )
+}
+
+// The month label is the popover trigger: a year stepper over the twelve
+// months, same ‹ › idiom as the page's own stepper, future months disabled
+// for the same reason the page's › is.
+function MonthPicker({
+  month,
+  onChange,
+}: {
+  month: string
+  onChange: (month: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [year, setYear] = useState(() => Number(month.slice(0, 4)))
+  const now = thisMonth()
+  const [y, m] = month.split("-").map(Number)
+  const label = format(new Date(y, m - 1), "LLLL yyyy", { locale: it })
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o)
+        if (o) setYear(y)
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          aria-label={t.month}
+          className="h-auto capitalize"
+        >
+          <PeriodLabel>{label}</PeriodLabel>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64">
+        <PeriodStepper
+          className="justify-between"
+          previousLabel={t.previousYear}
+          onPrevious={() => setYear(year - 1)}
+          nextLabel={t.nextYear}
+          nextDisabled={year >= Number(now.slice(0, 4))}
+          onNext={() => setYear(year + 1)}
+        >
+          <PeriodLabel>{year}</PeriodLabel>
+        </PeriodStepper>
+        <div className="grid grid-cols-3 gap-1">
+          {t.monthsShort.map((name, i) => {
+            const value = `${year}-${String(i + 1).padStart(2, "0")}`
+            return (
+              <Button
+                key={value}
+                type="button"
+                size="sm"
+                variant={value === month ? "default" : "ghost"}
+                disabled={value > now}
+                className="capitalize"
+                onClick={() => {
+                  onChange(value)
+                  setOpen(false)
+                }}
+              >
+                {name}
+              </Button>
+            )
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }
 
