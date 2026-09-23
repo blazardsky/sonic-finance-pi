@@ -120,38 +120,38 @@
    sidebar-foreground), since those are the ones that were weak. Card and
    badge keep their shadow so the lightness gap reads as elevation. */
 .high-contrast {
-    --background: rgba(252, 252, 252, 1);
-    --foreground: rgba(8, 1, 18, 1);
-    --card: rgb(231, 252, 255);
+    --background: oklch(0.9911 0 0);
+    --foreground: oklch(0.1115 0.0483 304.807);
+    --card: oklch(0.9766 0.0223 207.083);
     --card-foreground: oklch(0.09 0.01 326);
-    --popover: rgb(255, 255, 255);
+    --popover: oklch(1 0 0);
     --popover-foreground: oklch(0.09 0.01 326);
-    --primary-foreground: rgba(255, 255, 255, 1);
-    --secondary: rgb(155, 222, 255);
-    --muted: rgb(144, 198, 255);
+    --primary-foreground: oklch(1 0 0);
+    --secondary: oklch(0.8673 0.0814 230.164);
+    --muted: oklch(0.8103 0.0989 250.439);
     --muted-foreground: oklch(0.40 0.06 259.815);
-    --accent: rgba(247, 247, 247, 1);
+    --accent: oklch(0.9761 0 0);
     --border: oklch(0.568 0.06 259.815);
     --input: oklch(0.568 0.06 259.815);
     --ring: oklch(0.521 0.06 259.815);
-    --chart-1: rgba(171, 212, 255, 1);
+    --chart-1: oklch(0.8555 0.0742 249.920);
     --radius: 0.1rem;
-    --sidebar: rgba(255, 255, 255, 1);
-    --sidebar-foreground: rgba(0, 36, 92, 1);
-    --sidebar-accent: rgb(147, 225, 255);
-    --sidebar-accent-foreground: rgba(0, 8, 21, 1);
+    --sidebar: oklch(1 0 0);
+    --sidebar-foreground: oklch(0.2775 0.1084 259.152);
+    --sidebar-accent: oklch(0.8697 0.0871 224.330);
+    --sidebar-accent-foreground: oklch(0.1315 0.0357 248.399);
     --sidebar-border: oklch(0.568 0.06 259.815);
-    --shell: rgba(156, 196, 255, 1);
-    --header: rgba(0, 31, 83, 1);
-    --elevated: rgba(255, 255, 255, 1);
+    --shell: oklch(0.8131 0.0943 257.967);
+    --header: oklch(0.2567 0.1020 259.505);
+    --elevated: oklch(1 0 0);
 }
 
 .dark.high-contrast {
-    --background: rgb(2, 10, 27);
-    --foreground: rgba(251, 254, 255, 1);
-    --card: rgb(0, 15, 40);
+    --background: oklch(0.1465 0.0405 258.026);
+    --foreground: oklch(0.9950 0.0035 219.532);
+    --card: oklch(0.1718 0.0576 255.499);
     --card-foreground: oklch(0.99 0 0);
-    --popover: rgba(12, 22, 38, 1);
+    --popover: oklch(0.1997 0.0356 259.470);
     --popover-foreground: oklch(0.99 0 0);
     /* Reset to .dark's own values: .high-contrast above also applies here
        (both classes sit on the root), and its light tints must not leak in. */
@@ -165,13 +165,13 @@
     --border: oklch(0.582 0.06 259.815);
     --input: oklch(0.582 0.06 259.815);
     --ring: oklch(0.653 0.06 259.815);
-    --sidebar: rgba(0, 15, 42, 1);
+    --sidebar: oklch(0.1738 0.0610 256.703);
     --sidebar-foreground: oklch(0.85 0.09 259.815);
-    --sidebar-accent: rgba(4, 33, 79, 1);
+    --sidebar-accent: oklch(0.2593 0.0916 259.348);
     --sidebar-border: oklch(0.582 0.06 259.815);
-    --shell: rgba(0, 20, 55, 1);
-    --header: rgba(2, 6, 25, 1);
-    --elevated: rgba(0, 22, 59, 1);
+    --shell: oklch(0.2007 0.0747 258.111);
+    --header: oklch(0.1309 0.0444 265.500);
+    --elevated: oklch(0.2100 0.0781 258.091);
 }
 
 .high-contrast [data-slot="card"],
