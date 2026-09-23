@@ -64,6 +64,7 @@ export const t = {
   subcategory: "Sottocategoria",
   chooseSubcategory: "Nessuna",
   addExpense: "Aggiungi spesa",
+  privacyMode: "Modalità privacy",
   invalidAmount: "Importo non valido.",
   invalidPayer: "Scegli chi ha pagato.",
   expenseNotSaved: "Spesa non salvata. Riprova.",
