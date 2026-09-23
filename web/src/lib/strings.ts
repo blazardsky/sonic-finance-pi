@@ -390,6 +390,12 @@ export const t = {
   moveUp: "Sposta su",
   moveDown: "Sposta giù",
   priority: "Priorità",
+  headroomNextMonths: "Margine nei prossimi 6 mesi",
+  headroomProjection:
+    "Proiezione dall'ultimo anno: entrate tipiche e contratti, meno spese tipiche, ricorrenti e obiettivo di risparmio.",
+  headroomUnavailable:
+    "Servono almeno 3 mesi di storico per la proiezione. Puoi comunque salvare gli acquisti.",
+  headroom: "Margine",
 
   // Recurring expenses — the rent, defined once
   recurring: "Ricorrenti",

@@ -629,3 +629,18 @@ export type PlannedPurchase = {
   category_id: number | null
   position: number
 }
+
+// Headroom (CONTEXT.md): one future month's projected leftover once its
+// Expenses and Goal are set aside, and the running total through it. The next
+// 6 months from next month; unavailable (no months) with under 3 months of
+// history.
+export type HeadroomMonth = {
+  month: string
+  headroom_cents: number
+  running_cents: number
+}
+
+export type HeadroomReport = {
+  available: boolean
+  months: HeadroomMonth[]
+}

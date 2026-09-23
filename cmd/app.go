@@ -126,6 +126,7 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 	mux.HandleFunc("PATCH /api/reminders/{id}", handlePatchReminder(db, now))
 	mux.HandleFunc("DELETE /api/reminders/{id}", handleDeleteReminder(db))
 
+	mux.HandleFunc("GET "+headroomPath, handleHeadroomReport(db, now))
 	mux.HandleFunc("GET /api/planned-purchases", handleListPlanned(db))
 	mux.HandleFunc("POST /api/planned-purchases", handleCreatePlanned(db))
 	mux.HandleFunc("PUT /api/planned-purchases/{id}", handleUpdatePlanned(db))

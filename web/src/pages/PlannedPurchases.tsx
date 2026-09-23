@@ -8,6 +8,13 @@ import {
 } from "@remixicon/react"
 
 import { ColorDot } from "@/components/ColorDot"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { FormSidebar } from "@/components/form-sidebar"
 import { Button } from "@/components/ui/button"
 import {
@@ -43,7 +50,7 @@ import { formatCents, toCents, toTyped } from "@/lib/money"
 import { pickableCategories } from "@/lib/pickers"
 import { t } from "@/lib/strings"
 import { toast } from "@/lib/toast"
-import type { Category, PlannedPurchase } from "@/types"
+import type { Category, HeadroomReport, PlannedPurchase } from "@/types"
 
 type Draft = {
   label: string
@@ -53,6 +60,15 @@ type Draft = {
 
 const blankDraft = (): Draft => ({ label: "", amount: "", category_id: null })
 
+// "2026-04" → "apr 2026", the same short names the year's rows use.
+function monthLabel(month: string) {
+  const [y, m] = month.split("-").map(Number)
+  return `${t.monthsShort[m - 1]} ${y}`
+}
+
+const signedCents = (cents: number) =>
+  `${cents < 0 ? "−" : ""}€ ${formatCents(Math.abs(cents))}`
+
 // The Acquisti programmati page: the household's priority-ordered list of
 // Planned purchases (CONTEXT.md). Not a DataTable: its sorting and filters
 // would fight the one order that matters here, the household's own, which
@@ -60,6 +76,7 @@ const blankDraft = (): Draft => ({ label: "", amount: "", category_id: null })
 export function PlannedPurchases() {
   const [planned, setPlanned] = useState<PlannedPurchase[] | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
+  const [headroom, setHeadroom] = useState<HeadroomReport | null>(null)
   const [draft, setDraft] = useState(blankDraft)
   const [editing, setEditing] = useState<number | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -73,10 +90,12 @@ export function PlannedPurchases() {
       Promise.all([
         apiJSON<PlannedPurchase[]>("/api/planned-purchases"),
         apiJSON<Category[]>("/api/categories"),
+        apiJSON<HeadroomReport>("/api/reports/headroom"),
       ])
-        .then(([p, c]) => {
+        .then(([p, c, h]) => {
           setPlanned(p)
           setCategories(c)
+          setHeadroom(h)
         })
         .catch(() => toast(t.serverUnreachable)),
     []
@@ -165,6 +184,53 @@ export function PlannedPurchases() {
 
       <div className="flex flex-1 flex-wrap gap-6">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
+          {headroom && (
+            <Card>
+              <CardHeader>
+                <CardTitle>{t.headroomNextMonths}</CardTitle>
+                <CardDescription>
+                  {headroom.available
+                    ? t.headroomProjection
+                    : t.headroomUnavailable}
+                </CardDescription>
+              </CardHeader>
+              {headroom.available && (
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{t.month}</TableHead>
+                        <TableHead className="text-right">
+                          {t.headroom}
+                        </TableHead>
+                        <TableHead className="text-right">
+                          {t.runningTotal}
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {headroom.months.map((m) => (
+                        <TableRow key={m.month}>
+                          <TableCell>{monthLabel(m.month)}</TableCell>
+                          <TableCell
+                            className={`text-right tabular-nums ${m.headroom_cents < 0 ? "text-destructive" : ""}`}
+                          >
+                            {signedCents(m.headroom_cents)}
+                          </TableCell>
+                          <TableCell
+                            className={`text-right font-medium tabular-nums ${m.running_cents < 0 ? "text-destructive" : ""}`}
+                          >
+                            {signedCents(m.running_cents)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              )}
+            </Card>
+          )}
+
           {planned?.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t.noPlannedYet}</p>
           ) : (
