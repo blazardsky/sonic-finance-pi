@@ -630,6 +630,15 @@ export type PlannedPurchase = {
   position: number
 }
 
+// What "Comprato" hands the Expense form: the Planned purchase to delete once
+// the Expense is saved, and what to prefill it with.
+export type ExpensePrefill = {
+  plannedId: number
+  label: string
+  amount_cents: number
+  category_id: number | null
+}
+
 // Headroom (CONTEXT.md): one future month's projected leftover once its
 // Expenses and Goal are set aside, and the running total through it. The next
 // 6 months from next month; unavailable (no months) with under 3 months of

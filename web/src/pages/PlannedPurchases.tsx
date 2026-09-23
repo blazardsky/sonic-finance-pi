@@ -5,6 +5,7 @@ import {
   RiDeleteBinLine,
   RiEditLine,
   RiMoreLine,
+  RiShoppingBagLine,
 } from "@remixicon/react"
 
 import { ColorDot } from "@/components/ColorDot"
@@ -78,7 +79,13 @@ const signedCents = (cents: number) =>
 // Planned purchases (CONTEXT.md). Not a DataTable: its sorting and filters
 // would fight the one order that matters here, the household's own, which
 // only the up/down controls change.
-export function PlannedPurchases() {
+export function PlannedPurchases({
+  onBought,
+}: {
+  // "Comprato": hands the Planned purchase to the Expense form, which
+  // deletes it once the Expense is saved.
+  onBought: (p: PlannedPurchase) => void
+}) {
   const [planned, setPlanned] = useState<PlannedPurchase[] | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
   const [headroom, setHeadroom] = useState<HeadroomReport | null>(null)
@@ -216,7 +223,10 @@ export function PlannedPurchases() {
                         <TableHead className="text-right">
                           {t.runningTotal}
                         </TableHead>
-                        <TableHead>{t.plannedPurchasesInMonth}</TableHead>
+                        {/* Phones read which month from the list below. */}
+                        <TableHead className="hidden sm:table-cell">
+                          {t.plannedPurchasesInMonth}
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -233,7 +243,7 @@ export function PlannedPurchases() {
                           >
                             {signedCents(m.running_cents)}
                           </TableCell>
-                          <TableCell className="text-muted-foreground">
+                          <TableCell className="hidden text-muted-foreground sm:table-cell">
                             {landingIn(m.month)
                               .map((p) => p.label)
                               .join(", ")}
@@ -253,11 +263,15 @@ export function PlannedPurchases() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-10">{t.priority}</TableHead>
+                  <TableHead className="hidden w-10 sm:table-cell">
+                    {t.priority}
+                  </TableHead>
                   <TableHead>{t.plannedLabel}</TableHead>
                   <TableHead className="text-right">{t.amount}</TableHead>
                   {headroom?.available && (
-                    <TableHead>{t.plannedWhen}</TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      {t.plannedWhen}
+                    </TableHead>
                   )}
                   <TableHead className="w-28 text-right">{t.actions}</TableHead>
                 </TableRow>
@@ -269,7 +283,7 @@ export function PlannedPurchases() {
                   )
                   return (
                     <TableRow key={p.id}>
-                      <TableCell className="tabular-nums text-muted-foreground">
+                      <TableCell className="hidden text-muted-foreground tabular-nums sm:table-cell">
                         {i + 1}
                       </TableCell>
                       <TableCell>
@@ -277,12 +291,18 @@ export function PlannedPurchases() {
                           {category && <ColorDot color={category.color} />}
                           {p.label}
                         </span>
+                        {/* On phones the "Quando" column is folded in here. */}
+                        {headroom?.available && (
+                          <span className="text-xs whitespace-normal text-muted-foreground sm:hidden">
+                            <PlacementText placement={placements.get(p.id)} />
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right font-medium tabular-nums">
                         € {formatCents(p.amount_cents)}
                       </TableCell>
                       {headroom?.available && (
-                        <TableCell>
+                        <TableCell className="hidden sm:table-cell">
                           <PlacementText placement={placements.get(p.id)} />
                         </TableCell>
                       )}
@@ -322,6 +342,9 @@ export function PlannedPurchases() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => onBought(p)}>
+                                <RiShoppingBagLine /> {t.bought}
+                              </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => select(p)}>
                                 <RiEditLine /> {t.editPlanned}
                               </DropdownMenuItem>

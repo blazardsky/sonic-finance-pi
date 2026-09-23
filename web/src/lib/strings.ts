@@ -387,6 +387,7 @@ export const t = {
   noPlannedYet: "Nessun acquisto programmato.",
   plannedNotSaved: "Acquisto non salvato. Riprova.",
   confirmDeletePlanned: (label: string) => `Eliminare "${label}"?`,
+  bought: "Comprato",
   moveUp: "Sposta su",
   moveDown: "Sposta giù",
   priority: "Priorità",

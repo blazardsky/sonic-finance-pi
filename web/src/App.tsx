@@ -22,6 +22,7 @@ import { SiteHeader } from "@/components/site-header"
 import { SidebarProvider } from "@/components/ui/sidebar"
 import { Toast } from "@/components/toast"
 import { t } from "@/lib/strings"
+import type { ExpensePrefill } from "@/types"
 
 // /api/health doubles as the session check: it sits behind auth like every
 // other /api/ route, so a 401 is how the app learns it needs to show the login
@@ -64,6 +65,11 @@ export function App() {
   // into editing this Income instead, the same deep-link shape
   // expensesQuickAdd already uses for its own screen.
   const [incomeToEdit, setIncomeToEdit] = useState<number | null>(null)
+  // Set by a Planned purchase's "Comprato" action, the same deep-link shape:
+  // Expenses opens prefilled from it, and it is dropped on leaving Expenses.
+  const [expensePrefill, setExpensePrefill] = useState<ExpensePrefill | null>(
+    null
+  )
   // Adjusted during render (React's own pattern for this) rather than an
   // effect, since an effect setting state right back would cost an extra
   // render for no visible frame in between.
@@ -71,6 +77,7 @@ export function App() {
   if (screen !== quickAddScreen) {
     setQuickAddScreen(screen)
     if (screen !== "expenses" && expensesQuickAdd) setExpensesQuickAdd(false)
+    if (screen !== "expenses" && expensePrefill) setExpensePrefill(null)
     if (screen !== "incomes" && incomeToEdit !== null) setIncomeToEdit(null)
   }
   // The Pi has no RTC. When its clock is unset it generates no Recurring
@@ -155,10 +162,24 @@ export function App() {
               <Year onOpenYearReport={() => setScreen("yearReport")} />
             )}
             {screen === "yearReport" && <YearlyReport />}
-            {screen === "expenses" && <Expenses quickAdd={expensesQuickAdd} />}
+            {screen === "expenses" && (
+              <Expenses quickAdd={expensesQuickAdd} prefill={expensePrefill} />
+            )}
             {screen === "incomes" && <Incomes editIncomeId={incomeToEdit} />}
             {screen === "recurring" && <RecurringExpenses />}
-            {screen === "planned" && <PlannedPurchases />}
+            {screen === "planned" && (
+              <PlannedPurchases
+                onBought={(p) => {
+                  setExpensePrefill({
+                    plannedId: p.id,
+                    label: p.label,
+                    amount_cents: p.amount_cents,
+                    category_id: p.category_id,
+                  })
+                  setScreen("expenses")
+                }}
+              />
+            )}
             {screen === "investments" && <Investments />}
             {screen === "savings" && <Savings />}
             {screen === "categories" && <Categories />}

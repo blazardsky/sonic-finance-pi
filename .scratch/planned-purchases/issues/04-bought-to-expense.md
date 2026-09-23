@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-- [ ] "Comprato" opens the Expense form with amount, Category and label prefilled, and today's date
-- [ ] Saving the Expense removes the Planned purchase
-- [ ] Leaving the form without saving keeps the Planned purchase
-- [ ] A Planned purchase with no Category opens the form with no Category chosen
+- [x] "Comprato" opens the Expense form with amount, Category and label prefilled, and today's date
+- [x] Saving the Expense removes the Planned purchase
+- [x] Leaving the form without saving keeps the Planned purchase
+- [x] A Planned purchase with no Category opens the form with no Category chosen
