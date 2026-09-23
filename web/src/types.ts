@@ -619,3 +619,48 @@ export type TrackerItem = {
   stores: TrackerStorePrice[]
   yearly_average: TrackerYearlyPrice[]
 }
+
+// A Planned purchase (CONTEXT.md): something the household intends to buy
+// soon. The list comes back in priority order; position is that order.
+export type PlannedPurchase = {
+  id: number
+  label: string
+  amount_cents: number
+  category_id: number | null
+  position: number
+}
+
+// What "Comprato" hands the Expense form: the Planned purchase to delete once
+// the Expense is saved, and what to prefill it with.
+export type ExpensePrefill = {
+  plannedId: number
+  label: string
+  amount_cents: number
+  category_id: number | null
+}
+
+// Headroom (CONTEXT.md): one future month's projected leftover once its
+// Expenses and Goal are set aside, and the running total through it. The next
+// 6 months from next month; unavailable (no months) with under 3 months of
+// history.
+export type HeadroomMonth = {
+  month: string
+  headroom_cents: number
+  running_cents: number
+}
+
+// Where one Planned purchase lands: month is "" when it fits in none of the
+// 6 months — then missing_cents is the gap and savings_cover says whether
+// current Savings cover it.
+export type Placement = {
+  planned_id: number
+  month: string
+  missing_cents: number
+  savings_cover: boolean
+}
+
+export type HeadroomReport = {
+  available: boolean
+  months: HeadroomMonth[]
+  placements: Placement[]
+}

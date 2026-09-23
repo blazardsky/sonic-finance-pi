@@ -74,7 +74,15 @@ import {
   withSaved,
 } from "@/lib/pickers"
 import { t } from "@/lib/strings"
-import type { Category, Expense, Holding, Lists, SpendingIntent, Subcategory } from "@/types"
+import type {
+  Category,
+  Expense,
+  ExpensePrefill,
+  Holding,
+  Lists,
+  SpendingIntent,
+  Subcategory,
+} from "@/types"
 
 // A free-text field that suggests from the household's own history as it
 // types (ticket 03's /api/items/suggest and /api/stores/suggest) — built on
@@ -297,7 +305,16 @@ const RECENT_LIMIT = 50
 // "Modifica" action is how an entry gets corrected, which loads it into the
 // same form and reopens the panel if it was closed, since there is only ever
 // one form on the screen.
-export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
+export function Expenses({
+  quickAdd,
+  prefill,
+}: {
+  quickAdd?: boolean
+  // A Planned purchase being bought ("Comprato"): seeds the form once, at
+  // mount, and is deleted once the Expense it became is saved. Leaving
+  // without saving leaves it on the list.
+  prefill?: ExpensePrefill | null
+}) {
   const [expenses, setExpenses] = useState<Expense[] | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
   const [subcategories, setSubcategories] = useState<Subcategory[]>([])
@@ -315,7 +332,19 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
     net_worth_target_cents: 0,
     spending_intent_enabled: false,
   })
-  const [draft, setDraft] = useState<Draft>(blankDraft)
+  // Captured once at mount, like openMobileOnArrival below; cleared once the
+  // Planned purchase has been turned into an Expense.
+  const [fromPlanned, setFromPlanned] = useState(() => prefill ?? null)
+  const [draft, setDraft] = useState<Draft>(() =>
+    prefill
+      ? {
+          ...blankDraft(),
+          amount: toTyped(prefill.amount_cents),
+          category_id: prefill.category_id ?? "",
+          note: prefill.label,
+        }
+      : blankDraft()
+  )
   const [editing, setEditing] = useState<number | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -332,7 +361,7 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
   // meant to open the panel on arrival, not force it back open every time
   // App re-renders with the flag still set (see App.tsx's reset-on-navigate-
   // away).
-  const [openMobileOnArrival] = useState(() => quickAdd ?? false)
+  const [openMobileOnArrival] = useState(() => (quickAdd ?? false) || !!prefill)
   // Ticket 03: whether the Spending intent badges have been touched by hand
   // this session, while creating an Expense — until then, picking a Category
   // re-seeds the badges from its default every time; once true, a further
@@ -489,6 +518,15 @@ export function Expenses({ quickAdd }: { quickAdd?: boolean }) {
     // same trip, so the date, Category, Payer and method stay where they are.
     const wasEditing = editing !== null
     if (!wasEditing) toast(t.added)
+    // The Planned purchase this Expense was bought from is done: off the
+    // list. A failure here leaves it listed, which the household can delete
+    // by hand; the Expense itself is already saved.
+    if (!wasEditing && fromPlanned) {
+      await api(`/api/planned-purchases/${fromPlanned.plannedId}`, {
+        method: "DELETE",
+      }).catch(() => toast(t.plannedNotSaved))
+      setFromPlanned(null)
+    }
     setEditing(null)
     setDraft((d) =>
       wasEditing ? blankDraft() : { ...d, amount: "", store: "", note: "", items: [] }

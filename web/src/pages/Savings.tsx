@@ -27,9 +27,9 @@ const typeLabels: Record<HoldingType, string> = {
   other: t.holdingTypeOther,
 }
 
-// The Risparmi page: a read-only recap, no entries added here except the two
-// figures the household sets by hand (the starting balance and the net worth
-// target) — the total Savings figure and the portfolio breakdown (ticket 07),
+// The Risparmi page: a read-only recap, no entries added here except the net
+// worth target, set by hand where its progress is read (the starting balance
+// is set once, in Impostazioni) — the total Savings figure and the portfolio breakdown (ticket 07),
 // both off the one /api/reports/savings request. Buying and selling a Holding
 // happens on the Investimenti page instead.
 export function Savings() {
@@ -121,16 +121,6 @@ export function Savings() {
             </p>
           </CardContent>
         </Card>
-
-        <AmountSettingCard
-          title={t.startingBalance}
-          cents={savings?.starting_balance_cents ?? 0}
-          field="savings_starting_balance_cents"
-          hint={t.startingBalanceHint}
-          editLabel={t.editStartingBalance}
-          errorText={t.startingBalanceNotSaved}
-          onSaved={load}
-        />
 
         <AmountSettingCard
           title={t.netWorthTarget}
@@ -288,9 +278,7 @@ function yearMilestones(
 
 // A Card whose one figure is a household-set setting, edited where it is
 // read: the amount with a pencil beside it, and the same amount form behind
-// the pencil. Both settings this page owns — the starting balance and the net
-// worth target — are this card with a different key, so it is one component
-// rather than two copies of the same form.
+// the pencil. The net worth target is the one setting this page owns.
 //
 // The typed value is seeded when the form opens rather than kept in step
 // with cents as it loads, so there is nothing to re-sync after a save: the
@@ -307,7 +295,7 @@ function AmountSettingCard({
 }: {
   title: string
   cents: number
-  field: "savings_starting_balance_cents" | "net_worth_target_cents"
+  field: "net_worth_target_cents"
   hint: string
   editLabel: string
   errorText: string

@@ -378,6 +378,32 @@ export const t = {
   contractsDueHint:
     "Clienti con un contratto attivo a cui manca ancora la fattura di questo mese.",
 
+  // Planned purchases — what the household intends to buy soon, in priority
+  // order (CONTEXT.md: Planned purchase, Headroom)
+  planned: "Acquisti programmati",
+  addPlanned: "Aggiungi acquisto",
+  editPlanned: "Modifica acquisto",
+  plannedLabel: "Cosa",
+  noPlannedYet: "Nessun acquisto programmato.",
+  plannedNotSaved: "Acquisto non salvato. Riprova.",
+  confirmDeletePlanned: (label: string) => `Eliminare "${label}"?`,
+  bought: "Comprato",
+  moveUp: "Sposta su",
+  moveDown: "Sposta giù",
+  priority: "Priorità",
+  headroomNextMonths: "Margine nei prossimi 6 mesi",
+  headroomProjection:
+    "Proiezione dall'ultimo anno: entrate tipiche e contratti, meno spese tipiche, ricorrenti e obiettivo di risparmio.",
+  headroomUnavailable:
+    "Servono almeno 3 mesi di storico per la proiezione. Puoi comunque salvare gli acquisti.",
+  headroom: "Margine",
+  plannedWhen: "Quando",
+  plannedPurchasesInMonth: "Acquisti",
+  doesNotFit: "Non rientra nei prossimi 6 mesi",
+  missingAmount: (amount: string) => `mancano € ${amount}`,
+  savingsCoverGap: "i risparmi coprono la differenza",
+  loanNeeded: "servirebbe un finanziamento",
+
   // Recurring expenses — the rent, defined once
   recurring: "Ricorrenti",
   addRecurring: "Aggiungi spesa ricorrente",
@@ -531,9 +557,7 @@ export const t = {
   savings: "Risparmi",
   savingsPlusPortfolio: "Risparmi + investimenti",
   startingBalance: "Saldo di partenza",
-  editStartingBalance: "Modifica saldo di partenza",
   startingBalanceHint: "Il risparmio accumulato prima di usare l'app.",
-  startingBalanceNotSaved: "Saldo di partenza non salvato. Riprova.",
   portfolio: "Portafoglio",
   noHoldingsInPortfolio: "Nessun investimento in portafoglio.",
   // A projection, not a promise (same spirit as the yearly Estimate,

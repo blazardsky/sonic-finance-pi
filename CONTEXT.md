@@ -101,7 +101,7 @@ The total the household wants Savings plus its portfolio to reach, chosen by han
 _Avoid_: goal, savings goal, milestone
 
 **Estimate**:
-A projected figure for Income, Expenses, or tax for the rest of the year — this year's year-to-date growth against last year's at the same point (by whole completed months), applied to last year's full-year totals. The only number in the app that is not a cash-basis fact, and always labeled as a projection rather than shown alongside actuals unmarked.
+A projected figure for Income, Expenses, or tax for the rest of the year — this year's year-to-date growth against last year's at the same point (by whole completed months), applied to last year's full-year totals. Like every projection in the app (Net worth target's years, Headroom), not a cash-basis fact, and always labeled as a projection rather than shown alongside actuals unmarked.
 _Avoid_: projection, forecast, prediction
 
 **Contract**:
@@ -111,6 +111,14 @@ _Avoid_: retainer, agreement, invoice schedule
 **Reminder**:
 A short household-labeled toggle for a manual action done outside the app — a bank transfer, a payment made by hand — and not tied to any Expense or Recurring expense. Turned on once it's done; reads as off again from the first of the next calendar month.
 _Avoid_: alert, notification, task
+
+**Planned purchase**:
+Something the household intends to buy soon, with an amount, an optional Category, and a place in a household-ordered priority list. Not an Expense: no money has left. The app places each one, in priority order, in the first of the next few months whose accumulated Headroom covers it; one that fits in none of them is not a short-term purchase but a matter for Savings or a loan. Buying it turns it into an Expense and takes it off the list.
+_Avoid_: wishlist, planned expense, scheduled expense
+
+**Headroom**:
+The money projected to be left in a future month once its Expenses and Goal are set aside — what Planned purchases are paid from. Projected from the trailing year: typical Income plus what active Contracts still owe, minus typical non-recurring spending and the Recurring expenses due that month. Investments count only as money leaving, never as money to spend. Can be negative, and a negative month eats into what earlier months accumulated. A projection, never a promise, on the same terms as Estimate.
+_Avoid_: surplus, savings, available, free cash
 
 **Record**
 Anything that is recorded in the app (expenses, incomes, clients, categories)
