@@ -17,10 +17,13 @@ type ThemeProviderState = {
   setTheme: (theme: Theme) => void
   highContrast: boolean
   setHighContrast: (highContrast: boolean) => void
+  privacy: boolean
+  setPrivacy: (privacy: boolean) => void
 }
 
 const COLOR_SCHEME_QUERY = "(prefers-color-scheme: dark)"
 const THEME_VALUES: Theme[] = ["dark", "light", "system"]
+const PRIVACY_STORAGE_KEY = "privacy"
 
 const ThemeProviderContext = React.createContext<
   ThemeProviderState | undefined
@@ -104,6 +107,13 @@ export function ThemeProvider({
     () => localStorage.getItem(contrastStorageKey) === "true"
   )
 
+  // Privacy mode: masks the Dashboard's year totals from someone looking over
+  // your shoulder. Per device like contrast, and read synchronously here so
+  // the first paint is already masked — no flash of the real numbers.
+  const [privacy, setPrivacyState] = React.useState<boolean>(
+    () => localStorage.getItem(PRIVACY_STORAGE_KEY) === "true"
+  )
+
   const setTheme = React.useCallback(
     (nextTheme: Theme) => {
       localStorage.setItem(storageKey, nextTheme)
@@ -119,6 +129,11 @@ export function ThemeProvider({
     },
     [contrastStorageKey]
   )
+
+  const setPrivacy = React.useCallback((next: boolean) => {
+    localStorage.setItem(PRIVACY_STORAGE_KEY, String(next))
+    setPrivacyState(next)
+  }, [])
 
   const applyTheme = React.useCallback(
     (nextTheme: Theme) => {
@@ -215,6 +230,11 @@ export function ThemeProvider({
         return
       }
 
+      if (event.key === PRIVACY_STORAGE_KEY) {
+        setPrivacyState(event.newValue === "true")
+        return
+      }
+
       if (event.key !== storageKey) {
         return
       }
@@ -240,8 +260,10 @@ export function ThemeProvider({
       setTheme,
       highContrast,
       setHighContrast,
+      privacy,
+      setPrivacy,
     }),
-    [theme, setTheme, highContrast, setHighContrast]
+    [theme, setTheme, highContrast, setHighContrast, privacy, setPrivacy]
   )
 
   return (

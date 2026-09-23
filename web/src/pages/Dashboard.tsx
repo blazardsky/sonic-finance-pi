@@ -48,6 +48,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Toggle } from "@/components/ui/toggle"
 import { CategoryTrendChart } from "@/components/CategoryTrendChart"
+import { useTheme } from "@/components/theme-provider"
 import { SpoilerAmount } from "@/components/SpoilerAmount"
 import { Progress } from "@/components/ui/progress"
 import { api, apiJSON } from "@/lib/api"
@@ -287,6 +288,8 @@ export function Dashboard({
 // and draws the running leftover instead. Income names the non-work slice;
 // expenses name the tax paid against this year (ADR-0008: by tax year, not
 // payment date).
+const MASKED_AMOUNT = "••••"
+
 function TotalsCard({
   icon: Icon,
   label,
@@ -302,6 +305,11 @@ function TotalsCard({
   footnotes?: { label: string; cents: number }[]
   children?: ReactNode
 }) {
+  // Privacy mode masks every figure here, sign colour included — a red mask
+  // would still say the year is in the red. Bars and sparkline stay: no axis,
+  // no amount.
+  const { privacy } = useTheme()
+  const amount = (c: number) => (privacy ? MASKED_AMOUNT : formatCents(c))
   return (
     <Card>
       <CardHeader>
@@ -313,10 +321,10 @@ function TotalsCard({
       <CardContent elevated className="flex flex-col gap-3">
         <p
           className={`text-2xl font-medium tabular-nums ${
-            cents < 0 ? "text-destructive" : ""
+            cents < 0 && !privacy ? "text-destructive" : ""
           }`}
         >
-          € {formatCents(cents)}
+          € {amount(cents)}
         </p>
         {estimateCents != null && (
           <>
@@ -324,7 +332,7 @@ function TotalsCard({
               value={Math.max(0, Math.min(100, (cents / estimateCents) * 100))}
             />
             <p className="text-xs text-muted-foreground">
-              {t.ofEstimate(formatCents(estimateCents))}
+              {t.ofEstimate(amount(estimateCents))}
             </p>
           </>
         )}
@@ -342,7 +350,7 @@ function TotalsCard({
                 >
                   {footnote.label}
                   <Badge variant="secondary" className="tabular-nums">
-                    € {formatCents(footnote.cents)}
+                    € {amount(footnote.cents)}
                   </Badge>
                 </p>
               ))}
@@ -367,6 +375,7 @@ function netPath(months: MonthRow[]) {
 }
 
 function NetSparkline({ months }: { months: MonthRow[] }) {
+  const { privacy } = useTheme()
   const data = netPath(months)
   const color =
     (data.at(-1)?.net ?? 0) >= 0 ? "var(--credit)" : "var(--destructive)"
@@ -399,7 +408,7 @@ function NetSparkline({ months }: { months: MonthRow[] }) {
             if (!active || !row) return null
             return (
               <div className="rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl">
-                {row.month}: € {formatCents(row.net)}
+                {row.month}: € {privacy ? MASKED_AMOUNT : formatCents(row.net)}
               </div>
             )
           }}

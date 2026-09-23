@@ -3,6 +3,8 @@ import {
   RiComputerLine,
   RiContrast2Line,
   RiContrastLine,
+  RiEyeLine,
+  RiEyeOffLine,
   RiMoonLine,
   RiShoppingBasketLine,
   RiSunLine,
@@ -65,6 +67,26 @@ function HighContrastToggle() {
   )
 }
 
+// Masks the Dashboard's year totals (TotalsCard) for someone looking over
+// your shoulder — on/off, remembered per device like contrast.
+function PrivacyToggle() {
+  const { privacy, setPrivacy } = useTheme()
+  const Icon = privacy ? RiEyeOffLine : RiEyeLine
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-label={t.privacyMode}
+      aria-pressed={privacy}
+      title={t.privacyMode}
+      className={headerButton}
+      onClick={() => setPrivacy(!privacy)}
+    >
+      <Icon />
+    </Button>
+  )
+}
+
 export function SiteHeader({
   screen,
   onQuickAddExpense,
@@ -95,6 +117,8 @@ export function SiteHeader({
             </span>
           </Button>
         )}
+        {/* Dashboard-only: its year totals are the only thing it masks. */}
+        {screen === "dashboard" && <PrivacyToggle />}
         <HighContrastToggle />
         <ThemeToggle />
       </div>
