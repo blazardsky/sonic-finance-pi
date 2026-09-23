@@ -108,48 +108,70 @@
    (259.815, the header/sidebar/chart family) rather than a new one.
    sidebar-border reuses the same value as border/input since --sidebar's
    background is nearly identical to --background in both themes. */
-/* v1.3.3: on top of the audit above, the four app "surfaces" — shell (the
-   outermost frame), sidebar, background (the main content pane) and
-   card/popover (cards and modals) — are spread into a real elevation scale
-   instead of sitting within a hair of each other, darkest to lightest:
-   shell < sidebar < background < card/popover in light, and the reverse
-   lightness direction in dark (shell is the frame either way, so it sits at
-   whichever end reads as "further back" for that theme: darkest in light,
-   lightest in dark). Foreground and muted-foreground both move a little
-   further from their base value too, and card/badge get a shadow so the
-   lightness gap reads as elevation, not just a flat color change. */
+/* v1.3.5: a more saturated, more contrasting palette, still on the app's
+   blue family. Light: the surfaces pick up sky/cyan tints (card, secondary,
+   muted, sidebar accent), the shell frame and the header go deeper blue,
+   the sidebar goes white, and the corners get sharper. Dark: a near-black
+   navy background with cards, popovers and elevated panels each a step
+   bluer, and a deeper shell and header. Only the tokens the new palette
+   actually changed are set from it; the ones it left at their base value
+   keep the audit's starker values above (foreground on cards and popovers,
+   muted-foreground, border, input, ring, sidebar-border, and dark
+   sidebar-foreground), since those are the ones that were weak. Card and
+   badge keep their shadow so the lightness gap reads as elevation. */
 .high-contrast {
-    --foreground: oklch(0.09 0.01 326);
+    --background: rgba(252, 252, 252, 1);
+    --foreground: rgba(8, 1, 18, 1);
+    --card: rgb(231, 252, 255);
+    --card-foreground: oklch(0.09 0.01 326);
+    --popover: rgb(255, 255, 255);
+    --popover-foreground: oklch(0.09 0.01 326);
+    --primary-foreground: rgba(255, 255, 255, 1);
+    --secondary: rgb(155, 222, 255);
+    --muted: rgb(144, 198, 255);
     --muted-foreground: oklch(0.40 0.06 259.815);
+    --accent: rgba(247, 247, 247, 1);
     --border: oklch(0.568 0.06 259.815);
     --input: oklch(0.568 0.06 259.815);
     --ring: oklch(0.521 0.06 259.815);
-    --shell: oklch(0.84 0.045 259.815);
-    --sidebar: oklch(0.92 0.02 259.815);
-    --sidebar-foreground: oklch(0.32 0.14 259.815);
+    --chart-1: rgba(171, 212, 255, 1);
+    --radius: 0.1rem;
+    --sidebar: rgba(255, 255, 255, 1);
+    --sidebar-foreground: rgba(0, 36, 92, 1);
+    --sidebar-accent: rgb(147, 225, 255);
+    --sidebar-accent-foreground: rgba(0, 8, 21, 1);
     --sidebar-border: oklch(0.568 0.06 259.815);
-    --background: oklch(0.96 0.006 325.6);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.09 0.01 326);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.09 0.01 326);
+    --shell: rgba(156, 196, 255, 1);
+    --header: rgba(0, 31, 83, 1);
+    --elevated: rgba(255, 255, 255, 1);
 }
 
 .dark.high-contrast {
-    --foreground: oklch(0.99 0 0);
+    --background: rgb(2, 10, 27);
+    --foreground: rgba(251, 254, 255, 1);
+    --card: rgb(0, 15, 40);
+    --card-foreground: oklch(0.99 0 0);
+    --popover: rgba(12, 22, 38, 1);
+    --popover-foreground: oklch(0.99 0 0);
+    /* Reset to .dark's own values: .high-contrast above also applies here
+       (both classes sit on the root), and its light tints must not leak in. */
+    --primary-foreground: oklch(0.212 0.019 322.12);
+    --secondary: oklch(0.27 0.035 259.815);
+    --muted: oklch(0.27 0.035 259.815);
+    --accent: oklch(0.27 0.035 259.815);
+    --chart-1: oklch(0.809 0.105 251.813);
+    --sidebar-accent-foreground: oklch(0.90 0.05 259.815);
     --muted-foreground: oklch(0.80 0.06 259.815);
     --border: oklch(0.582 0.06 259.815);
     --input: oklch(0.582 0.06 259.815);
     --ring: oklch(0.653 0.06 259.815);
-    --shell: oklch(0.32 0.05 259.815);
-    --sidebar: oklch(0.19 0.04 259.815);
+    --sidebar: rgba(0, 15, 42, 1);
     --sidebar-foreground: oklch(0.85 0.09 259.815);
+    --sidebar-accent: rgba(4, 33, 79, 1);
     --sidebar-border: oklch(0.582 0.06 259.815);
-    --background: oklch(0.13 0.045 259.815);
-    --card: oklch(0.28 0.045 259.815);
-    --card-foreground: oklch(0.99 0 0);
-    --popover: oklch(0.28 0.045 259.815);
-    --popover-foreground: oklch(0.99 0 0);
+    --shell: rgba(0, 20, 55, 1);
+    --header: rgba(2, 6, 25, 1);
+    --elevated: rgba(0, 22, 59, 1);
 }
 
 .high-contrast [data-slot="card"],
