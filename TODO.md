@@ -38,14 +38,14 @@
 - [x] Titoli: aggiungere il prezzo medio d'acquisto per quota, calcolato da quote e costo — modificabile aggiungendo un nuovo acquisto (si somma al totale) o sovrascrivendo quote/prezzo medio esistenti
 
 ## da fare
-- [ ] aggiungere delle chart per le sotto-categorie in report mensile e annuale
 - [ ] approfondire la reportistica (e l'esportazione: sankey, viste riassuntive, ...)
-- [ ] spostare la card "risparmio iniziale" dalla pagina risparmi alla pagina impostazioni
-- [ ] Aggiungere un mcp per interagire con l'app direttamente da claude code o qualche altra AI
+- [x] spostare la card "risparmio iniziale" dalla pagina risparmi alla pagina impostazioni
 - [ ] Aggiungere un sistema per caricare le spese a partire dalla foto di uno scontrino tramite OCR e probabilmente una AI
-- [ ] Aggiungere un sistema per programmare delle spese, capire i momenti migliori per fare acquisti (in base a spese fatte, spese ricorrenti, entrate, stato dei contratti, andamento degli investimenti ecc)
-- [ ] drag & drop di widget nella home con possibilità di salvare più profili di visualizzazione
+- [x] Aggiungere un sistema per programmare delle spese, capire i momenti migliori per fare acquisti (in base a spese fatte, spese ricorrenti, entrate, stato dei contratti, andamento degli investimenti ecc)
 - [ ] aggiungere config (con effetto solo locale, indexeddb) per piccole personalizzazioni a livello di tema (es grandezza del font, larghezza contenuti cliccabili, chiusura automatica una volta inserite i vari record)
 
 # da valutare
 - [ ] Aggiungere nelle ricorrenti anche le entrate, per esempio per uno stipendio fisso
+- [ ] drag & drop di widget nella home con possibilità di salvare più profili di visualizzazione
+- [ ] Aggiungere un mcp per interagire con l'app direttamente da claude code o qualche altra AI
+- [ ] aggiungere delle chart per le sotto-categorie in report mensile e annuale
