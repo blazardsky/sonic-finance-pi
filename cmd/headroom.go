@@ -28,8 +28,20 @@ type headroomMonth struct {
 // history — the same rule Budget uses, because the typical figures here are
 // the same kind of trailing median.
 type headroomReport struct {
-	Available bool            `json:"available"`
-	Months    []headroomMonth `json:"months"`
+	Available  bool            `json:"available"`
+	Months     []headroomMonth `json:"months"`
+	Placements []placement     `json:"placements"`
+}
+
+// placement is where one Planned purchase lands: Month is the first month it
+// fits in, or "" when it fits in none — then MissingCents says how far short
+// the horizon falls and SavingsCover whether current Savings cover that gap
+// (the household's Savings-or-a-loan fork).
+type placement struct {
+	PlannedID    int64  `json:"planned_id"`
+	Month        string `json:"month"`
+	MissingCents int64  `json:"missing_cents"`
+	SavingsCover bool   `json:"savings_cover"`
 }
 
 func handleHeadroomReport(db *sql.DB, now func() time.Time) http.HandlerFunc {
@@ -39,8 +51,66 @@ func handleHeadroomReport(db *sql.DB, now func() time.Time) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
+		report.Placements = []placement{}
+		if report.Available {
+			list, err := readPlannedPurchases(db)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+			savingsCents, _, err := computeSavingsCents(db, "")
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+			report.Placements = place(report.Months, list, savingsCents)
+		}
 		writeJSON(w, http.StatusOK, report)
 	}
+}
+
+// place walks the list in priority order carrying the running Headroom. A
+// purchase lands in the first month from which the balance stays at or above
+// its amount for the rest of the horizon — a later negative month must not
+// push the account below zero after buying — and its amount leaves the
+// balance from that month on. One that fits nowhere consumes nothing, so it
+// never blocks the smaller ones after it; its gap is measured against the
+// best it could have had, the balance at the end of the horizon.
+func place(months []headroomMonth, list []plannedPurchase, savingsCents int64) []placement {
+	balance := make([]int64, len(months))
+	for i, m := range months {
+		balance[i] = m.RunningCents
+	}
+	out := make([]placement, 0, len(list))
+	for _, p := range list {
+		pl := placement{PlannedID: p.ID}
+		// suffixMin[i] is the lowest balance from month i to the end.
+		at := -1
+		lowest := int64(0)
+		for i := len(balance) - 1; i >= 0; i-- {
+			if i == len(balance)-1 || balance[i] < lowest {
+				lowest = balance[i]
+			}
+			if lowest >= p.AmountCents {
+				at = i
+			}
+		}
+		if at >= 0 {
+			pl.Month = months[at].Month
+			for i := at; i < len(balance); i++ {
+				balance[i] -= p.AmountCents
+			}
+		} else {
+			best := int64(0)
+			if len(balance) > 0 {
+				best = max(balance[len(balance)-1], 0)
+			}
+			pl.MissingCents = p.AmountCents - best
+			pl.SavingsCover = savingsCents >= pl.MissingCents
+		}
+		out = append(out, pl)
+	}
+	return out
 }
 
 // computeHeadroom projects each future month as

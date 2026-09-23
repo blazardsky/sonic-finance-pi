@@ -146,3 +146,112 @@ func TestHeadroomUnavailableWithoutThreeMonthsOfHistory(t *testing.T) {
 		t.Fatalf("got %+v, want unavailable with no months", got)
 	}
 }
+
+func months(running ...int64) []headroomMonth {
+	names := nextMonths(func() time.Time { return testClock }, len(running))
+	out := make([]headroomMonth, len(running))
+	for i, r := range running {
+		out[i] = headroomMonth{Month: names[i], RunningCents: r}
+	}
+	return out
+}
+
+func purchases(amounts ...int64) []plannedPurchase {
+	out := make([]plannedPurchase, len(amounts))
+	for i, a := range amounts {
+		out[i] = plannedPurchase{ID: int64(i + 1), AmountCents: a, Position: int64(i + 1)}
+	}
+	return out
+}
+
+// Priority decides who gets Headroom first, and a placed purchase uses up
+// its amount from its month on.
+func TestPlaceInPriorityOrder(t *testing.T) {
+	// Running 100, 200, 300, 400, 500, 600.
+	got := place(months(100, 200, 300, 400, 500, 600), purchases(150, 150), 0)
+	// The first fits from May (200); after it the balance is 100, 50, 150,
+	// 250, 350, 450, so the second fits from June (exactly 150).
+	if got[0].Month != "2026-05" || got[1].Month != "2026-06" {
+		t.Fatalf("placed in %q and %q, want 2026-05 and 2026-06", got[0].Month, got[1].Month)
+	}
+}
+
+// One that doesn't fit consumes nothing: the smaller one after it still
+// lands, and the gap is measured against the balance at the end of the
+// horizon after higher-priority placements.
+func TestPlaceSkipsWithoutBlocking(t *testing.T) {
+	got := place(months(100, 200, 300, 400, 500, 600), purchases(100, 5000, 50), 1000)
+	if got[0].Month != "2026-04" {
+		t.Errorf("first placed in %q, want 2026-04", got[0].Month)
+	}
+	if got[1].Month != "" {
+		t.Fatalf("the 5000 one placed in %q, want it not to fit", got[1].Month)
+	}
+	// 600 - 100 (the first) = 500 left at the end, so 4500 missing.
+	if got[1].MissingCents != 4500 {
+		t.Errorf("missing = %d, want 4500", got[1].MissingCents)
+	}
+	if got[1].SavingsCover {
+		t.Error("savings 1000 reported as covering a 4500 gap")
+	}
+	// The first used all of April, so the 50 one lands in May, where the
+	// balance (100) covers it. Blocked by the skipped one, it would land nowhere.
+	if got[2].Month != "2026-05" {
+		t.Errorf("the 50 one placed in %q, want 2026-05: the skipped one must not block it", got[2].Month)
+	}
+}
+
+func TestPlaceSavingsCoverTheGap(t *testing.T) {
+	got := place(months(100, 100, 100, 100, 100, 100), purchases(400), 300)
+	if got[0].Month != "" || got[0].MissingCents != 300 || !got[0].SavingsCover {
+		t.Fatalf("got %+v, want not placed, 300 missing, covered by 300 savings", got[0])
+	}
+}
+
+// A later negative month must not push the account below zero after
+// buying: the purchase waits until the balance holds from then on.
+func TestPlaceWaitsOutALaterDip(t *testing.T) {
+	// Running 300, 300, 100 (a bad month), 200, 300, 400.
+	got := place(months(300, 300, 100, 200, 300, 400), purchases(250), 0)
+	if got[0].Month != "2026-08" {
+		t.Fatalf("placed in %q, want 2026-08, the first month the balance stays at 250 or more", got[0].Month)
+	}
+}
+
+// With no history the report is unavailable and places nothing, even with
+// Planned purchases saved.
+func TestHeadroomPlacementsEmptyWhenUnavailable(t *testing.T) {
+	a := newTestApp(t)
+	a.addPlanned(t, "Laptop", 150000)
+	got := a.headroom(t)
+	if got.Available || len(got.Placements) != 0 {
+		t.Fatalf("got %+v, want unavailable with no placements", got)
+	}
+}
+
+// End to end: the endpoint places the saved list with the household's real
+// Savings.
+func TestHeadroomReportPlacesThePlannedPurchases(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+	stipendio := a.category(t, seedStipendioName)
+	for _, m := range []string{"2025-12", "2026-01", "2026-02"} {
+		a.addExpense(t, map[string]any{"occurred_on": m + "-10", "amount_cents": 100000, "category_id": alimentari.ID})
+		a.addIncome(t, map[string]any{"amount_cents": 150000, "category_id": stipendio.ID, "payment_date": m + "-27"})
+	}
+	// Headroom 50000 a month, so running 50000 ... 300000. Savings: 3 x 50000.
+	laptop := a.addPlanned(t, "Laptop", 120000)
+	car := a.addPlanned(t, "Auto", 500000)
+
+	got := a.headroom(t).Placements
+	if len(got) != 2 {
+		t.Fatalf("got %d placements, want 2", len(got))
+	}
+	if got[0].PlannedID != laptop.ID || got[0].Month != "2026-06" {
+		t.Errorf("laptop = %+v, want placed in 2026-06 (running 150000 covers 120000)", got[0])
+	}
+	// 300000 - 120000 = 180000 left, so 320000 missing; Savings 150000 don't cover it.
+	if got[1].PlannedID != car.ID || got[1].Month != "" || got[1].MissingCents != 320000 || got[1].SavingsCover {
+		t.Errorf("car = %+v, want not placed, 320000 missing, not covered", got[1])
+	}
+}

@@ -640,7 +640,18 @@ export type HeadroomMonth = {
   running_cents: number
 }
 
+// Where one Planned purchase lands: month is "" when it fits in none of the
+// 6 months — then missing_cents is the gap and savings_cover says whether
+// current Savings cover it.
+export type Placement = {
+  planned_id: number
+  month: string
+  missing_cents: number
+  savings_cover: boolean
+}
+
 export type HeadroomReport = {
   available: boolean
   months: HeadroomMonth[]
+  placements: Placement[]
 }

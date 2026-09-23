@@ -396,6 +396,12 @@ export const t = {
   headroomUnavailable:
     "Servono almeno 3 mesi di storico per la proiezione. Puoi comunque salvare gli acquisti.",
   headroom: "Margine",
+  plannedWhen: "Quando",
+  plannedPurchasesInMonth: "Acquisti",
+  doesNotFit: "Non rientra nei prossimi 6 mesi",
+  missingAmount: (amount: string) => `mancano € ${amount}`,
+  savingsCoverGap: "i risparmi coprono la differenza",
+  loanNeeded: "servirebbe un finanziamento",
 
   // Recurring expenses — the rent, defined once
   recurring: "Ricorrenti",

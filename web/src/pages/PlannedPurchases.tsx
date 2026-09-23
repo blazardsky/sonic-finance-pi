@@ -50,7 +50,12 @@ import { formatCents, toCents, toTyped } from "@/lib/money"
 import { pickableCategories } from "@/lib/pickers"
 import { t } from "@/lib/strings"
 import { toast } from "@/lib/toast"
-import type { Category, HeadroomReport, PlannedPurchase } from "@/types"
+import type {
+  Category,
+  HeadroomReport,
+  Placement,
+  PlannedPurchase,
+} from "@/types"
 
 type Draft = {
   label: string
@@ -177,6 +182,11 @@ export function PlannedPurchases() {
     categories.find((c) => c.id === draft.category_id)
   )
   const list = planned ?? []
+  const placements = new Map(
+    (headroom?.placements ?? []).map((pl) => [pl.planned_id, pl])
+  )
+  const landingIn = (month: string) =>
+    list.filter((p) => placements.get(p.id)?.month === month)
 
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
@@ -206,6 +216,7 @@ export function PlannedPurchases() {
                         <TableHead className="text-right">
                           {t.runningTotal}
                         </TableHead>
+                        <TableHead>{t.plannedPurchasesInMonth}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -221,6 +232,11 @@ export function PlannedPurchases() {
                             className={`text-right font-medium tabular-nums ${m.running_cents < 0 ? "text-destructive" : ""}`}
                           >
                             {signedCents(m.running_cents)}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {landingIn(m.month)
+                              .map((p) => p.label)
+                              .join(", ")}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -240,6 +256,9 @@ export function PlannedPurchases() {
                   <TableHead className="w-10">{t.priority}</TableHead>
                   <TableHead>{t.plannedLabel}</TableHead>
                   <TableHead className="text-right">{t.amount}</TableHead>
+                  {headroom?.available && (
+                    <TableHead>{t.plannedWhen}</TableHead>
+                  )}
                   <TableHead className="w-28 text-right">{t.actions}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -262,6 +281,11 @@ export function PlannedPurchases() {
                       <TableCell className="text-right font-medium tabular-nums">
                         € {formatCents(p.amount_cents)}
                       </TableCell>
+                      {headroom?.available && (
+                        <TableCell>
+                          <PlacementText placement={placements.get(p.id)} />
+                        </TableCell>
+                      )}
                       <TableCell>
                         <div className="flex items-center justify-end">
                           <Button
@@ -413,5 +437,21 @@ export function PlannedPurchases() {
         </FormSidebar>
       </div>
     </div>
+  )
+}
+
+// Where one Planned purchase lands, or, when it fits in none of the six
+// months, how far short it falls and whether Savings cover the gap.
+function PlacementText({ placement }: { placement: Placement | undefined }) {
+  if (!placement) return null
+  if (placement.month) return <>{monthLabel(placement.month)}</>
+  return (
+    <span className="flex flex-col text-xs">
+      <span className="text-destructive">{t.doesNotFit}</span>
+      <span className="text-muted-foreground">
+        {t.missingAmount(formatCents(placement.missing_cents))} ·{" "}
+        {placement.savings_cover ? t.savingsCoverGap : t.loanNeeded}
+      </span>
+    </span>
   )
 }
