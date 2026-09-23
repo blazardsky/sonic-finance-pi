@@ -43,6 +43,9 @@ export function Settings() {
   // amount-typing convention as the Expense/Income forms (toCents/toTyped).
   const [target, setTarget] = useState("")
   const [goal, setGoal] = useState("")
+  // Savings' starting balance: set once and left alone, so it lives here with
+  // the other household-set numbers rather than on Risparmi.
+  const [startingBalance, setStartingBalance] = useState("")
   // Ticket 01: the feature's single switch. Off by default, and rides the
   // same payload/save as the rest of this form rather than its own request —
   // one settings screen, one save.
@@ -57,6 +60,7 @@ export function Settings() {
         setPaymentMethods(toText(l.payment_methods))
         setTarget(toTyped(l.target_cents))
         setGoal(toTyped(l.goal_cents))
+        setStartingBalance(toTyped(l.savings_starting_balance_cents))
         setSpendingIntentEnabled(l.spending_intent_enabled)
       })
       .catch(() => setListsError(t.serverUnreachable))
@@ -68,7 +72,12 @@ export function Settings() {
     setListsError("")
     const targetCents = toCents(target)
     const goalCents = toCents(goal)
-    if (targetCents === null || goalCents === null) {
+    const startingBalanceCents = toCents(startingBalance)
+    if (
+      targetCents === null ||
+      goalCents === null ||
+      startingBalanceCents === null
+    ) {
       setListsError(t.invalidAmount)
       return
     }
@@ -77,6 +86,7 @@ export function Settings() {
       payment_methods: toList(paymentMethods),
       target_cents: targetCents,
       goal_cents: goalCents,
+      savings_starting_balance_cents: startingBalanceCents,
       spending_intent_enabled: spendingIntentEnabled,
     }
     // Refused here as well as by the server: a picker with no options is a
@@ -97,6 +107,7 @@ export function Settings() {
       setPaymentMethods(toText(saved.payment_methods))
       setTarget(toTyped(saved.target_cents))
       setGoal(toTyped(saved.goal_cents))
+      setStartingBalance(toTyped(saved.savings_starting_balance_cents))
       setSpendingIntentEnabled(saved.spending_intent_enabled)
       setListsMessage(t.listsSaved)
     } catch (res) {
@@ -173,6 +184,19 @@ export function Settings() {
                   onChange={(e) => setGoal(e.target.value)}
                   className="h-9"
                 />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="starting-balance">
+                  {t.startingBalance}
+                </FieldLabel>
+                <Input
+                  id="starting-balance"
+                  inputMode="decimal"
+                  value={startingBalance}
+                  onChange={(e) => setStartingBalance(e.target.value)}
+                  className="h-9"
+                />
+                <FieldDescription>{t.startingBalanceHint}</FieldDescription>
               </Field>
 
               <FieldLabel htmlFor="spending-intent-enabled">
