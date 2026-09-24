@@ -391,18 +391,17 @@ export const t = {
   moveUp: "Sposta su",
   moveDown: "Sposta giù",
   priority: "Priorità",
-  headroomNextMonths: "Margine nei prossimi 6 mesi",
   headroomProjection:
     "Proiezione: entrate tipiche e contratti, meno spese tipiche, ricorrenti e obiettivo di risparmio.",
   typicalIncome: "Entrate tipiche",
-  typicalSpending: "Spese tipiche",
-  headroomBaseline: (trailing: number) =>
-    `Tipiche = mediana ultimi 12 mesi al ${trailing}%, mediana di quest'anno al ${100 - trailing}%`,
+  // What "typical" leaves out: Contract Incomes count through what the
+  // Contracts still owe, and selling investments is never money to count on.
+  perMonth: "al mese, esclusi contratti e vendite di investimenti",
+  headroomAccumulated: "Margine in 6 mesi",
+  headroomNextMonth: (month: string) => `di cui ${month}:`,
   headroomUnavailable:
     "Servono almeno 3 mesi di storico per la proiezione. Puoi comunque salvare gli acquisti.",
-  headroom: "Margine",
   plannedWhen: "Quando",
-  plannedPurchasesInMonth: "Acquisti",
   doesNotFit: "Non rientra nei prossimi 6 mesi",
   missingAmount: (amount: string) => `mancano € ${amount}`,
   savingsCoverGap: "i risparmi coprono la differenza",

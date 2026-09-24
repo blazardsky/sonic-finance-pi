@@ -9,13 +9,7 @@ import {
 } from "@remixicon/react"
 
 import { ColorDot } from "@/components/ColorDot"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { FormSidebar } from "@/components/form-sidebar"
 import { Button } from "@/components/ui/button"
 import {
@@ -192,8 +186,9 @@ export function PlannedPurchases({
   const placements = new Map(
     (headroom?.placements ?? []).map((pl) => [pl.planned_id, pl])
   )
-  const landingIn = (month: string) =>
-    list.filter((p) => placements.get(p.id)?.month === month)
+  const months = headroom?.months ?? []
+  const lastRunning = months.at(-1)?.running_cents ?? 0
+  const nextMonth = months[0]
 
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
@@ -201,100 +196,60 @@ export function PlannedPurchases({
 
       <div className="flex flex-1 flex-wrap gap-6">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
-          {headroom && (
-            <Card>
-              <CardHeader>
-                <CardTitle>{t.headroomNextMonths}</CardTitle>
-                <CardDescription>
-                  {headroom.available
-                    ? t.headroomProjection
-                    : t.headroomUnavailable}
-                </CardDescription>
-              </CardHeader>
-              {headroom.available && (
-                <CardContent className="flex flex-col gap-3">
-                  {/* The breakdown: the same-every-month parts here, the
-                      month-specific ones (Contracts, Recurring) as columns,
-                      so every Headroom figure can be checked by hand. */}
-                  <div className="flex flex-col gap-1 text-sm">
-                    <div className="flex flex-wrap gap-x-6 gap-y-1">
-                      <span>
-                        {t.typicalIncome}{" "}
-                        <span className="font-medium tabular-nums">
-                          € {formatCents(headroom.typical_income_cents)}
+          {/* Two figures, the way the Dashboard's totals read: what comes in
+              in a typical month, and the Headroom accumulated over the
+              horizon with next month's own Headroom beneath it. Which month
+              each Planned purchase lands in is on the list itself. */}
+          {headroom && !headroom.available && (
+            <p className="text-sm text-muted-foreground">
+              {t.headroomUnavailable}
+            </p>
+          )}
+          {headroom?.available && (
+            <div className="flex flex-col gap-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">{t.typicalIncome}</CardTitle>
+                  </CardHeader>
+                  <CardContent elevated className="flex flex-col gap-1">
+                    <p className="text-2xl font-medium tabular-nums">
+                      € {formatCents(headroom.typical_income_cents)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {t.perMonth}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">
+                      {t.headroomAccumulated}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent elevated className="flex flex-col gap-1">
+                    <p
+                      className={`text-2xl font-medium tabular-nums ${lastRunning < 0 ? "text-destructive" : ""}`}
+                    >
+                      {signedCents(lastRunning)}
+                    </p>
+                    {nextMonth && (
+                      <p className="text-xs text-muted-foreground">
+                        {t.headroomNextMonth(monthLabel(nextMonth.month))}{" "}
+                        <span
+                          className={`font-medium tabular-nums ${nextMonth.headroom_cents < 0 ? "text-destructive" : "text-foreground"}`}
+                        >
+                          {signedCents(nextMonth.headroom_cents)}
                         </span>
-                      </span>
-                      <span>
-                        {t.typicalSpending}{" "}
-                        <span className="font-medium tabular-nums">
-                          € {formatCents(headroom.typical_spending_cents)}
-                        </span>
-                      </span>
-                      <span>
-                        {t.savingsGoal}{" "}
-                        <span className="font-medium tabular-nums">
-                          € {formatCents(headroom.goal_cents)}
-                        </span>
-                      </span>
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {t.headroomBaseline(headroom.trailing_weight_percent)}
-                    </span>
-                  </div>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>{t.month}</TableHead>
-                        <TableHead className="hidden text-right sm:table-cell">
-                          {t.contracts}
-                        </TableHead>
-                        <TableHead className="hidden text-right sm:table-cell">
-                          {t.recurring}
-                        </TableHead>
-                        <TableHead className="text-right">
-                          {t.headroom}
-                        </TableHead>
-                        <TableHead className="text-right">
-                          {t.runningTotal}
-                        </TableHead>
-                        {/* Phones read which month from the list below. */}
-                        <TableHead className="hidden sm:table-cell">
-                          {t.plannedPurchasesInMonth}
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {headroom.months.map((m) => (
-                        <TableRow key={m.month}>
-                          <TableCell>{monthLabel(m.month)}</TableCell>
-                          <TableCell className="hidden text-right text-muted-foreground tabular-nums sm:table-cell">
-                            + € {formatCents(m.contract_cents)}
-                          </TableCell>
-                          <TableCell className="hidden text-right text-muted-foreground tabular-nums sm:table-cell">
-                            − € {formatCents(m.recurring_cents)}
-                          </TableCell>
-                          <TableCell
-                            className={`text-right tabular-nums ${m.headroom_cents < 0 ? "text-destructive" : ""}`}
-                          >
-                            {signedCents(m.headroom_cents)}
-                          </TableCell>
-                          <TableCell
-                            className={`text-right font-medium tabular-nums ${m.running_cents < 0 ? "text-destructive" : ""}`}
-                          >
-                            {signedCents(m.running_cents)}
-                          </TableCell>
-                          <TableCell className="hidden text-muted-foreground sm:table-cell">
-                            {landingIn(m.month)
-                              .map((p) => p.label)
-                              .join(", ")}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              )}
-            </Card>
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t.headroomProjection}
+              </p>
+            </div>
           )}
 
           {planned?.length === 0 ? (

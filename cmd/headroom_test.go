@@ -254,6 +254,15 @@ func TestPlaceSkipsWithoutBlocking(t *testing.T) {
 	}
 }
 
+// A negative accumulated Headroom is a deficit on top of the price, not a
+// zero: running ending at -500, a 400 purchase is 900 short.
+func TestPlaceGapIncludesANegativeBalance(t *testing.T) {
+	got := place(months(-100, -200, -300, -400, -500, -500), purchases(400), 1000)
+	if got[0].Month != "" || got[0].MissingCents != 900 || !got[0].SavingsCover {
+		t.Fatalf("got %+v, want not placed, 900 missing, covered by 1000 savings", got[0])
+	}
+}
+
 func TestPlaceSavingsCoverTheGap(t *testing.T) {
 	got := place(months(100, 100, 100, 100, 100, 100), purchases(400), 300)
 	if got[0].Month != "" || got[0].MissingCents != 300 || !got[0].SavingsCover {

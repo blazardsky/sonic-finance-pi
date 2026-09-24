@@ -86,7 +86,8 @@ func handleHeadroomReport(db *sql.DB, now func() time.Time) http.HandlerFunc {
 // push the account below zero after buying — and its amount leaves the
 // balance from that month on. One that fits nowhere consumes nothing, so it
 // never blocks the smaller ones after it; its gap is measured against the
-// best it could have had, the balance at the end of the horizon.
+// best it could have had, the balance at the end of the horizon — a
+// negative balance widening the gap rather than counting as zero.
 func place(months []headroomMonth, list []plannedPurchase, savingsCents int64) []placement {
 	balance := make([]int64, len(months))
 	for i, m := range months {
@@ -112,9 +113,11 @@ func place(months []headroomMonth, list []plannedPurchase, savingsCents int64) [
 				balance[i] -= p.AmountCents
 			}
 		} else {
-			best := int64(0)
+			// Not floored at zero: a negative accumulated Headroom is a
+			// deficit the purchase has to make up too, so it adds to the gap.
+			var best int64
 			if len(balance) > 0 {
-				best = max(balance[len(balance)-1], 0)
+				best = balance[len(balance)-1]
 			}
 			pl.MissingCents = p.AmountCents - best
 			pl.SavingsCover = savingsCents >= pl.MissingCents
