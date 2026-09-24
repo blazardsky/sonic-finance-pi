@@ -117,7 +117,7 @@ Something the household intends to buy soon, with an amount, an optional Categor
 _Avoid_: wishlist, planned expense, scheduled expense
 
 **Headroom**:
-The money projected to be left in a future month once its Expenses and Goal are set aside — what Planned purchases are paid from. Typical Income plus what active Contracts still owe, minus typical non-recurring spending and the Recurring expenses due that month — typical blending the last 12 months with this year's months, the last 12 weighing less as the year goes on, so early in the year last year is the baseline and this year's own record takes over as it grows. Investments count only as money leaving, never as money to spend. Can be negative, and a negative month eats into what earlier months accumulated. A projection, never a promise, on the same terms as Estimate.
+What a month leaves once its Expenses are paid and Goal is set aside — what Planned purchases are paid from. Goal is a buffer, not a debt: a month that leaves more than Goal keeps the difference; one that leaves less than Goal, or runs short by up to Goal, keeps nothing and loses nothing; only a shortfall beyond Goal is negative. Headroom accumulates from the last completed month's actual leftover, then adds each remaining month of the year (at least one, at most six), each forecast from Income and spending around the same months last year, blended with this year's own record as it grows, plus what active Contracts still owe and the Recurring expenses due. A deficit carries forward until later months recover it. Investments count only as money leaving, never as money to spend. A projection, never a promise, on the same terms as Estimate.
 _Avoid_: surplus, savings, available, free cash
 
 **Record**
