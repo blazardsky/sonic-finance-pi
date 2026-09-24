@@ -672,5 +672,6 @@ export type HeadroomReport = {
   // Last month's actual leftover through the Goal buffer: the running
   // totals start from it.
   start_cents: number
+  start_month: string
   goal_cents: number
 }

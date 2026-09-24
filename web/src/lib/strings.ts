@@ -394,6 +394,7 @@ export const t = {
   headroomForecastMonthly: "Margine mensile previsto",
   headroomAccumulated: (months: number) =>
     months === 1 ? "Margine in 1 mese" : `Margine in ${months} mesi`,
+  headroomIncludesStart: (month: string) => `incluso ${month}:`,
   headroomUnavailable:
     "Servono almeno 3 mesi di storico per la proiezione. Puoi comunque salvare gli acquisti.",
   plannedWhen: "Quando",

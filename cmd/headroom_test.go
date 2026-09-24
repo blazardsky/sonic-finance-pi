@@ -131,8 +131,8 @@ func TestHeadroomStartsFromLastMonthsActualLeftover(t *testing.T) {
 	}
 
 	got := a.headroom(t)
-	if got.StartCents != 75000 {
-		t.Fatalf("start = %d, want 75000", got.StartCents)
+	if got.StartCents != 75000 || got.StartMonth != "2026-02" {
+		t.Fatalf("start = %d for %q, want 75000 for 2026-02", got.StartCents, got.StartMonth)
 	}
 	if first := got.Months[0]; first.RunningCents != got.StartCents+first.HeadroomCents {
 		t.Errorf("first running = %d, want start %d + headroom %d", first.RunningCents, got.StartCents, first.HeadroomCents)

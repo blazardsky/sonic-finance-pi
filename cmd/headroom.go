@@ -65,6 +65,8 @@ type headroomReport struct {
 	// Goal buffer — what the running total starts from: real money, not a
 	// statistic.
 	StartCents int64 `json:"start_cents"`
+	// StartMonth is which month StartCents is, so the screen can name it.
+	StartMonth string `json:"start_month"`
 	GoalCents  int64 `json:"goal_cents"`
 }
 
@@ -216,6 +218,7 @@ func computeHeadroom(db *sql.DB, now func() time.Time) (headroomReport, error) {
 	if err != nil {
 		return report, err
 	}
+	report.StartMonth = trailingCompletedMonths(now, 1)[0]
 	report.StartCents, err = lastMonthHeadroom(db, now, goalCents)
 	if err != nil {
 		return report, err

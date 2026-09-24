@@ -237,8 +237,16 @@ export function PlannedPurchases({
                     >
                       {signedCents(lastRunning)}
                     </p>
+                    {/* The accumulated figure starts from last month's real
+                        leftover, which is why it can be well above the sum
+                        of the monthly forecasts: this names it. */}
                     <p className="text-xs text-muted-foreground">
-                      {monthLabel(months[months.length - 1].month)}
+                      {t.headroomIncludesStart(
+                        monthLabel(headroom.start_month)
+                      )}{" "}
+                      <span className="font-medium text-foreground tabular-nums">
+                        {signedCents(headroom.start_cents)}
+                      </span>
                     </p>
                   </CardContent>
                 </Card>
