@@ -647,8 +647,10 @@ export type HeadroomMonth = {
   month: string
   headroom_cents: number
   running_cents: number
-  // The month-specific parts of the breakdown: what active Contracts still
-  // owe this month, and the Recurring expenses due.
+  // What the Headroom was built from: the forecast Income and spending, what
+  // active Contracts still owe this month, and the Recurring expenses due.
+  forecast_income_cents: number
+  forecast_spending_cents: number
   contract_cents: number
   recurring_cents: number
 }
@@ -670,10 +672,5 @@ export type HeadroomReport = {
   // Last month's actual leftover through the Goal buffer: the running
   // totals start from it.
   start_cents: number
-  // The same-every-month parts, and how much the last 12 months weigh
-  // against this year's months in the typical figures (percent).
-  typical_income_cents: number
-  typical_spending_cents: number
   goal_cents: number
-  trailing_weight_percent: number
 }

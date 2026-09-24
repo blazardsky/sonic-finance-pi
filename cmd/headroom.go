@@ -44,18 +44,19 @@ type headroomMonth struct {
 	Month         string `json:"month"`
 	HeadroomCents int64  `json:"headroom_cents"`
 	RunningCents  int64  `json:"running_cents"`
-	// The two parts that differ month to month, so the screen can show how
-	// the Headroom was arrived at: what active Contracts still owe this
-	// month, and the Recurring expenses due.
-	ContractCents  int64 `json:"contract_cents"`
-	RecurringCents int64 `json:"recurring_cents"`
+	// What the Headroom was built from, so every figure can be checked by
+	// hand: the forecast Income and spending, what active Contracts still owe
+	// this month, and the Recurring expenses due.
+	ForecastIncomeCents   int64 `json:"forecast_income_cents"`
+	ForecastSpendingCents int64 `json:"forecast_spending_cents"`
+	ContractCents         int64 `json:"contract_cents"`
+	RecurringCents        int64 `json:"recurring_cents"`
 }
 
-// headroomReport is the next headroomHorizonMonths months, starting next
+// headroomReport is the rest of the year (horizonMonths), starting next
 // month: this month's leftover is still being spent, so it is never offered.
 // Unavailable, with no months, until there are budgetMinHistoryMonths of
-// history — the same rule Budget uses, because the typical figures here are
-// the same kind of trailing median.
+// history — the same rule Budget uses.
 type headroomReport struct {
 	Available  bool            `json:"available"`
 	Months     []headroomMonth `json:"months"`
@@ -64,12 +65,7 @@ type headroomReport struct {
 	// Goal buffer — what the running total starts from: real money, not a
 	// statistic.
 	StartCents int64 `json:"start_cents"`
-	// The same-every-month parts of the breakdown, and how much the last 12
-	// months weigh against this year's in the typical figures (percent).
-	TypicalIncomeCents    int64 `json:"typical_income_cents"`
-	TypicalSpendingCents  int64 `json:"typical_spending_cents"`
-	GoalCents             int64 `json:"goal_cents"`
-	TrailingWeightPercent int64 `json:"trailing_weight_percent"`
+	GoalCents  int64 `json:"goal_cents"`
 }
 
 // placement is where one Planned purchase lands: Month is the first month it
@@ -155,20 +151,19 @@ func place(months []headroomMonth, list []plannedPurchase, savingsCents int64) [
 	return out
 }
 
-// computeHeadroom projects each future month as
+// computeHeadroom forecasts each horizon month M as
 //
-//	typical Income + Contract shares − typical non-recurring spending
-//	− Recurring expenses due that month − Goal
+//	leftover = Income(M) + Contract share(M) − spending(M) − Recurring due(M)
+//	Headroom = goalBuffer(leftover, Goal)
 //
-// Typical blends two medians: the last 12 completed months (since the first
-// Expense, Budget's window) and this year's completed months, the 12 months
-// weighing (12 − n)/12 where n is how many months of this year are over — all
-// of it in January, a twelfth in December. Early in the year the baseline is
-// last year; as this year's months are recorded they take over, with no jump
-// on any particular day. Income excludes Contract Incomes (the shares stand
-// in for those) and Investments sales; spending includes Investments — money
-// that leaves for a PAC is money the household won't have, and a portfolio
-// is never money to count on (CONTEXT.md, Headroom).
+// and accumulates from lastMonthHeadroom. Income(M) and spending(M) are
+// seasonal: last year's M−1, M and M+1, blended with this year's completed
+// months as they are recorded (seasonalCents). Income leaves out Contract
+// Incomes (the shares stand in for those) and investment sales; spending
+// leaves out Recurring-generated Expenses (the Recurring due stand in for
+// those) and keeps Investments — money that leaves for a PAC is money the
+// household won't have, and a portfolio is never money to count on
+// (CONTEXT.md, Headroom).
 func computeHeadroom(db *sql.DB, now func() time.Time) (headroomReport, error) {
 	report := headroomReport{Months: []headroomMonth{}}
 
@@ -176,41 +171,39 @@ func computeHeadroom(db *sql.DB, now func() time.Time) (headroomReport, error) {
 	if err != nil || firstMonth == "" {
 		return report, err
 	}
-	thisYear := now().Format("2006")
-	var incomes, spending, yearIncomes, yearSpending []int64
-	for _, month := range trailingCompletedMonths(now, budgetTrailingMonths) {
-		if month < firstMonth {
-			continue
+	// Each month's totals are read once, whichever windows it falls in. A
+	// month before the first Expense is not a real zero and is left out, the
+	// same rule Budget uses.
+	cache := map[string]forecastTotals{}
+	collect := func(months []string) (incomes, spending []int64, err error) {
+		for _, m := range months {
+			if m < firstMonth {
+				continue
+			}
+			t, ok := cache[m]
+			if !ok {
+				if t, err = readForecastTotals(db, m); err != nil {
+					return nil, nil, err
+				}
+				cache[m] = t
+			}
+			incomes = append(incomes, t.incomeCents)
+			spending = append(spending, t.spendingCents)
 		}
-		var in, out int64
-		if err := db.QueryRow(`SELECT COALESCE(SUM(i.amount_cents), 0) FROM income i
-			JOIN category c ON c.id = i.category_id
-			WHERE substr(i.payment_date, 1, 7) = ? AND i.contract_id IS NULL AND IFNULL(c.code, '') != ?`,
-			month, codeInvestments).Scan(&in); err != nil {
-			return report, err
-		}
-		if err := db.QueryRow(`SELECT COALESCE(SUM(amount_cents), 0) FROM expense
-			WHERE substr(occurred_on, 1, 7) = ? AND recurring_id IS NULL`, month).Scan(&out); err != nil {
-			return report, err
-		}
-		incomes = append(incomes, in)
-		spending = append(spending, out)
-		if month[:4] == thisYear {
-			yearIncomes = append(yearIncomes, in)
-			yearSpending = append(yearSpending, out)
-		}
+		return incomes, spending, nil
 	}
-	if len(incomes) < budgetMinHistoryMonths {
-		return report, nil
+
+	trailingIn, trailingOut, err := collect(trailingCompletedMonths(now, budgetTrailingMonths))
+	if err != nil || len(trailingIn) < budgetMinHistoryMonths {
+		return report, err
+	}
+	yearIn, yearOut, err := collect(completedMonthsThisYear(now))
+	if err != nil {
+		return report, err
 	}
 	// n counts calendar months, not months with data: the weight follows the
-	// year, and a household that started mid-year still has its 12-month
-	// median (whatever months exist) to lean on.
+	// year.
 	n := int64(now().Month()) - 1
-	report.TrailingWeightPercent = (12 - n) * 100 / 12
-	report.TypicalIncomeCents = blendCents(incomes, yearIncomes, n)
-	report.TypicalSpendingCents = blendCents(spending, yearSpending, n)
-	typical := report.TypicalIncomeCents - report.TypicalSpendingCents
 
 	goalCents, err := getSettingCents(db, goalCentsKey)
 	if err != nil {
@@ -221,27 +214,89 @@ func computeHeadroom(db *sql.DB, now func() time.Time) (headroomReport, error) {
 	if err != nil {
 		return report, err
 	}
-
 	report.StartCents, err = lastMonthHeadroom(db, now, goalCents)
 	if err != nil {
 		return report, err
 	}
+
 	running := report.StartCents
 	for _, month := range horizonMonths(now) {
+		seasonIn, seasonOut, err := collect(yearAgoWindow(month))
+		if err != nil {
+			return report, err
+		}
+		income := seasonalCents(seasonIn, yearIn, trailingIn, n)
+		spending := seasonalCents(seasonOut, yearOut, trailingOut, n)
 		var recurring int64
 		if err := db.QueryRow(`SELECT COALESCE(SUM(amount_cents), 0) FROM recurring_expense
 			WHERE start_month <= ? AND (end_month IS NULL OR end_month >= ?)`, month, month).Scan(&recurring); err != nil {
 			return report, err
 		}
-		headroom := goalBuffer(typical+shares[month]-recurring, goalCents)
+		headroom := goalBuffer(income+shares[month]-spending-recurring, goalCents)
 		running += headroom
 		report.Months = append(report.Months, headroomMonth{
 			Month: month, HeadroomCents: headroom, RunningCents: running,
+			ForecastIncomeCents: income, ForecastSpendingCents: spending,
 			ContractCents: shares[month], RecurringCents: recurring,
 		})
 	}
 	report.Available = true
 	return report, nil
+}
+
+// forecastTotals is what one past month contributes to a forecast: its
+// non-Contract Income (investment sales left out) and its non-recurring
+// spending (Investments kept).
+type forecastTotals struct {
+	incomeCents, spendingCents int64
+}
+
+func readForecastTotals(db *sql.DB, month string) (forecastTotals, error) {
+	var t forecastTotals
+	if err := db.QueryRow(`SELECT COALESCE(SUM(i.amount_cents), 0) FROM income i
+		JOIN category c ON c.id = i.category_id
+		WHERE substr(i.payment_date, 1, 7) = ? AND i.contract_id IS NULL AND IFNULL(c.code, '') != ?`,
+		month, codeInvestments).Scan(&t.incomeCents); err != nil {
+		return t, err
+	}
+	err := db.QueryRow(`SELECT COALESCE(SUM(amount_cents), 0) FROM expense
+		WHERE substr(occurred_on, 1, 7) = ? AND recurring_id IS NULL`, month).Scan(&t.spendingCents)
+	return t, err
+}
+
+// seasonalCents is one forecast figure: last year's season (season) weighing
+// (12 − n)/12, this year's completed months (year) the rest — last year
+// leads early in the year, this year's own record takes over as it grows.
+// With no season on record, this year alone; with no month of this year
+// over (January), the season alone; with neither — a history that started
+// last autumn, seen in January — the plain trailing median.
+func seasonalCents(season, year, trailing []int64, n int64) int64 {
+	switch {
+	case len(season) == 0 && len(year) == 0:
+		return medianCents(trailing)
+	case len(season) == 0:
+		return medianCents(year)
+	case n == 0 || len(year) == 0:
+		return medianCents(season)
+	}
+	return ((12-n)*medianCents(season) + n*medianCents(year)) / 12
+}
+
+// yearAgoWindow is last year's month before, the month itself, and the month
+// after: October's window is last September, October and November.
+func yearAgoWindow(month string) []string {
+	m, _ := time.Parse(monthLayout, month)
+	return []string{
+		m.AddDate(-1, -1, 0).Format(monthLayout),
+		m.AddDate(-1, 0, 0).Format(monthLayout),
+		m.AddDate(-1, 1, 0).Format(monthLayout),
+	}
+}
+
+// completedMonthsThisYear is January through last month of the current year;
+// none in January.
+func completedMonthsThisYear(now func() time.Time) []string {
+	return trailingCompletedMonths(now, int(now().Month())-1)
 }
 
 // lastMonthHeadroom is the last completed month's actual leftover through the
@@ -266,16 +321,6 @@ func lastMonthHeadroom(db *sql.DB, now func() time.Time, goalCents int64) (int64
 		return 0, err
 	}
 	return goalBuffer(in-out, goalCents), nil
-}
-
-// blendCents is the weighted typical figure: the trailing median weighing
-// (12 − n)/12, this year's median the rest. With no month of this year over
-// yet (n = 0, or no data this year) it is the trailing median alone.
-func blendCents(trailing, year []int64, n int64) int64 {
-	if n == 0 || len(year) == 0 {
-		return medianCents(trailing)
-	}
-	return ((12-n)*medianCents(trailing) + n*medianCents(year)) / 12
 }
 
 // contractShares is what each active Contract still owes, spread evenly over

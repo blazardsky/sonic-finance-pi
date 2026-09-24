@@ -108,36 +108,57 @@ func TestHeadroomStartsFromLastMonthsActualLeftover(t *testing.T) {
 	}
 }
 
-// The baseline blend, clock at 2026-03-15 (two months of 2026 over, so the
-// last 12 months weigh 10/12): 100000 of spending a month in Oct–Dec 2025,
-// 40000 in Jan–Feb 2026. Trailing median 100000, this year's 40000 →
-// (10×100000 + 2×40000) / 12 = 90000 typical spending, and the breakdown
-// says so.
-func TestHeadroomBlendsTheLast12MonthsWithThisYear(t *testing.T) {
+// The seasonal forecast, clock at 2026-03-15 (two months of 2026 over, so
+// last year weighs 10/12). April's spending comes from last March, April and
+// May (60000, 30000, 90000 → median 60000), not from any other month of 2025
+// (June's 500000 is ignored); this year's months (12000, 12000) median 12000:
+// (10×60000 + 2×12000) / 12 = 52000. May's window is April, May, June 2025
+// (median 90000): (10×90000 + 2×12000) / 12 = 77000.
+func TestHeadroomForecastsFromLastYearsSeason(t *testing.T) {
 	a := newTestApp(t)
 	alimentari := a.category(t, "Alimentari")
 	for day, cents := range map[string]int64{
-		"2025-10-10": 100000, "2025-11-10": 100000, "2025-12-10": 100000,
-		"2026-01-10": 40000, "2026-02-10": 40000,
+		"2025-03-10": 60000, "2025-04-10": 30000, "2025-05-10": 90000, "2025-06-10": 500000,
+		"2026-01-10": 12000, "2026-02-10": 12000,
 	} {
 		a.addExpense(t, map[string]any{"occurred_on": day, "amount_cents": cents, "category_id": alimentari.ID})
 	}
 
-	got := a.headroom(t)
-	if got.TypicalSpendingCents != 90000 {
-		t.Errorf("typical spending = %d, want 90000", got.TypicalSpendingCents)
+	got := a.headroom(t).Months
+	if got[0].ForecastSpendingCents != 52000 {
+		t.Errorf("April forecast spending = %d, want 52000", got[0].ForecastSpendingCents)
 	}
-	if got.TrailingWeightPercent != 83 {
-		t.Errorf("trailing weight = %d%%, want 83%% (10/12)", got.TrailingWeightPercent)
+	if got[1].ForecastSpendingCents != 77000 {
+		t.Errorf("May forecast spending = %d, want 77000", got[1].ForecastSpendingCents)
 	}
-	if got.Months[0].HeadroomCents != -90000 {
-		t.Errorf("April headroom = %d, want -90000", got.Months[0].HeadroomCents)
-	}
+}
 
-	// In January nothing of the new year is over: the last 12 months alone.
+// No record of that season last year (the household started in December):
+// this year's median alone.
+func TestHeadroomForecastWithoutLastYearsSeason(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+	for day, cents := range map[string]int64{"2025-12-10": 99000, "2026-01-10": 20000, "2026-02-10": 30000} {
+		a.addExpense(t, map[string]any{"occurred_on": day, "amount_cents": cents, "category_id": alimentari.ID})
+	}
+	if got := a.headroom(t).Months[0]; got.ForecastSpendingCents != 25000 {
+		t.Errorf("April forecast spending = %d, want 25000 (this year's median)", got.ForecastSpendingCents)
+	}
+}
+
+// In January no month of the new year is over: last year's season alone.
+// February's window is January, February, March 2025.
+func TestHeadroomForecastInJanuaryIsLastYearsSeason(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+	for day, cents := range map[string]int64{
+		"2025-01-10": 10000, "2025-02-10": 40000, "2025-03-10": 70000, "2025-12-10": 999000,
+	} {
+		a.addExpense(t, map[string]any{"occurred_on": day, "amount_cents": cents, "category_id": alimentari.ID})
+	}
 	a.setNow(t, time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC))
-	if jan := a.headroom(t); jan.TypicalSpendingCents != 100000 || jan.TrailingWeightPercent != 100 {
-		t.Errorf("January: typical %d at %d%%, want 100000 at 100%%", jan.TypicalSpendingCents, jan.TrailingWeightPercent)
+	if got := a.headroom(t).Months[0]; got.Month != "2026-02" || got.ForecastSpendingCents != 40000 {
+		t.Errorf("February = %s forecast %d, want 2026-02 at 40000", got.Month, got.ForecastSpendingCents)
 	}
 }
 

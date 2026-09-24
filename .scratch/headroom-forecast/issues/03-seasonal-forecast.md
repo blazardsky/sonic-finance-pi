@@ -6,8 +6,8 @@
 
 **Status:** ready-for-agent
 
-- [ ] October's forecast uses last September, October and November and ignores other months of last year
-- [ ] The blend weight follows the clock ((12 − n)/12)
-- [ ] No season on record last year → this year's median alone
-- [ ] January → last year's season alone
-- [ ] Each month exposes its forecast Income and spending
+- [x] October's forecast uses last September, October and November and ignores other months of last year
+- [x] The blend weight follows the clock ((12 − n)/12)
+- [x] No season on record last year → this year's median alone
+- [x] January → last year's season alone
+- [x] Each month exposes its forecast Income and spending
