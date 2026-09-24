@@ -667,6 +667,9 @@ export type HeadroomReport = {
   available: boolean
   months: HeadroomMonth[]
   placements: Placement[]
+  // Last month's actual leftover through the Goal buffer: the running
+  // totals start from it.
+  start_cents: number
   // The same-every-month parts, and how much the last 12 months weigh
   // against this year's months in the typical figures (percent).
   typical_income_cents: number

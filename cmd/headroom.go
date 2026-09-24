@@ -60,6 +60,10 @@ type headroomReport struct {
 	Available  bool            `json:"available"`
 	Months     []headroomMonth `json:"months"`
 	Placements []placement     `json:"placements"`
+	// StartCents is the last completed month's actual leftover, through the
+	// Goal buffer — what the running total starts from: real money, not a
+	// statistic.
+	StartCents int64 `json:"start_cents"`
 	// The same-every-month parts of the breakdown, and how much the last 12
 	// months weigh against this year's in the typical figures (percent).
 	TypicalIncomeCents    int64 `json:"typical_income_cents"`
@@ -218,7 +222,11 @@ func computeHeadroom(db *sql.DB, now func() time.Time) (headroomReport, error) {
 		return report, err
 	}
 
-	var running int64
+	report.StartCents, err = lastMonthHeadroom(db, now, goalCents)
+	if err != nil {
+		return report, err
+	}
+	running := report.StartCents
 	for _, month := range horizonMonths(now) {
 		var recurring int64
 		if err := db.QueryRow(`SELECT COALESCE(SUM(amount_cents), 0) FROM recurring_expense
@@ -234,6 +242,30 @@ func computeHeadroom(db *sql.DB, now func() time.Time) (headroomReport, error) {
 	}
 	report.Available = true
 	return report, nil
+}
+
+// lastMonthHeadroom is the last completed month's actual leftover through the
+// Goal buffer: every Income received in it — Contract Incomes included, they
+// arrived — except investment sales, minus every Expense, Recurring and
+// Investments alike. The month's Recurring expenses are generated first, so a
+// rent no screen happened to read yet still counts.
+func lastMonthHeadroom(db *sql.DB, now func() time.Time, goalCents int64) (int64, error) {
+	month := trailingCompletedMonths(now, 1)[0]
+	if err := materialise(db, now, month); err != nil {
+		return 0, err
+	}
+	var in, out int64
+	if err := db.QueryRow(`SELECT COALESCE(SUM(i.amount_cents), 0) FROM income i
+		JOIN category c ON c.id = i.category_id
+		WHERE substr(i.payment_date, 1, 7) = ? AND IFNULL(c.code, '') != ?`,
+		month, codeInvestments).Scan(&in); err != nil {
+		return 0, err
+	}
+	if err := db.QueryRow(`SELECT COALESCE(SUM(amount_cents), 0) FROM expense
+		WHERE substr(occurred_on, 1, 7) = ?`, month).Scan(&out); err != nil {
+		return 0, err
+	}
+	return goalBuffer(in-out, goalCents), nil
 }
 
 // blendCents is the weighted typical figure: the trailing median weighing
