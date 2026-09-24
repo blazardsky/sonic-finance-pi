@@ -352,8 +352,7 @@ export const t = {
   medianNet: "Netto mediano",
   // Named to tell it apart from Budget's own median (CONTEXT.md): this one
   // is scoped to the reported year's completed months, not a rolling window.
-  medianHint: (year: string) =>
-    `Sui mesi già conclusi del ${year}.`,
+  medianHint: (year: string) => `Sui mesi già conclusi del ${year}.`,
   noSpendThisYear: "Nessuna spesa in questo anno.",
   // The pie/radial charts' catch-all bucket for Categories past the 5 colors
   // --chart-1..5 give: named generically since which Categories fall into it
@@ -399,7 +398,10 @@ export const t = {
   headroomUnavailable:
     "Servono almeno 3 mesi di storico per la proiezione. Puoi comunque salvare gli acquisti.",
   plannedWhen: "Quando",
-  doesNotFit: "Non rientra nei prossimi 6 mesi",
+  doesNotFit: (months: number) =>
+    months === 1
+      ? "Non rientra nel prossimo mese"
+      : `Non rientra nei prossimi ${months} mesi`,
   missingAmount: (amount: string) => `mancano € ${amount}`,
   savingsCoverGap: "i risparmi coprono la differenza",
   loanNeeded: "servirebbe un finanziamento",
@@ -479,7 +481,8 @@ export const t = {
   contractOverdue: "scaduto",
   // A contract past its end month, fully invoiced and fully paid — de-
   // emphasised behind this toggle rather than removed from view.
-  showCompletedContracts: (count: number) => `Mostra contratti completati (${count})`,
+  showCompletedContracts: (count: number) =>
+    `Mostra contratti completati (${count})`,
   hideCompletedContracts: "Nascondi contratti completati",
   // The Income form's Contract picker, scoped to the selected Client's own
   // Contracts. Unlinked is the default and stays a real, common choice — an
@@ -543,11 +546,13 @@ export const t = {
   currentlyOwned: (quantity: string) => `Attualmente: ${quantity}`,
   manualLotHint:
     "Registra un nuovo acquisto: si aggiunge alle quote e al costo già presenti, e il prezzo medio si ricalcola di conseguenza. Lascia entrambi i campi vuoti se non hai comprato altre quote.",
-  initialManualLotHint: "Facoltativo: le quote già possedute e il prezzo medio pagato.",
+  initialManualLotHint:
+    "Facoltativo: le quote già possedute e il prezzo medio pagato.",
   replaceManualLot: "Sovrascrivi anziché aggiungere",
   replaceManualLotHint:
     "Le quote e il prezzo medio inseriti diventano il nuovo totale, al posto di quello calcolato finora. Lascia le quote vuote per correggere solo il prezzo medio, mantenendo invariate le quote possedute.",
-  invalidManualLot: "Inserisci sia le quote che il prezzo medio, oppure lascia entrambi i campi vuoti.",
+  invalidManualLot:
+    "Inserisci sia le quote che il prezzo medio, oppure lascia entrambi i campi vuoti.",
   invalidAveragePrice: "Prezzo medio non valido.",
 
   // Risparmi — read-only recap (ticket 07): total Savings, starting balance,

@@ -286,7 +286,10 @@ export function PlannedPurchases({
                         {/* On phones the "Quando" column is folded in here. */}
                         {headroom?.available && (
                           <span className="text-xs whitespace-normal text-muted-foreground sm:hidden">
-                            <PlacementText placement={placements.get(p.id)} />
+                            <PlacementText
+                              placement={placements.get(p.id)}
+                              horizon={months.length}
+                            />
                           </span>
                         )}
                       </TableCell>
@@ -295,7 +298,10 @@ export function PlannedPurchases({
                       </TableCell>
                       {headroom?.available && (
                         <TableCell className="hidden sm:table-cell">
-                          <PlacementText placement={placements.get(p.id)} />
+                          <PlacementText
+                            placement={placements.get(p.id)}
+                            horizon={months.length}
+                          />
                         </TableCell>
                       )}
                       <TableCell>
@@ -457,12 +463,18 @@ export function PlannedPurchases({
 
 // Where one Planned purchase lands, or, when it fits in none of the six
 // months, how far short it falls and whether Savings cover the gap.
-function PlacementText({ placement }: { placement: Placement | undefined }) {
+function PlacementText({
+  placement,
+  horizon,
+}: {
+  placement: Placement | undefined
+  horizon: number
+}) {
   if (!placement) return null
   if (placement.month) return <>{monthLabel(placement.month)}</>
   return (
     <span className="flex flex-col text-xs">
-      <span className="text-destructive">{t.doesNotFit}</span>
+      <span className="text-destructive">{t.doesNotFit(horizon)}</span>
       <span className="text-muted-foreground">
         {t.missingAmount(formatCents(placement.missing_cents))} ·{" "}
         {placement.savings_cover ? t.savingsCoverGap : t.loanNeeded}
