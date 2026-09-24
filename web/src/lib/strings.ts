@@ -393,7 +393,11 @@ export const t = {
   priority: "Priorità",
   headroomNextMonths: "Margine nei prossimi 6 mesi",
   headroomProjection:
-    "Proiezione dall'ultimo anno: entrate tipiche e contratti, meno spese tipiche, ricorrenti e obiettivo di risparmio.",
+    "Proiezione: entrate tipiche e contratti, meno spese tipiche, ricorrenti e obiettivo di risparmio.",
+  typicalIncome: "Entrate tipiche",
+  typicalSpending: "Spese tipiche",
+  headroomBaseline: (trailing: number) =>
+    `Tipiche = mediana ultimi 12 mesi al ${trailing}%, mediana di quest'anno al ${100 - trailing}%`,
   headroomUnavailable:
     "Servono almeno 3 mesi di storico per la proiezione. Puoi comunque salvare gli acquisti.",
   headroom: "Margine",

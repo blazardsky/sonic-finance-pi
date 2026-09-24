@@ -51,6 +51,8 @@ See CONTEXT.md: **Planned purchase**, **Headroom**.
   - *Recurring expenses due in M*: every Recurring expense running in M (start month ≤ M, no end month or end month ≥ M), including Investments ones.
   - *Goal*: the household's monthly savings Goal.
   - Medians reuse Budget's history rule: trailing 12 completed months, only months since the first Expense, at least 3 of them. Otherwise the projection is unavailable.
+  - *Typical* (revised after v1.4.0) blends two medians: the trailing 12 months weighing (12 − n)/12 and this year's completed months the rest, n being how many months of this year are over. January is the trailing median alone; December is almost all this year. No jump on any particular day.
+  - The report carries its breakdown (typical Income, typical spending, Goal, the blend's weights, and per month the Contract share and Recurring total) so every figure can be checked by hand.
 - **Placement:** walk the list in priority order carrying the running Headroom balance; a purchase lands in the first month from which the balance (after higher-priority purchases) covers its amount *for the rest of the horizon* — a later negative month must not push the account below zero after buying — and that amount leaves the balance from that month on. One that fits in no month consumes nothing. Its missing amount = its amount − the balance at the end of month 6 (after higher-priority placements, floored at 0 balance); Savings cover it when Savings ≥ missing amount.
 - Current Savings never enter the Headroom calculation (only the "does Savings cover the gap" answer).
 - **Reordering:** up/down controls, no drag and drop, no new dependency.

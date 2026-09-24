@@ -20,6 +20,11 @@ type headroomMonth struct {
 	Month         string `json:"month"`
 	HeadroomCents int64  `json:"headroom_cents"`
 	RunningCents  int64  `json:"running_cents"`
+	// The two parts that differ month to month, so the screen can show how
+	// the Headroom was arrived at: what active Contracts still owe this
+	// month, and the Recurring expenses due.
+	ContractCents  int64 `json:"contract_cents"`
+	RecurringCents int64 `json:"recurring_cents"`
 }
 
 // headroomReport is the next headroomHorizonMonths months, starting next
@@ -31,6 +36,12 @@ type headroomReport struct {
 	Available  bool            `json:"available"`
 	Months     []headroomMonth `json:"months"`
 	Placements []placement     `json:"placements"`
+	// The same-every-month parts of the breakdown, and how much the last 12
+	// months weigh against this year's in the typical figures (percent).
+	TypicalIncomeCents    int64 `json:"typical_income_cents"`
+	TypicalSpendingCents  int64 `json:"typical_spending_cents"`
+	GoalCents             int64 `json:"goal_cents"`
+	TrailingWeightPercent int64 `json:"trailing_weight_percent"`
 }
 
 // placement is where one Planned purchase lands: Month is the first month it
@@ -118,11 +129,15 @@ func place(months []headroomMonth, list []plannedPurchase, savingsCents int64) [
 //	typical Income + Contract shares − typical non-recurring spending
 //	− Recurring expenses due that month − Goal
 //
-// Typical means the median over Budget's window (trailing completed months
-// since the first Expense). Income excludes Contract Incomes (the shares
-// stand in for those) and Investments sales; spending includes Investments —
-// money that leaves for a PAC is money the household won't have, and a
-// portfolio is never money to count on (CONTEXT.md, Headroom).
+// Typical blends two medians: the last 12 completed months (since the first
+// Expense, Budget's window) and this year's completed months, the 12 months
+// weighing (12 − n)/12 where n is how many months of this year are over — all
+// of it in January, a twelfth in December. Early in the year the baseline is
+// last year; as this year's months are recorded they take over, with no jump
+// on any particular day. Income excludes Contract Incomes (the shares stand
+// in for those) and Investments sales; spending includes Investments — money
+// that leaves for a PAC is money the household won't have, and a portfolio
+// is never money to count on (CONTEXT.md, Headroom).
 func computeHeadroom(db *sql.DB, now func() time.Time) (headroomReport, error) {
 	report := headroomReport{Months: []headroomMonth{}}
 
@@ -130,7 +145,8 @@ func computeHeadroom(db *sql.DB, now func() time.Time) (headroomReport, error) {
 	if err != nil || firstMonth == "" {
 		return report, err
 	}
-	var incomes, spending []int64
+	thisYear := now().Format("2006")
+	var incomes, spending, yearIncomes, yearSpending []int64
 	for _, month := range trailingCompletedMonths(now, budgetTrailingMonths) {
 		if month < firstMonth {
 			continue
@@ -148,16 +164,28 @@ func computeHeadroom(db *sql.DB, now func() time.Time) (headroomReport, error) {
 		}
 		incomes = append(incomes, in)
 		spending = append(spending, out)
+		if month[:4] == thisYear {
+			yearIncomes = append(yearIncomes, in)
+			yearSpending = append(yearSpending, out)
+		}
 	}
 	if len(incomes) < budgetMinHistoryMonths {
 		return report, nil
 	}
-	typical := medianCents(incomes) - medianCents(spending)
+	// n counts calendar months, not months with data: the weight follows the
+	// year, and a household that started mid-year still has its 12-month
+	// median (whatever months exist) to lean on.
+	n := int64(now().Month()) - 1
+	report.TrailingWeightPercent = (12 - n) * 100 / 12
+	report.TypicalIncomeCents = blendCents(incomes, yearIncomes, n)
+	report.TypicalSpendingCents = blendCents(spending, yearSpending, n)
+	typical := report.TypicalIncomeCents - report.TypicalSpendingCents
 
 	goalCents, err := getSettingCents(db, goalCentsKey)
 	if err != nil {
 		return report, err
 	}
+	report.GoalCents = goalCents
 	shares, err := contractShares(db, now)
 	if err != nil {
 		return report, err
@@ -172,10 +200,23 @@ func computeHeadroom(db *sql.DB, now func() time.Time) (headroomReport, error) {
 		}
 		headroom := typical + shares[month] - recurring - goalCents
 		running += headroom
-		report.Months = append(report.Months, headroomMonth{Month: month, HeadroomCents: headroom, RunningCents: running})
+		report.Months = append(report.Months, headroomMonth{
+			Month: month, HeadroomCents: headroom, RunningCents: running,
+			ContractCents: shares[month], RecurringCents: recurring,
+		})
 	}
 	report.Available = true
 	return report, nil
+}
+
+// blendCents is the weighted typical figure: the trailing median weighing
+// (12 − n)/12, this year's median the rest. With no month of this year over
+// yet (n = 0, or no data this year) it is the trailing median alone.
+func blendCents(trailing, year []int64, n int64) int64 {
+	if n == 0 || len(year) == 0 {
+		return medianCents(trailing)
+	}
+	return ((12-n)*medianCents(trailing) + n*medianCents(year)) / 12
 }
 
 // contractShares is what each active Contract still owes, spread evenly over
