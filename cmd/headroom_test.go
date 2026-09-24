@@ -23,10 +23,63 @@ func assertHeadroom(t *testing.T, got headroomReport, want []headroomMonth) {
 	if len(got.Months) != len(want) {
 		t.Fatalf("got %d months, want %d: %+v", len(got.Months), len(want), got.Months)
 	}
-	for i := range want {
-		if got.Months[i] != want[i] {
-			t.Errorf("month %d = %+v, want %+v", i, got.Months[i], want[i])
+	for i, w := range want {
+		g := got.Months[i]
+		if g.Month != w.Month || g.HeadroomCents != w.HeadroomCents || g.RunningCents != w.RunningCents {
+			t.Errorf("month %d = %s %d %d, want %s %d %d", i,
+				g.Month, g.HeadroomCents, g.RunningCents, w.Month, w.HeadroomCents, w.RunningCents)
 		}
+	}
+}
+
+// The baseline blend, clock at 2026-03-15 (two months of 2026 over, so the
+// last 12 months weigh 10/12): 100000 of spending a month in Oct–Dec 2025,
+// 40000 in Jan–Feb 2026. Trailing median 100000, this year's 40000 →
+// (10×100000 + 2×40000) / 12 = 90000 typical spending, and the breakdown
+// says so.
+func TestHeadroomBlendsTheLast12MonthsWithThisYear(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+	for day, cents := range map[string]int64{
+		"2025-10-10": 100000, "2025-11-10": 100000, "2025-12-10": 100000,
+		"2026-01-10": 40000, "2026-02-10": 40000,
+	} {
+		a.addExpense(t, map[string]any{"occurred_on": day, "amount_cents": cents, "category_id": alimentari.ID})
+	}
+
+	got := a.headroom(t)
+	if got.TypicalSpendingCents != 90000 {
+		t.Errorf("typical spending = %d, want 90000", got.TypicalSpendingCents)
+	}
+	if got.TrailingWeightPercent != 83 {
+		t.Errorf("trailing weight = %d%%, want 83%% (10/12)", got.TrailingWeightPercent)
+	}
+	if got.Months[0].HeadroomCents != -90000 {
+		t.Errorf("April headroom = %d, want -90000", got.Months[0].HeadroomCents)
+	}
+
+	// In January nothing of the new year is over: the last 12 months alone.
+	a.setNow(t, time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC))
+	if jan := a.headroom(t); jan.TypicalSpendingCents != 100000 || jan.TrailingWeightPercent != 100 {
+		t.Errorf("January: typical %d at %d%%, want 100000 at 100%%", jan.TypicalSpendingCents, jan.TrailingWeightPercent)
+	}
+}
+
+// The breakdown's per-month parts are what the Headroom was built from.
+func TestHeadroomMonthCarriesItsContractAndRecurringParts(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+	casa := a.category(t, "Casa")
+	for _, m := range []string{"2025-12", "2026-01", "2026-02"} {
+		a.addExpense(t, map[string]any{"occurred_on": m + "-10", "amount_cents": 1000, "category_id": alimentari.ID})
+	}
+	a.addRecurring(t, map[string]any{"amount_cents": 85000, "category_id": casa.ID, "day_of_month": 5})
+	client := a.createClient(t, "Acme")
+	a.createContract(t, client.ID, map[string]any{"start_month": "2026-01", "end_month": "2026-06", "total_cents": 90000})
+
+	april := a.headroom(t).Months[0]
+	if april.RecurringCents != 85000 || april.ContractCents != 30000 {
+		t.Errorf("April parts = recurring %d, contract %d, want 85000 and 30000", april.RecurringCents, april.ContractCents)
 	}
 }
 
@@ -99,12 +152,12 @@ func TestHeadroomProjectsTheNextSixMonths(t *testing.T) {
 	// 130000 typical; +30000 Contract through June; −85000 rent; −5000 gym
 	// through May; −40000 Goal.
 	assertHeadroom(t, a.headroom(t), []headroomMonth{
-		{"2026-04", 30000, 30000},
-		{"2026-05", 30000, 60000},
-		{"2026-06", 35000, 95000},
-		{"2026-07", 5000, 100000},
-		{"2026-08", 5000, 105000},
-		{"2026-09", 5000, 110000},
+		{Month: "2026-04", HeadroomCents: 30000, RunningCents: 30000},
+		{Month: "2026-05", HeadroomCents: 30000, RunningCents: 60000},
+		{Month: "2026-06", HeadroomCents: 35000, RunningCents: 95000},
+		{Month: "2026-07", HeadroomCents: 5000, RunningCents: 100000},
+		{Month: "2026-08", HeadroomCents: 5000, RunningCents: 105000},
+		{Month: "2026-09", HeadroomCents: 5000, RunningCents: 110000},
 	})
 }
 
@@ -126,12 +179,12 @@ func TestHeadroomNegativeMonthLowersTheRunningTotal(t *testing.T) {
 	}
 
 	assertHeadroom(t, a.headroom(t), []headroomMonth{
-		{"2026-04", -30000, -30000},
-		{"2026-05", 50000, 20000},
-		{"2026-06", 50000, 70000},
-		{"2026-07", 50000, 120000},
-		{"2026-08", 50000, 170000},
-		{"2026-09", 50000, 220000},
+		{Month: "2026-04", HeadroomCents: -30000, RunningCents: -30000},
+		{Month: "2026-05", HeadroomCents: 50000, RunningCents: 20000},
+		{Month: "2026-06", HeadroomCents: 50000, RunningCents: 70000},
+		{Month: "2026-07", HeadroomCents: 50000, RunningCents: 120000},
+		{Month: "2026-08", HeadroomCents: 50000, RunningCents: 170000},
+		{Month: "2026-09", HeadroomCents: 50000, RunningCents: 220000},
 	})
 }
 

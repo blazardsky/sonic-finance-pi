@@ -30,7 +30,12 @@ function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
   return (
     <tbody
       data-slot="table-body"
-      className={cn("[&_tr:last-child]:border-0", className)}
+      // Zebra rows: every other body row a shade darker, for readability —
+      // lighter than hover (bg-muted/50) so the hovered row still stands out.
+      className={cn(
+        "[&_tr:last-child]:border-0 [&>tr:nth-child(even)]:bg-muted/30",
+        className
+      )}
       {...props}
     />
   )

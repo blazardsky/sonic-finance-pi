@@ -647,6 +647,10 @@ export type HeadroomMonth = {
   month: string
   headroom_cents: number
   running_cents: number
+  // The month-specific parts of the breakdown: what active Contracts still
+  // owe this month, and the Recurring expenses due.
+  contract_cents: number
+  recurring_cents: number
 }
 
 // Where one Planned purchase lands: month is "" when it fits in none of the
@@ -663,4 +667,10 @@ export type HeadroomReport = {
   available: boolean
   months: HeadroomMonth[]
   placements: Placement[]
+  // The same-every-month parts, and how much the last 12 months weigh
+  // against this year's months in the typical figures (percent).
+  typical_income_cents: number
+  typical_spending_cents: number
+  goal_cents: number
+  trailing_weight_percent: number
 }

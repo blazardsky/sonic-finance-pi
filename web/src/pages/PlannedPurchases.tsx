@@ -212,11 +212,45 @@ export function PlannedPurchases({
                 </CardDescription>
               </CardHeader>
               {headroom.available && (
-                <CardContent>
+                <CardContent className="flex flex-col gap-3">
+                  {/* The breakdown: the same-every-month parts here, the
+                      month-specific ones (Contracts, Recurring) as columns,
+                      so every Headroom figure can be checked by hand. */}
+                  <div className="flex flex-col gap-1 text-sm">
+                    <div className="flex flex-wrap gap-x-6 gap-y-1">
+                      <span>
+                        {t.typicalIncome}{" "}
+                        <span className="font-medium tabular-nums">
+                          € {formatCents(headroom.typical_income_cents)}
+                        </span>
+                      </span>
+                      <span>
+                        {t.typicalSpending}{" "}
+                        <span className="font-medium tabular-nums">
+                          € {formatCents(headroom.typical_spending_cents)}
+                        </span>
+                      </span>
+                      <span>
+                        {t.savingsGoal}{" "}
+                        <span className="font-medium tabular-nums">
+                          € {formatCents(headroom.goal_cents)}
+                        </span>
+                      </span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {t.headroomBaseline(headroom.trailing_weight_percent)}
+                    </span>
+                  </div>
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>{t.month}</TableHead>
+                        <TableHead className="hidden text-right sm:table-cell">
+                          {t.contracts}
+                        </TableHead>
+                        <TableHead className="hidden text-right sm:table-cell">
+                          {t.recurring}
+                        </TableHead>
                         <TableHead className="text-right">
                           {t.headroom}
                         </TableHead>
@@ -233,6 +267,12 @@ export function PlannedPurchases({
                       {headroom.months.map((m) => (
                         <TableRow key={m.month}>
                           <TableCell>{monthLabel(m.month)}</TableCell>
+                          <TableCell className="hidden text-right text-muted-foreground tabular-nums sm:table-cell">
+                            + € {formatCents(m.contract_cents)}
+                          </TableCell>
+                          <TableCell className="hidden text-right text-muted-foreground tabular-nums sm:table-cell">
+                            − € {formatCents(m.recurring_cents)}
+                          </TableCell>
                           <TableCell
                             className={`text-right tabular-nums ${m.headroom_cents < 0 ? "text-destructive" : ""}`}
                           >

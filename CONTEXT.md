@@ -117,7 +117,7 @@ Something the household intends to buy soon, with an amount, an optional Categor
 _Avoid_: wishlist, planned expense, scheduled expense
 
 **Headroom**:
-The money projected to be left in a future month once its Expenses and Goal are set aside — what Planned purchases are paid from. Projected from the trailing year: typical Income plus what active Contracts still owe, minus typical non-recurring spending and the Recurring expenses due that month. Investments count only as money leaving, never as money to spend. Can be negative, and a negative month eats into what earlier months accumulated. A projection, never a promise, on the same terms as Estimate.
+The money projected to be left in a future month once its Expenses and Goal are set aside — what Planned purchases are paid from. Typical Income plus what active Contracts still owe, minus typical non-recurring spending and the Recurring expenses due that month — typical blending the last 12 months with this year's months, the last 12 weighing less as the year goes on, so early in the year last year is the baseline and this year's own record takes over as it grows. Investments count only as money leaving, never as money to spend. Can be negative, and a negative month eats into what earlier months accumulated. A projection, never a promise, on the same terms as Estimate.
 _Avoid_: surplus, savings, available, free cash
 
 **Record**
