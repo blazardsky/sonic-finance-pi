@@ -393,12 +393,9 @@ export const t = {
   priority: "Priorità",
   headroomProjection:
     "Proiezione: entrate tipiche e contratti, meno spese tipiche, ricorrenti e obiettivo di risparmio.",
-  typicalIncome: "Entrate tipiche",
-  // What "typical" leaves out: Contract Incomes count through what the
-  // Contracts still owe, and selling investments is never money to count on.
-  perMonth: "al mese, esclusi contratti e vendite di investimenti",
-  headroomAccumulated: "Margine in 6 mesi",
-  headroomNextMonth: (month: string) => `di cui ${month}:`,
+  headroomForecastMonthly: "Margine mensile previsto",
+  headroomAccumulated: (months: number) =>
+    months === 1 ? "Margine in 1 mese" : `Margine in ${months} mesi`,
   headroomUnavailable:
     "Servono almeno 3 mesi di storico per la proiezione. Puoi comunque salvare gli acquisti.",
   plannedWhen: "Quando",

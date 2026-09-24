@@ -8,11 +8,35 @@ import (
 
 const headroomPath = "/api/reports/headroom"
 
-// headroomHorizonMonths is how far ahead Planned purchases are placed. Short
-// on purpose: something that doesn't fit in six months is not a short-term
-// purchase but a matter for Savings or a loan (spec's Implementation
-// Decisions).
+// headroomHorizonMonths is the most months ahead Planned purchases are placed.
+// Short on purpose: something that doesn't fit in six months is not a
+// short-term purchase but a matter for Savings or a loan (spec's
+// Implementation Decisions).
 const headroomHorizonMonths = 6
+
+// horizonMonths is the rest of the current year, soonest first: the forecast
+// doesn't reach into a year it knows nothing about. At most
+// headroomHorizonMonths, and at least one, so December still forecasts
+// January.
+func horizonMonths(now func() time.Time) []string {
+	n := min(max(12-int(now().Month()), 1), headroomHorizonMonths)
+	return nextMonths(now, n)
+}
+
+// goalBuffer turns a month's leftover into its Headroom (CONTEXT.md). Goal is
+// a buffer, not a debt: a leftover above Goal keeps the difference; one below
+// Goal, or short by up to Goal, is zero — the money meant for Goal covers
+// the gap; only a shortfall beyond Goal is negative.
+func goalBuffer(leftover, goal int64) int64 {
+	switch {
+	case leftover >= goal:
+		return leftover - goal
+	case leftover >= -goal:
+		return 0
+	default:
+		return leftover + goal
+	}
+}
 
 // headroomMonth is one future month's projected Headroom (CONTEXT.md) and the
 // running total through it — a negative month lowers the running total.
@@ -195,13 +219,13 @@ func computeHeadroom(db *sql.DB, now func() time.Time) (headroomReport, error) {
 	}
 
 	var running int64
-	for _, month := range nextMonths(now, headroomHorizonMonths) {
+	for _, month := range horizonMonths(now) {
 		var recurring int64
 		if err := db.QueryRow(`SELECT COALESCE(SUM(amount_cents), 0) FROM recurring_expense
 			WHERE start_month <= ? AND (end_month IS NULL OR end_month >= ?)`, month, month).Scan(&recurring); err != nil {
 			return report, err
 		}
-		headroom := typical + shares[month] - recurring - goalCents
+		headroom := goalBuffer(typical+shares[month]-recurring, goalCents)
 		running += headroom
 		report.Months = append(report.Months, headroomMonth{
 			Month: month, HeadroomCents: headroom, RunningCents: running,
@@ -250,7 +274,7 @@ func contractShares(db *sql.DB, now func() time.Time) (map[string]int64, error) 
 		if err != nil {
 			return nil, err
 		}
-		for _, month := range nextMonths(now, headroomHorizonMonths) {
+		for _, month := range horizonMonths(now) {
 			if month >= from && month <= c.EndMonth {
 				shares[month] += owed / int64(left)
 			}

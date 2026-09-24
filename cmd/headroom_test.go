@@ -32,6 +32,38 @@ func assertHeadroom(t *testing.T, got headroomReport, want []headroomMonth) {
 	}
 }
 
+// Goal is a buffer, not a debt: the household's own table (Goal 500).
+func TestGoalBuffer(t *testing.T) {
+	for leftover, want := range map[int64]int64{
+		800: 300, 501: 1, 500: 0, 200: 0, 0: 0, -300: 0, -500: 0, -600: -100,
+	} {
+		if got := goalBuffer(leftover, 500); got != want {
+			t.Errorf("goalBuffer(%d, 500) = %d, want %d", leftover, got, want)
+		}
+	}
+}
+
+// The horizon is the rest of the year, at least one month and at most six.
+func TestHeadroomHorizonIsTheRestOfTheYear(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+	for _, m := range []string{"2025-10", "2025-11", "2025-12"} {
+		a.addExpense(t, map[string]any{"occurred_on": m + "-10", "amount_cents": 1000, "category_id": alimentari.ID})
+	}
+	for clock, want := range map[time.Time][]string{
+		time.Date(2026, 3, 15, 0, 0, 0, 0, time.UTC):  {"2026-04", "2026-09"},
+		time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC):  {"2026-10", "2026-12"},
+		time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC): {"2026-12", "2026-12"},
+		time.Date(2026, 12, 15, 0, 0, 0, 0, time.UTC): {"2027-01", "2027-01"},
+	} {
+		a.setNow(t, clock)
+		got := a.headroom(t).Months
+		if len(got) == 0 || got[0].Month != want[0] || got[len(got)-1].Month != want[1] {
+			t.Errorf("at %s: months %+v, want %s to %s", clock.Format("2006-01"), got, want[0], want[1])
+		}
+	}
+}
+
 // The baseline blend, clock at 2026-03-15 (two months of 2026 over, so the
 // last 12 months weigh 10/12): 100000 of spending a month in Oct–Dec 2025,
 // 40000 in Jan–Feb 2026. Trailing median 100000, this year's 40000 →

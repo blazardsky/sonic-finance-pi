@@ -196,35 +196,39 @@ export function PlannedPurchases({
 
       <div className="flex flex-1 flex-wrap gap-6">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
-          {/* Two figures, the way the Dashboard's totals read: what comes in
-              in a typical month, and the Headroom accumulated over the
-              horizon with next month's own Headroom beneath it. Which month
-              each Planned purchase lands in is on the list itself. */}
+          {/* Two figures, the way the Dashboard's totals read: next month's
+              forecast Headroom, and the Headroom accumulated to the end of
+              the horizon. Which month each Planned purchase lands in is on
+              the list itself. */}
           {headroom && !headroom.available && (
             <p className="text-sm text-muted-foreground">
               {t.headroomUnavailable}
             </p>
           )}
-          {headroom?.available && (
+          {headroom?.available && nextMonth && (
             <div className="flex flex-col gap-2">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-sm">{t.typicalIncome}</CardTitle>
+                    <CardTitle className="text-sm">
+                      {t.headroomForecastMonthly}
+                    </CardTitle>
                   </CardHeader>
                   <CardContent elevated className="flex flex-col gap-1">
-                    <p className="text-2xl font-medium tabular-nums">
-                      € {formatCents(headroom.typical_income_cents)}
+                    <p
+                      className={`text-2xl font-medium tabular-nums ${nextMonth.headroom_cents < 0 ? "text-destructive" : ""}`}
+                    >
+                      {signedCents(nextMonth.headroom_cents)}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {t.perMonth}
+                      {monthLabel(nextMonth.month)}
                     </p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-sm">
-                      {t.headroomAccumulated}
+                      {t.headroomAccumulated(months.length)}
                     </CardTitle>
                   </CardHeader>
                   <CardContent elevated className="flex flex-col gap-1">
@@ -233,16 +237,9 @@ export function PlannedPurchases({
                     >
                       {signedCents(lastRunning)}
                     </p>
-                    {nextMonth && (
-                      <p className="text-xs text-muted-foreground">
-                        {t.headroomNextMonth(monthLabel(nextMonth.month))}{" "}
-                        <span
-                          className={`font-medium tabular-nums ${nextMonth.headroom_cents < 0 ? "text-destructive" : "text-foreground"}`}
-                        >
-                          {signedCents(nextMonth.headroom_cents)}
-                        </span>
-                      </p>
-                    )}
+                    <p className="text-xs text-muted-foreground">
+                      {monthLabel(months[months.length - 1].month)}
+                    </p>
                   </CardContent>
                 </Card>
               </div>
