@@ -120,7 +120,8 @@ func place(months []headroomMonth, list []plannedPurchase, savingsCents int64) [
 	out := make([]placement, 0, len(list))
 	for _, p := range list {
 		pl := placement{PlannedID: p.ID}
-		// suffixMin[i] is the lowest balance from month i to the end.
+		// Walking back from the end, lowest is the lowest balance from month i
+		// on; the earliest i where it still covers the amount is where it lands.
 		at := -1
 		lowest := int64(0)
 		for i := len(balance) - 1; i >= 0; i-- {
@@ -174,7 +175,7 @@ func computeHeadroom(db *sql.DB, now func() time.Time) (headroomReport, error) {
 	// Each month's totals are read once, whichever windows it falls in. A
 	// month before the first Expense is not a real zero and is left out, the
 	// same rule Budget uses.
-	cache := map[string]forecastTotals{}
+	cache := map[string]moneyTotals{}
 	collect := func(months []string) (incomes, spending []int64, err error) {
 		for _, m := range months {
 			if m < firstMonth {
@@ -182,7 +183,7 @@ func computeHeadroom(db *sql.DB, now func() time.Time) (headroomReport, error) {
 			}
 			t, ok := cache[m]
 			if !ok {
-				if t, err = readForecastTotals(db, m); err != nil {
+				if t, err = monthMoney(db, m, true); err != nil {
 					return nil, nil, err
 				}
 				cache[m] = t
@@ -210,7 +211,8 @@ func computeHeadroom(db *sql.DB, now func() time.Time) (headroomReport, error) {
 		return report, err
 	}
 	report.GoalCents = goalCents
-	shares, err := contractShares(db, now)
+	horizon := horizonMonths(now)
+	shares, err := contractShares(db, now, horizon)
 	if err != nil {
 		return report, err
 	}
@@ -220,7 +222,7 @@ func computeHeadroom(db *sql.DB, now func() time.Time) (headroomReport, error) {
 	}
 
 	running := report.StartCents
-	for _, month := range horizonMonths(now) {
+	for _, month := range horizon {
 		seasonIn, seasonOut, err := collect(yearAgoWindow(month))
 		if err != nil {
 			return report, err
@@ -244,24 +246,10 @@ func computeHeadroom(db *sql.DB, now func() time.Time) (headroomReport, error) {
 	return report, nil
 }
 
-// forecastTotals is what one past month contributes to a forecast: its
-// non-Contract Income (investment sales left out) and its non-recurring
-// spending (Investments kept).
-type forecastTotals struct {
+// moneyTotals is one past month's Income and spending, as monthMoney reads
+// them.
+type moneyTotals struct {
 	incomeCents, spendingCents int64
-}
-
-func readForecastTotals(db *sql.DB, month string) (forecastTotals, error) {
-	var t forecastTotals
-	if err := db.QueryRow(`SELECT COALESCE(SUM(i.amount_cents), 0) FROM income i
-		JOIN category c ON c.id = i.category_id
-		WHERE substr(i.payment_date, 1, 7) = ? AND i.contract_id IS NULL AND IFNULL(c.code, '') != ?`,
-		month, codeInvestments).Scan(&t.incomeCents); err != nil {
-		return t, err
-	}
-	err := db.QueryRow(`SELECT COALESCE(SUM(amount_cents), 0) FROM expense
-		WHERE substr(occurred_on, 1, 7) = ? AND recurring_id IS NULL`, month).Scan(&t.spendingCents)
-	return t, err
 }
 
 // seasonalCents is one forecast figure: last year's season (season) weighing
@@ -309,18 +297,34 @@ func lastMonthHeadroom(db *sql.DB, now func() time.Time, goalCents int64) (int64
 	if err := materialise(db, now, month); err != nil {
 		return 0, err
 	}
-	var in, out int64
-	if err := db.QueryRow(`SELECT COALESCE(SUM(i.amount_cents), 0) FROM income i
+	t, err := monthMoney(db, month, false)
+	if err != nil {
+		return 0, err
+	}
+	return goalBuffer(t.incomeCents-t.spendingCents, goalCents), nil
+}
+
+// monthMoney is one month's received Income (investment sales never count)
+// and its Expenses (Investments always do). For a forecast it also leaves out
+// Contract Incomes and Recurring-generated Expenses, which the forecast adds
+// back month by month as Contract shares and Recurring due; for last month's
+// actual leftover they count, because that money really moved.
+func monthMoney(db *sql.DB, month string, forecast bool) (moneyTotals, error) {
+	incomeQuery := `SELECT COALESCE(SUM(i.amount_cents), 0) FROM income i
 		JOIN category c ON c.id = i.category_id
-		WHERE substr(i.payment_date, 1, 7) = ? AND IFNULL(c.code, '') != ?`,
-		month, codeInvestments).Scan(&in); err != nil {
-		return 0, err
+		WHERE substr(i.payment_date, 1, 7) = ? AND IFNULL(c.code, '') != ?`
+	expenseQuery := `SELECT COALESCE(SUM(amount_cents), 0) FROM expense
+		WHERE substr(occurred_on, 1, 7) = ?`
+	if forecast {
+		incomeQuery += ` AND i.contract_id IS NULL`
+		expenseQuery += ` AND recurring_id IS NULL`
 	}
-	if err := db.QueryRow(`SELECT COALESCE(SUM(amount_cents), 0) FROM expense
-		WHERE substr(occurred_on, 1, 7) = ?`, month).Scan(&out); err != nil {
-		return 0, err
+	var t moneyTotals
+	if err := db.QueryRow(incomeQuery, month, codeInvestments).Scan(&t.incomeCents); err != nil {
+		return t, err
 	}
-	return goalBuffer(in-out, goalCents), nil
+	err := db.QueryRow(expenseQuery, month).Scan(&t.spendingCents)
+	return t, err
 }
 
 // contractShares is what each active Contract still owes, spread evenly over
@@ -328,7 +332,7 @@ func lastMonthHeadroom(db *sql.DB, now func() time.Time, goalCents int64) (int64
 // what is still owed is the total minus what has actually been received. A
 // Contract that ends this month or earlier has no future month to spread
 // over and contributes nothing.
-func contractShares(db *sql.DB, now func() time.Time) (map[string]int64, error) {
+func contractShares(db *sql.DB, now func() time.Time, horizon []string) (map[string]int64, error) {
 	next := nextMonths(now, 1)[0]
 	rows, err := db.Query(contractSelect+` WHERE contract.end_month >= ?`, next)
 	if err != nil {
@@ -351,7 +355,7 @@ func contractShares(db *sql.DB, now func() time.Time) (map[string]int64, error) 
 		if err != nil {
 			return nil, err
 		}
-		for _, month := range horizonMonths(now) {
+		for _, month := range horizon {
 			if month >= from && month <= c.EndMonth {
 				shares[month] += owed / int64(left)
 			}

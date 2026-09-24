@@ -461,7 +461,7 @@ export function PlannedPurchases({
   )
 }
 
-// Where one Planned purchase lands, or, when it fits in none of the six
+// Where one Planned purchase lands, or, when it fits in none of the horizon's
 // months, how far short it falls and whether Savings cover the gap.
 function PlacementText({
   placement,

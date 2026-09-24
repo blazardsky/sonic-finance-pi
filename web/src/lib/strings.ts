@@ -390,8 +390,7 @@ export const t = {
   moveUp: "Sposta su",
   moveDown: "Sposta giù",
   priority: "Priorità",
-  headroomProjection:
-    "Proiezione: entrate tipiche e contratti, meno spese tipiche, ricorrenti e obiettivo di risparmio.",
+  headroomProjection: "Proiezione, non una promessa.",
   headroomForecastMonthly: "Margine mensile previsto",
   headroomAccumulated: (months: number) =>
     months === 1 ? "Margine in 1 mese" : `Margine in ${months} mesi`,

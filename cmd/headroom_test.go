@@ -61,7 +61,38 @@ func TestHeadroomHorizonIsTheRestOfTheYear(t *testing.T) {
 		if len(got) == 0 || got[0].Month != want[0] || got[len(got)-1].Month != want[1] {
 			t.Errorf("at %s: months %+v, want %s to %s", clock.Format("2006-01"), got, want[0], want[1])
 		}
+		// Consecutive, no gaps: the count is what the two ends span.
+		if span, _ := monthsInclusive(want[0], want[1]); len(got) != span {
+			t.Errorf("at %s: %d months, want %d", clock.Format("2006-01"), len(got), span)
+		}
 	}
+}
+
+// A shortfall beyond Goal carries: nothing comes in, 30000 goes out every
+// month, Goal 10000 buffers 10000 of it — last month starts at −20000 and
+// every month adds −20000, so the running total only sinks.
+func TestHeadroomDeficitCarries(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+	for _, m := range []string{"2025-12", "2026-01", "2026-02"} {
+		a.addExpense(t, map[string]any{"occurred_on": m + "-10", "amount_cents": 30000, "category_id": alimentari.ID})
+	}
+	if res := a.put(t, settingsPath, map[string]any{"goal_cents": int64(10000)}, nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("PUT goal = %d, want 200", res.StatusCode)
+	}
+
+	got := a.headroom(t)
+	if got.StartCents != -20000 {
+		t.Errorf("start = %d, want -20000", got.StartCents)
+	}
+	assertHeadroom(t, got, []headroomMonth{
+		{Month: "2026-04", HeadroomCents: -20000, RunningCents: -40000},
+		{Month: "2026-05", HeadroomCents: -20000, RunningCents: -60000},
+		{Month: "2026-06", HeadroomCents: -20000, RunningCents: -80000},
+		{Month: "2026-07", HeadroomCents: -20000, RunningCents: -100000},
+		{Month: "2026-08", HeadroomCents: -20000, RunningCents: -120000},
+		{Month: "2026-09", HeadroomCents: -20000, RunningCents: -140000},
+	})
 }
 
 // The running total starts from last month's actual leftover (clock at
@@ -183,9 +214,10 @@ func TestHeadroomMonthCarriesItsContractAndRecurringParts(t *testing.T) {
 // The whole formula in one household, clock at 2026-03-15, history since
 // 2025-12 (three completed months: Dec, Jan, Feb):
 //
-//   - typical Income: Stipendio 200000 every month; the Contract Income and
+//   - forecast Income (no season on record last year, so this year's
+//     Jan–Feb median): Stipendio 200000 every month; the Contract Income and
 //     the Investments sale are left out → median 200000
-//   - typical non-recurring spending: 50000 / 70000 / 60000+10000
+//   - forecast non-recurring spending: 50000 / 70000 / 60000+10000
 //     Investments → median 70000; the rent Expenses the Recurring expense
 //     generated in Jan and Feb are left out
 //   - Contract Jan–Jun, 120000 total, 30000 received → 90000 owed over
@@ -248,7 +280,7 @@ func TestHeadroomProjectsTheNextSixMonths(t *testing.T) {
 		t.Fatalf("PUT goal = %d, want 200", res.StatusCode)
 	}
 
-	// 130000 typical; +30000 Contract through June; −85000 rent; −5000 gym
+	// 130000 forecast; +30000 Contract through June; −85000 rent; −5000 gym
 	// through May; −40000 Goal.
 	assertHeadroom(t, a.headroom(t), []headroomMonth{
 		{Month: "2026-04", HeadroomCents: 30000, RunningCents: 35000},
