@@ -6,11 +6,11 @@
 
 **Status:** ready-for-agent
 
-- [ ] Fallback 33% applied to a month's Contract share plus its freelance Extra forecast, through the Headroom report with the fixed clock
-- [ ] The start reserves 33% of last month's Freelance Incomes, Contract Incomes included
-- [ ] A completed tax year's ratio replaces the fallback and the source reads `history`; last year and this year are ignored; several years give their median
-- [ ] Salary (and any non-Freelance Income) is never reserved against
-- [ ] Taxes Expenses are left out of the medians and of the start while the reserve applies
-- [ ] The Goal buffer applies after the reserve
-- [ ] Switch off → every figure identical to the current results
-- [ ] The "accantonato per tasse" line shows only when the reserve applies; type-check passes
+- [x] Fallback 33% applied to a month's Contract share plus its freelance Extra forecast, through the Headroom report with the fixed clock
+- [x] The start reserves 33% of last month's Freelance Incomes, Contract Incomes included
+- [x] A completed tax year's ratio replaces the fallback and the source reads `history`; last year and this year are ignored; several years give their median
+- [x] Salary (and any non-Freelance Income) is never reserved against
+- [x] Taxes Expenses are left out of the medians and of the start while the reserve applies
+- [x] The Goal buffer applies after the reserve
+- [x] Switch off → every figure identical to the current results
+- [x] The "accantonato per tasse" line shows only when the reserve applies; type-check passes

@@ -572,49 +572,12 @@ func handleTaxSummary(db *sql.DB, now func() time.Time) http.HandlerFunc {
 
 		s := taxSummary{Year: year}
 
-		// The ADR-0003 filter, said out loud for the reason the month report
-		// says it: an invoice sent is not income received, and this is the
-		// number the household compares against its invoicing software.
-		//
-		// Freelance is resolved by the Base category's code and never by name
-		// — the household can hide that Category but not rename it, and the
-		// report must not depend on the second half of that being true. Only
-		// freelance: employment income arrives already taxed and a gift is not
-		// income, so counting either makes the percentage meaningless.
-		if err := db.QueryRow(`SELECT COALESCE(SUM(i.amount_cents), 0) FROM income i
-			JOIN category c ON c.id = i.category_id AND c.code = ?
-			WHERE i.payment_date IS NOT NULL AND substr(i.payment_date, 1, 4) = ?`,
-			codeFreelance, year).Scan(&s.ReceivedCents); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-
-		// And the half that is not cash: tax_year, not occurred_on. The
-		// Category is the join and the Tax year is the filter, because both
-		// have to hold — ADR-0008's Y is "Expenses in the taxes base Category,
-		// attributed by Tax year".
-		//
-		// The COALESCE is what makes a generated tax payment count. A Tax year
-		// is an override of a default rather than a fact only a form can
-		// supply: checkExpense stores that default on anything typed, and
-		// materialise — which copies template fields and knows nothing about
-		// tax — leaves NULL. Applying the same default here rather than at
-		// generation covers the rows already generated on the Pi as well as
-		// the ones still to come, and there is then exactly one rule: a tax
-		// Expense that says nothing belongs to the year it was paid in.
-		//
-		// Both sides are integers so the comparison needs no affinity to be
-		// applied to it: the column is INTEGER, the substring is CAST, and the
-		// year is bound as a number rather than as the text it arrived as.
 		yearNumber, err := strconv.Atoi(year)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		if err := db.QueryRow(`SELECT COALESCE(SUM(e.amount_cents), 0) FROM expense e
-			JOIN category c ON c.id = e.category_id AND c.code = ?
-			WHERE COALESCE(e.tax_year, CAST(substr(e.occurred_on, 1, 4) AS INTEGER)) = ?`,
-			codeTaxes, yearNumber).Scan(&s.TaxPaidCents); err != nil {
+		if s.ReceivedCents, s.TaxPaidCents, err = taxYearFigures(db, yearNumber); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -626,6 +589,50 @@ func handleTaxSummary(db *sql.DB, now func() time.Time) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, s)
 	}
+}
+
+// taxYearFigures is a Tax year's two halves: freelance Income received during
+// it, and tax paid for it. The Tax reserve's rate (cmd/taxreserve.go) is the
+// same two figures, so both read them from here.
+func taxYearFigures(db *sql.DB, year int) (receivedCents, taxPaidCents int64, err error) {
+	// The ADR-0003 filter, said out loud for the reason the month report
+	// says it: an invoice sent is not income received, and this is the
+	// number the household compares against its invoicing software.
+	//
+	// Freelance is resolved by the Base category's code and never by name
+	// — the household can hide that Category but not rename it, and the
+	// report must not depend on the second half of that being true. Only
+	// freelance: employment income arrives already taxed and a gift is not
+	// income, so counting either makes the percentage meaningless.
+	if err = db.QueryRow(`SELECT COALESCE(SUM(i.amount_cents), 0) FROM income i
+		JOIN category c ON c.id = i.category_id AND c.code = ?
+		WHERE i.payment_date IS NOT NULL AND substr(i.payment_date, 1, 4) = ?`,
+		codeFreelance, strconv.Itoa(year)).Scan(&receivedCents); err != nil {
+		return 0, 0, err
+	}
+
+	// And the half that is not cash: tax_year, not occurred_on. The
+	// Category is the join and the Tax year is the filter, because both
+	// have to hold — ADR-0008's Y is "Expenses in the taxes base Category,
+	// attributed by Tax year".
+	//
+	// The COALESCE is what makes a generated tax payment count. A Tax year
+	// is an override of a default rather than a fact only a form can
+	// supply: checkExpense stores that default on anything typed, and
+	// materialise — which copies template fields and knows nothing about
+	// tax — leaves NULL. Applying the same default here rather than at
+	// generation covers the rows already generated on the Pi as well as
+	// the ones still to come, and there is then exactly one rule: a tax
+	// Expense that says nothing belongs to the year it was paid in.
+	//
+	// Both sides are integers so the comparison needs no affinity to be
+	// applied to it: the column is INTEGER, the substring is CAST, and the
+	// year is bound as a number.
+	err = db.QueryRow(`SELECT COALESCE(SUM(e.amount_cents), 0) FROM expense e
+		JOIN category c ON c.id = e.category_id AND c.code = ?
+		WHERE COALESCE(e.tax_year, CAST(substr(e.occurred_on, 1, 4) AS INTEGER)) = ?`,
+		codeTaxes, year).Scan(&taxPaidCents)
+	return receivedCents, taxPaidCents, err
 }
 
 // monthsOf is the twelve months of a year, January first. Built by

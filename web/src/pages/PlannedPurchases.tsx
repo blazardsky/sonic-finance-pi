@@ -223,6 +223,16 @@ export function PlannedPurchases({
                     <p className="text-xs text-muted-foreground">
                       {monthLabel(nextMonth.month)}
                     </p>
+                    {/* Only with someone self-employed: what the month's
+                        freelance money leaves aside for tax. */}
+                    {headroom.tax_reserve_source !== "" && (
+                      <p className="text-xs text-muted-foreground">
+                        {t.taxReserveLine}{" "}
+                        <span className="font-medium text-foreground tabular-nums">
+                          € {formatCents(nextMonth.tax_reserve_cents)}
+                        </span>
+                      </p>
+                    )}
                   </CardContent>
                 </Card>
                 <Card>

@@ -51,6 +51,11 @@ type headroomMonth struct {
 	ForecastSpendingCents int64 `json:"forecast_spending_cents"`
 	ContractCents         int64 `json:"contract_cents"`
 	RecurringCents        int64 `json:"recurring_cents"`
+	// The Tax reserve (CONTEXT.md) and what it was taken on: the month's
+	// Freelance Incomes without a Contract, forecast like Income. Both 0 with
+	// nobody self-employed.
+	TaxReserveCents        int64 `json:"tax_reserve_cents"`
+	FreelanceForecastCents int64 `json:"freelance_forecast_cents"`
 }
 
 // headroomReport is the rest of the year (horizonMonths), starting next
@@ -67,7 +72,14 @@ type headroomReport struct {
 	StartCents int64 `json:"start_cents"`
 	// StartMonth is which month StartCents is, so the screen can name it.
 	StartMonth string `json:"start_month"`
-	GoalCents  int64 `json:"goal_cents"`
+	GoalCents  int64  `json:"goal_cents"`
+	// The Tax reserve taken on last month's freelance Income, the rate used
+	// (as a percentage) and where it came from: "history" (completed Tax
+	// years) or "fallback" (the household's own percentage). 0, 0 and "" with
+	// nobody self-employed.
+	StartTaxReserveCents int64   `json:"start_tax_reserve_cents"`
+	TaxReservePercent    float64 `json:"tax_reserve_percent"`
+	TaxReserveSource     string  `json:"tax_reserve_source"`
 }
 
 // placement is where one Planned purchase lands: Month is the first month it
@@ -157,9 +169,12 @@ func place(months []headroomMonth, list []plannedPurchase, savingsCents int64) [
 // computeHeadroom forecasts each horizon month M as
 //
 //	leftover = Income(M) + Contract share(M) − spending(M) − Recurring due(M)
+//	           − Tax reserve(M)
 //	Headroom = goalBuffer(leftover, Goal)
 //
-// and accumulates from lastMonthHeadroom. Income(M) and spending(M) are
+// and accumulates from last month's actual leftover, taken the same way.
+// The Tax reserve applies only with someone self-employed (cmd/taxreserve.go).
+// Income(M) and spending(M) are
 // seasonal: last year's M−1, M and M+1, blended with this year's completed
 // months as they are recorded (seasonalCents). Income leaves out Contract
 // Incomes (the shares stand in for those) and investment sales; spending
@@ -178,29 +193,30 @@ func computeHeadroom(db *sql.DB, now func() time.Time) (headroomReport, error) {
 	// month before the first Expense is not a real zero and is left out, the
 	// same rule Budget uses.
 	cache := map[string]moneyTotals{}
-	collect := func(months []string) (incomes, spending []int64, err error) {
+	collect := func(months []string) ([]moneyTotals, error) {
+		var out []moneyTotals
 		for _, m := range months {
 			if m < firstMonth {
 				continue
 			}
 			t, ok := cache[m]
 			if !ok {
+				var err error
 				if t, err = monthMoney(db, m, true); err != nil {
-					return nil, nil, err
+					return nil, err
 				}
 				cache[m] = t
 			}
-			incomes = append(incomes, t.incomeCents)
-			spending = append(spending, t.spendingCents)
+			out = append(out, t)
 		}
-		return incomes, spending, nil
+		return out, nil
 	}
 
-	trailingIn, trailingOut, err := collect(trailingCompletedMonths(now, budgetTrailingMonths))
-	if err != nil || len(trailingIn) < budgetMinHistoryMonths {
+	trailing, err := collect(trailingCompletedMonths(now, budgetTrailingMonths))
+	if err != nil || len(trailing) < budgetMinHistoryMonths {
 		return report, err
 	}
-	yearIn, yearOut, err := collect(completedMonthsThisYear(now))
+	year, err := collect(completedMonthsThisYear(now))
 	if err != nil {
 		return report, err
 	}
@@ -213,46 +229,104 @@ func computeHeadroom(db *sql.DB, now func() time.Time) (headroomReport, error) {
 		return report, err
 	}
 	report.GoalCents = goalCents
+
+	// The Tax reserve applies only with someone self-employed; switched off,
+	// every figure is what it was before the reserve existed.
+	w, err := readWorkers(db)
+	if err != nil {
+		return report, err
+	}
+	reserve := w.SelfEmployed
+	var rate int64
+	if reserve {
+		if rate, report.TaxReserveSource, err = taxReserveRate(db, now, firstMonth, w.TaxReserveFallbackPercent); err != nil {
+			return report, err
+		}
+		report.TaxReservePercent = float64(rate) / 100
+	}
+	income := func(t moneyTotals) int64 { return t.incomeCents }
+	freelance := func(t moneyTotals) int64 { return t.freelanceCents }
+	// While the reserve applies, tax payments leave spending: the reserve
+	// already sets that money aside month by month, and counting both would
+	// count the tax twice.
+	spending := func(t moneyTotals) int64 {
+		if reserve {
+			return t.spendingCents - t.taxCents
+		}
+		return t.spendingCents
+	}
+	forecast := func(season []moneyTotals, f func(moneyTotals) int64) int64 {
+		return seasonalCents(pick(season, f), pick(year, f), pick(trailing, f), n)
+	}
+
 	horizon := horizonMonths(now)
 	shares, err := contractShares(db, now, horizon)
 	if err != nil {
 		return report, err
 	}
+	// Last month's actual leftover, its Recurring expenses generated first so
+	// a rent no screen happened to read yet still counts.
 	report.StartMonth = trailingCompletedMonths(now, 1)[0]
-	report.StartCents, err = lastMonthHeadroom(db, now, goalCents)
+	if err := materialise(db, now, report.StartMonth); err != nil {
+		return report, err
+	}
+	last, err := monthMoney(db, report.StartMonth, false)
 	if err != nil {
 		return report, err
 	}
+	if reserve {
+		report.StartTaxReserveCents = reserveCents(last.freelanceCents, rate)
+	}
+	report.StartCents = goalBuffer(last.incomeCents-spending(last)-report.StartTaxReserveCents, goalCents)
 
 	running := report.StartCents
 	for _, month := range horizon {
-		seasonIn, seasonOut, err := collect(yearAgoWindow(month))
+		season, err := collect(yearAgoWindow(month))
 		if err != nil {
 			return report, err
 		}
-		income := seasonalCents(seasonIn, yearIn, trailingIn, n)
-		spending := seasonalCents(seasonOut, yearOut, trailingOut, n)
-		var recurring int64
-		if err := db.QueryRow(`SELECT COALESCE(SUM(amount_cents), 0) FROM recurring_expense
-			WHERE start_month <= ? AND (end_month IS NULL OR end_month >= ?)`, month, month).Scan(&recurring); err != nil {
+		m := headroomMonth{
+			Month:                 month,
+			ForecastIncomeCents:   forecast(season, income),
+			ForecastSpendingCents: forecast(season, spending),
+			ContractCents:         shares[month],
+		}
+		if m.RecurringCents, err = recurringDue(db, month, reserve); err != nil {
 			return report, err
 		}
-		headroom := goalBuffer(income+shares[month]-spending-recurring, goalCents)
-		running += headroom
-		report.Months = append(report.Months, headroomMonth{
-			Month: month, HeadroomCents: headroom, RunningCents: running,
-			ForecastIncomeCents: income, ForecastSpendingCents: spending,
-			ContractCents: shares[month], RecurringCents: recurring,
-		})
+		if reserve {
+			m.FreelanceForecastCents = forecast(season, freelance)
+			m.TaxReserveCents = reserveCents(m.ContractCents+m.FreelanceForecastCents, rate)
+		}
+		m.HeadroomCents = goalBuffer(m.ForecastIncomeCents+m.ContractCents-m.ForecastSpendingCents-m.RecurringCents-m.TaxReserveCents, goalCents)
+		running += m.HeadroomCents
+		m.RunningCents = running
+		report.Months = append(report.Months, m)
 	}
 	report.Available = true
 	return report, nil
 }
 
-// moneyTotals is one past month's Income and spending, as monthMoney reads
-// them.
-type moneyTotals struct {
-	incomeCents, spendingCents int64
+// pick is one figure of each month's totals.
+func pick(ts []moneyTotals, f func(moneyTotals) int64) []int64 {
+	out := make([]int64, len(ts))
+	for i, t := range ts {
+		out[i] = f(t)
+	}
+	return out
+}
+
+// recurringDue is what the Recurring expenses running in month add up to.
+// While the Tax reserve applies, a Recurring expense in the Taxes category —
+// an instalment plan — is left out: the reserve already stands in for it.
+func recurringDue(db *sql.DB, month string, withoutTaxes bool) (int64, error) {
+	var cents int64
+	err := db.QueryRow(`SELECT COALESCE(SUM(r.amount_cents), 0) FROM recurring_expense r
+		JOIN category c ON c.id = r.category_id
+		WHERE r.start_month <= ? AND (r.end_month IS NULL OR r.end_month >= ?)
+		AND NOT (? AND IFNULL(c.code, '') = ?)`,
+		month, month, withoutTaxes, codeTaxes).Scan(&cents)
+	return cents, err
 }
 
 // seasonalCents is one forecast figure: last year's season (season) weighing
@@ -290,21 +364,12 @@ func completedMonthsThisYear(now func() time.Time) []string {
 	return trailingCompletedMonths(now, int(now().Month())-1)
 }
 
-// lastMonthHeadroom is the last completed month's actual leftover through the
-// Goal buffer: every Income received in it — Contract Incomes included, they
-// arrived — except investment sales, minus every Expense, Recurring and
-// Investments alike. The month's Recurring expenses are generated first, so a
-// rent no screen happened to read yet still counts.
-func lastMonthHeadroom(db *sql.DB, now func() time.Time, goalCents int64) (int64, error) {
-	month := trailingCompletedMonths(now, 1)[0]
-	if err := materialise(db, now, month); err != nil {
-		return 0, err
-	}
-	t, err := monthMoney(db, month, false)
-	if err != nil {
-		return 0, err
-	}
-	return goalBuffer(t.incomeCents-t.spendingCents, goalCents), nil
+// moneyTotals is one past month's Income and spending, as monthMoney reads
+// them, with the two parts the Tax reserve needs singled out: the freelance
+// Income within incomeCents, and the tax payments within spendingCents.
+type moneyTotals struct {
+	incomeCents, spendingCents int64
+	freelanceCents, taxCents   int64
 }
 
 // monthMoney is one month's received Income (investment sales never count)
@@ -313,20 +378,23 @@ func lastMonthHeadroom(db *sql.DB, now func() time.Time, goalCents int64) (int64
 // back month by month as Contract shares and Recurring due; for last month's
 // actual leftover they count, because that money really moved.
 func monthMoney(db *sql.DB, month string, forecast bool) (moneyTotals, error) {
-	incomeQuery := `SELECT COALESCE(SUM(i.amount_cents), 0) FROM income i
-		JOIN category c ON c.id = i.category_id
+	incomeQuery := `SELECT COALESCE(SUM(i.amount_cents), 0),
+		COALESCE(SUM(CASE WHEN c.code = ? THEN i.amount_cents END), 0)
+		FROM income i JOIN category c ON c.id = i.category_id
 		WHERE substr(i.payment_date, 1, 7) = ? AND IFNULL(c.code, '') != ?`
-	expenseQuery := `SELECT COALESCE(SUM(amount_cents), 0) FROM expense
-		WHERE substr(occurred_on, 1, 7) = ?`
+	expenseQuery := `SELECT COALESCE(SUM(e.amount_cents), 0),
+		COALESCE(SUM(CASE WHEN c.code = ? THEN e.amount_cents END), 0)
+		FROM expense e JOIN category c ON c.id = e.category_id
+		WHERE substr(e.occurred_on, 1, 7) = ?`
 	if forecast {
 		incomeQuery += ` AND i.contract_id IS NULL`
-		expenseQuery += ` AND recurring_id IS NULL`
+		expenseQuery += ` AND e.recurring_id IS NULL`
 	}
 	var t moneyTotals
-	if err := db.QueryRow(incomeQuery, month, codeInvestments).Scan(&t.incomeCents); err != nil {
+	if err := db.QueryRow(incomeQuery, codeFreelance, month, codeInvestments).Scan(&t.incomeCents, &t.freelanceCents); err != nil {
 		return t, err
 	}
-	err := db.QueryRow(expenseQuery, month).Scan(&t.spendingCents)
+	err := db.QueryRow(expenseQuery, codeTaxes, month).Scan(&t.spendingCents, &t.taxCents)
 	return t, err
 }
 

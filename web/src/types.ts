@@ -659,11 +659,15 @@ export type HeadroomMonth = {
   forecast_spending_cents: number
   contract_cents: number
   recurring_cents: number
+  // The Tax reserve and the freelance forecast it was taken on (0 with
+  // nobody self-employed).
+  tax_reserve_cents: number
+  freelance_forecast_cents: number
 }
 
 // Where one Planned purchase lands: month is "" when it fits in none of the
-// 6 months — then missing_cents is the gap and savings_cover says whether
-// current Savings cover it.
+// horizon's months — then missing_cents is the gap and savings_cover says
+// whether current Savings cover it.
 export type Placement = {
   planned_id: number
   month: string
@@ -680,4 +684,9 @@ export type HeadroomReport = {
   start_cents: number
   start_month: string
   goal_cents: number
+  // The Tax reserve on last month's freelance Income, the rate used and
+  // where it came from ("" with nobody self-employed).
+  start_tax_reserve_cents: number
+  tax_reserve_percent: number
+  tax_reserve_source: "" | "history" | "fallback"
 }
