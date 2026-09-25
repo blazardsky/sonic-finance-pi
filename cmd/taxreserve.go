@@ -43,13 +43,18 @@ func taxReserveRate(db *sql.DB, now func() time.Time, firstMonth string, fallbac
 	if err != nil {
 		return 0, "", err
 	}
-	var ratios []int64
-	for y := first; y <= now().Year()-2; y++ {
-		for _, month := range append(monthsOf(strconv.Itoa(y)), monthsOf(strconv.Itoa(y+1))...) {
+	last := now().Year() - 2
+	// Every month from the first completed Tax year to the end of the year
+	// its tax is paid in, each generated once.
+	for y := first; y <= last+1; y++ {
+		for _, month := range monthsOf(strconv.Itoa(y)) {
 			if err := materialise(db, now, month); err != nil {
 				return 0, "", err
 			}
 		}
+	}
+	var ratios []int64
+	for y := first; y <= last; y++ {
 		received, paid, err := taxYearFigures(db, y)
 		if err != nil {
 			return 0, "", err
@@ -61,6 +66,8 @@ func taxReserveRate(db *sql.DB, now func() time.Time, firstMonth string, fallbac
 	if len(ratios) == 0 {
 		return fallbackPercent * 100, taxReserveFromFallback, nil
 	}
+	// medianCents is a plain median of int64s; basis points are as good as
+	// cents to it.
 	return medianCents(ratios), taxReserveFromHistory, nil
 }
 

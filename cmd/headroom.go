@@ -9,7 +9,7 @@ import (
 const headroomPath = "/api/reports/headroom"
 
 // headroomHorizonMonths is the most months ahead Planned purchases are placed.
-// Short on purpose: something that doesn't fit in six months is not a
+// Short on purpose: something that doesn't fit within the horizon is not a
 // short-term purchase but a matter for Savings or a loan (spec's
 // Implementation Decisions).
 const headroomHorizonMonths = 6
@@ -174,9 +174,8 @@ func place(months []headroomMonth, list []plannedPurchase, savingsCents int64) [
 //
 // and accumulates from last month's actual leftover, taken the same way.
 // The Tax reserve applies only with someone self-employed (cmd/taxreserve.go).
-// Income(M) and spending(M) are
-// seasonal: last year's M−1, M and M+1, blended with this year's completed
-// months as they are recorded (seasonalCents). Income leaves out Contract
+// Income(M) and spending(M) are seasonal: last year's M−1, M and M+1, blended
+// with this year's completed months as they are recorded (seasonalCents). Income leaves out Contract
 // Incomes (the shares stand in for those) and investment sales; spending
 // leaves out Recurring-generated Expenses (the Recurring due stand in for
 // those) and keeps Investments — money that leaves for a PAC is money the
@@ -243,6 +242,12 @@ func computeHeadroom(db *sql.DB, now func() time.Time) (headroomReport, error) {
 			return report, err
 		}
 		report.TaxReservePercent = float64(rate) / 100
+		// A 0% rate reserves nothing, so taking tax payments out of spending
+		// would make them vanish from the forecast: treat it as no reserve.
+		if rate == 0 {
+			reserve = false
+			report.TaxReserveSource = ""
+		}
 	}
 	income := func(t moneyTotals) int64 { return t.incomeCents }
 	freelance := func(t moneyTotals) int64 { return t.freelanceCents }

@@ -646,9 +646,9 @@ export type ExpensePrefill = {
 }
 
 // Headroom (CONTEXT.md): one future month's projected leftover once its
-// Expenses and Goal are set aside, and the running total through it. The next
-// 6 months from next month; unavailable (no months) with under 3 months of
-// history.
+// Expenses and Goal are set aside, and the running total through it. The rest
+// of the year from next month (1 to 6 months); unavailable (no months) with
+// under 3 months of history.
 export type HeadroomMonth = {
   month: string
   headroom_cents: number

@@ -64,6 +64,11 @@ func (w *workers) tidy() error {
 		return errors.New("tax_reserve_fallback_percent must be between 0 and 100")
 	}
 	for _, months := range []*[]int{&w.TaxMonths, &w.BonusMonths} {
+		if *months == nil {
+			// A body sending null means "none"; answering null would leave the
+			// screen with no list to look months up in.
+			*months = []int{}
+		}
 		for _, m := range *months {
 			if m < 1 || m > 12 {
 				return errors.New("months must be between 1 and 12")

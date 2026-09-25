@@ -122,3 +122,59 @@ func TestTaxReserveRateFromCompletedTaxYears(t *testing.T) {
 		t.Errorf("rate = %v%% from %q, want 30%% from history", got.TaxReservePercent, got.TaxReserveSource)
 	}
 }
+
+// While the reserve applies, tax payments leave last month's actual leftover
+// and Tasse Recurring expenses leave the Recurring due: a €400 tax payment in
+// February and a €100 Tasse Recurring expense. Off, both count: start
+// 130000 - (20000 + 40000) = 70000, April's Recurring 10000. On: start
+// 130000 - 20000 - 9900 reserve = 100100, April's Recurring 0.
+func TestTaxReserveLeavesTaxesOutOfTheStartAndRecurring(t *testing.T) {
+	a := taxReserveHousehold(t)
+	tasse := a.category(t, seedTaxesName)
+	a.addExpense(t, map[string]any{"occurred_on": "2026-02-16", "amount_cents": 40000, "category_id": tasse.ID, "tax_year": 2025})
+	a.addRecurring(t, map[string]any{"amount_cents": 10000, "category_id": tasse.ID, "day_of_month": 16})
+
+	off := a.headroom(t)
+	if off.StartCents != 70000 || off.Months[0].RecurringCents != 10000 {
+		t.Errorf("off: start %d, April recurring %d, want 70000 and 10000", off.StartCents, off.Months[0].RecurringCents)
+	}
+	a.setSelfEmployed(t, true)
+	on := a.headroom(t)
+	if on.StartCents != 100100 || on.Months[0].RecurringCents != 0 {
+		t.Errorf("on: start %d, April recurring %d, want 100100 and 0", on.StartCents, on.Months[0].RecurringCents)
+	}
+}
+
+// A completed year with Income but no tax on record is more likely
+// unrecorded than tax-free, so it doesn't count; neither does this year,
+// whose tax is paid next year. Nothing counts, so the fallback.
+func TestTaxReserveIgnoresYearsWithoutTaxAndThisYear(t *testing.T) {
+	a := taxReserveHousehold(t)
+	a.setSelfEmployed(t, true)
+	tasse := a.category(t, seedTaxesName)
+	freelance := a.freelance(t)
+	client := a.createClient(t, "Beta")
+	a.addIncome(t, map[string]any{
+		"amount_cents": 100000, "category_id": freelance.ID, "client_id": client.ID,
+		"payment_date": "2024-05-10", "bollo_fattura": false,
+	})
+	a.addExpense(t, map[string]any{"occurred_on": "2026-03-02", "amount_cents": 90000, "category_id": tasse.ID, "tax_year": 2026})
+
+	if got := a.headroom(t); got.TaxReserveSource != "fallback" || got.TaxReservePercent != 33 {
+		t.Errorf("rate = %v%% from %q, want 33%% from fallback", got.TaxReservePercent, got.TaxReserveSource)
+	}
+}
+
+// A 0% rate reserves nothing, so tax payments must stay in spending rather
+// than vanish: exactly the switched-off forecast.
+func TestTaxReserveAtZeroPercentIsNoReserve(t *testing.T) {
+	a := taxReserveHousehold(t)
+	if res := a.put(t, settingsPath, map[string]any{"self_employed": true, "tax_reserve_fallback_percent": 0}, nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("PUT = %d, want 200", res.StatusCode)
+	}
+	got := a.headroom(t)
+	if got.TaxReserveSource != "" || got.Months[0].ForecastSpendingCents != 45000 || got.Months[0].HeadroomCents != 105000 {
+		t.Errorf("source %q, April spending %d, headroom %d, want empty, 45000 and 105000",
+			got.TaxReserveSource, got.Months[0].ForecastSpendingCents, got.Months[0].HeadroomCents)
+	}
+}
