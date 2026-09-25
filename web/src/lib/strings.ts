@@ -396,6 +396,10 @@ export const t = {
     months === 1 ? "Margine in 1 mese" : `Margine in ${months} mesi`,
   headroomIncludesStart: (month: string) => `incluso ${month}:`,
   taxReserveLine: "accantonato per tasse:",
+  taxMonthReminder: (month: string) =>
+    `A ${month} si pagano le tasse: sono già accantonate mese per mese.`,
+  bonusMonthReminder: (month: string) =>
+    `A ${month} arriva la mensilità aggiuntiva: non è inclusa nella previsione.`,
   headroomUnavailable:
     "Servono almeno 3 mesi di storico per la proiezione. Puoi comunque salvare gli acquisti.",
   plannedWhen: "Quando",

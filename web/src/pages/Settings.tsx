@@ -513,7 +513,9 @@ function MonthToggles({
               key={month}
               variant="outline"
               size="sm"
-              className="capitalize"
+              // A chosen month has to read as chosen at a glance; the stock
+              // pressed state (bg-muted) is too close to the unpressed one.
+              className="capitalize data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:hover:bg-primary/90"
               pressed={months.includes(month)}
               onPressedChange={(on) =>
                 onChange(

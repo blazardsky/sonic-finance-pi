@@ -6,9 +6,9 @@
 
 **Status:** ready-for-agent
 
-- [ ] A tax month within the horizon shows its reminder only with the self-employed switch on
-- [ ] A bonus month within the horizon shows its reminder only with the extra-paycheck switch on
-- [ ] Marked months outside the horizon show nothing; no Alert at all when there is nothing to say
-- [ ] Texts exactly as above
-- [ ] Every figure on the page is unchanged by the reminders
-- [ ] Type-check passes; manual look at the card
+- [x] A tax month within the horizon shows its reminder only with the self-employed switch on
+- [x] A bonus month within the horizon shows its reminder only with the extra-paycheck switch on
+- [x] Marked months outside the horizon show nothing; no Alert at all when there is nothing to say
+- [x] Texts exactly as above
+- [x] Every figure on the page is unchanged by the reminders
+- [x] Type-check passes; manual look at the card

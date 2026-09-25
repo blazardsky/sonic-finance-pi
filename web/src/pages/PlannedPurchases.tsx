@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useState } from "react"
+import { format } from "date-fns"
+import { it } from "date-fns/locale"
 import {
   RiArrowDownLine,
   RiArrowUpLine,
   RiDeleteBinLine,
   RiEditLine,
+  RiInformationLine,
   RiMoreLine,
   RiShoppingBagLine,
 } from "@remixicon/react"
 
 import { ColorDot } from "@/components/ColorDot"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { FormSidebar } from "@/components/form-sidebar"
 import { Button } from "@/components/ui/button"
@@ -48,6 +52,7 @@ import { toast } from "@/lib/toast"
 import type {
   Category,
   HeadroomReport,
+  Lists,
   Placement,
   PlannedPurchase,
 } from "@/types"
@@ -83,6 +88,7 @@ export function PlannedPurchases({
   const [planned, setPlanned] = useState<PlannedPurchase[] | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
   const [headroom, setHeadroom] = useState<HeadroomReport | null>(null)
+  const [settings, setSettings] = useState<Lists | null>(null)
   const [draft, setDraft] = useState(blankDraft)
   const [editing, setEditing] = useState<number | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -97,11 +103,13 @@ export function PlannedPurchases({
         apiJSON<PlannedPurchase[]>("/api/planned-purchases"),
         apiJSON<Category[]>("/api/categories"),
         apiJSON<HeadroomReport>("/api/reports/headroom"),
+        apiJSON<Lists>("/api/settings"),
       ])
-        .then(([p, c, h]) => {
+        .then(([p, c, h, s]) => {
           setPlanned(p)
           setCategories(c)
           setHeadroom(h)
+          setSettings(s)
         })
         .catch(() => toast(t.serverUnreachable)),
     []
@@ -189,6 +197,22 @@ export function PlannedPurchases({
   const months = headroom?.months ?? []
   const lastRunning = months.at(-1)?.running_cents ?? 0
   const nextMonth = months[0]
+  // Reminders only — no figure changes: a tax month for the self-employed
+  // (the tax is already reserved month by month) and a month with an extra
+  // paycheck (deliberately left out of the forecast), for each horizon month
+  // the household marked in "Dati lavoratori".
+  const reminders = months.flatMap(({ month }) => {
+    const [y, m] = month.split("-").map(Number)
+    const name = format(new Date(y, m - 1), "LLLL", { locale: it })
+    return [
+      settings?.self_employed && settings.tax_months.includes(m)
+        ? t.taxMonthReminder(name)
+        : null,
+      settings?.bonus_paychecks && settings.bonus_months.includes(m)
+        ? t.bonusMonthReminder(name)
+        : null,
+    ].filter((r): r is string => r !== null)
+  })
 
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
@@ -261,6 +285,16 @@ export function PlannedPurchases({
                   </CardContent>
                 </Card>
               </div>
+              {reminders.length > 0 && (
+                <Alert>
+                  <RiInformationLine />
+                  <AlertDescription>
+                    {reminders.map((r) => (
+                      <p key={r}>{r}</p>
+                    ))}
+                  </AlertDescription>
+                </Alert>
+              )}
               <p className="text-xs text-muted-foreground">
                 {t.headroomProjection}
               </p>
