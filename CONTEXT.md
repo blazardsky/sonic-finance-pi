@@ -120,6 +120,10 @@ _Avoid_: wishlist, planned expense, scheduled expense
 What a month leaves once its Expenses are paid and Goal is set aside — what Planned purchases are paid from. Goal is a buffer, not a debt: a month that leaves more than Goal keeps the difference; one that leaves less than Goal, or runs short by up to Goal, keeps nothing and loses nothing; only a shortfall beyond Goal is negative. Headroom accumulates from the last completed month's actual leftover, then adds each remaining month of the year (at least one, at most six), each forecast from Income and spending around the same months last year, blended with this year's own record as it grows, plus what active Contracts still owe and the Recurring expenses due. A deficit carries forward until later months recover it. Investments count only as money leaving, never as money to spend. A projection, never a promise, on the same terms as Estimate.
 _Avoid_: surplus, savings, available, free cash
 
+**Tax reserve**:
+The share of a month's freelance Income that Headroom sets aside for the tax that will be paid on it the following year, so it is never counted as money to spend. Only when the household has said at least one member is self-employed; salary, already net of tax, is never reserved against. The share is the household's own rate — the median, over completed Tax years, of tax paid for the year against freelance Income received in it — or a percentage the household chose, until a Tax year has completed. While it applies, tax payments themselves are left out of Headroom's spending, so tax is counted once. A projection, like the Headroom it belongs to.
+_Avoid_: tax provision, tax fund, accantonamento, withholding
+
 **Record**
 Anything that is recorded in the app (expenses, incomes, clients, categories)
 
