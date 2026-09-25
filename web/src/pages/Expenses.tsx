@@ -331,6 +331,11 @@ export function Expenses({
     savings_starting_balance_cents: 0,
     net_worth_target_cents: 0,
     spending_intent_enabled: false,
+    self_employed: false,
+    tax_reserve_fallback_percent: 33,
+    tax_months: [],
+    bonus_paychecks: false,
+    bonus_months: [],
   })
   // Captured once at mount, like openMobileOnArrival below; cleared once the
   // Planned purchase has been turned into an Expense.

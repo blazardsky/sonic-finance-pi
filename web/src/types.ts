@@ -9,10 +9,7 @@ export type Applies = "expense" | "income" | "both"
 // wise" is simply not a representable value. null (on Category, Expense and
 // Recurring expense alike) means "nothing recorded", the ordinary case.
 export type SpendingIntent =
-  | "necessity"
-  | "desire"
-  | "desire_wise"
-  | "desire_bullshit"
+  "necessity" | "desire" | "desire_wise" | "desire_bullshit"
 
 export type Category = {
   id: number
@@ -197,6 +194,15 @@ export type Lists = {
   // turning it off hides the feature's UI everywhere without touching any
   // Spending intent already recorded.
   spending_intent_enabled: boolean
+  // The "Dati lavoratori" card: whether someone in the household is
+  // self-employed (turns the Tax reserve on), the rate to reserve at until a
+  // Tax year has completed, and the months the forecast's reminders are for
+  // (1–12, sorted).
+  self_employed: boolean
+  tax_reserve_fallback_percent: number
+  tax_months: number[]
+  bonus_paychecks: boolean
+  bonus_months: number[]
 }
 
 // Budget (computed), Target and Goal (household-set) — cmd/budget.go's

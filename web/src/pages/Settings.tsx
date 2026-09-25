@@ -13,6 +13,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { Toggle } from "@/components/ui/toggle"
 import { api, apiJSON } from "@/lib/api"
 import { toCents, toTyped } from "@/lib/money"
 import { t } from "@/lib/strings"
@@ -230,6 +231,7 @@ export function Settings() {
           </CardContent>
         </Card>
 
+        <WorkersCard />
         <PasswordForm />
         <BackupLinks />
       </div>
@@ -344,5 +346,188 @@ function BackupLinks() {
         </Button>
       </CardContent>
     </Card>
+  )
+}
+
+// The "Dati lavoratori" card: its own save, sending only its own fields — the
+// settings PUT leaves everything it isn't sent as it was, so this never
+// touches the lists, Target or Goal. The fields behind a switch are hidden,
+// not cleared, while it is off: switching it back on finds them as they were.
+function WorkersCard() {
+  const [selfEmployed, setSelfEmployed] = useState(false)
+  const [percent, setPercent] = useState("33")
+  const [taxMonths, setTaxMonths] = useState<number[]>([])
+  const [bonusPaychecks, setBonusPaychecks] = useState(false)
+  const [bonusMonths, setBonusMonths] = useState<number[]>([])
+  const [message, setMessage] = useState("")
+  const [error, setError] = useState("")
+
+  const show = (l: Lists) => {
+    setSelfEmployed(l.self_employed)
+    setPercent(String(l.tax_reserve_fallback_percent))
+    setTaxMonths(l.tax_months)
+    setBonusPaychecks(l.bonus_paychecks)
+    setBonusMonths(l.bonus_months)
+  }
+
+  useEffect(() => {
+    apiJSON<Lists>("/api/settings")
+      .then(show)
+      .catch(() => setError(t.serverUnreachable))
+  }, [])
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    setMessage("")
+    setError("")
+    const value = Number(percent)
+    if (
+      percent.trim() === "" ||
+      !Number.isInteger(value) ||
+      value < 0 ||
+      value > 100
+    ) {
+      setError(t.invalidPercent)
+      return
+    }
+    try {
+      show(
+        await apiJSON<Lists>("/api/settings", {
+          method: "PUT",
+          body: JSON.stringify({
+            self_employed: selfEmployed,
+            tax_reserve_fallback_percent: value,
+            tax_months: taxMonths,
+            bonus_paychecks: bonusPaychecks,
+            bonus_months: bonusMonths,
+          }),
+        })
+      )
+      setMessage(t.workersSaved)
+    } catch (res) {
+      setError(
+        res instanceof Response ? t.workersNotSaved : t.serverUnreachable
+      )
+    }
+  }
+
+  return (
+    <Card className="w-full max-w-md">
+      <CardHeader>
+        <CardTitle>{t.workersData}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={submit} className="flex flex-col gap-4">
+          <FieldLabel htmlFor="self-employed">
+            <Field orientation="horizontal">
+              <FieldContent>
+                <FieldTitle>{t.selfEmployed}</FieldTitle>
+              </FieldContent>
+              <Switch
+                id="self-employed"
+                checked={selfEmployed}
+                onCheckedChange={setSelfEmployed}
+              />
+            </Field>
+          </FieldLabel>
+          {selfEmployed && (
+            <>
+              <Field>
+                <FieldLabel htmlFor="tax-percent">
+                  {t.taxReservePercent}
+                </FieldLabel>
+                <Input
+                  id="tax-percent"
+                  inputMode="numeric"
+                  value={percent}
+                  onChange={(e) => setPercent(e.target.value)}
+                  className="h-9"
+                />
+                <FieldDescription>{t.taxReservePercentHint}</FieldDescription>
+              </Field>
+              <MonthToggles
+                label={t.taxMonths}
+                months={taxMonths}
+                onChange={setTaxMonths}
+              />
+            </>
+          )}
+
+          <FieldLabel htmlFor="bonus-paychecks">
+            <Field orientation="horizontal">
+              <FieldContent>
+                <FieldTitle>{t.bonusPaychecks}</FieldTitle>
+              </FieldContent>
+              <Switch
+                id="bonus-paychecks"
+                checked={bonusPaychecks}
+                onCheckedChange={setBonusPaychecks}
+              />
+            </Field>
+          </FieldLabel>
+          {bonusPaychecks && (
+            <MonthToggles
+              label={t.bonusMonths}
+              months={bonusMonths}
+              onChange={setBonusMonths}
+            />
+          )}
+
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+          {message && (
+            <p role="status" className="text-sm text-muted-foreground">
+              {message}
+            </p>
+          )}
+          <Button type="submit" size="lg">
+            {t.save}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  )
+}
+
+// Twelve month buttons (1–12), pressed for the months in the set.
+function MonthToggles({
+  label,
+  months,
+  onChange,
+}: {
+  label: string
+  months: number[]
+  onChange: (months: number[]) => void
+}) {
+  return (
+    <Field>
+      <FieldTitle>{label}</FieldTitle>
+      <div className="grid grid-cols-6 gap-1">
+        {t.monthsShort.map((name, i) => {
+          const month = i + 1
+          return (
+            <Toggle
+              key={month}
+              variant="outline"
+              size="sm"
+              className="capitalize"
+              pressed={months.includes(month)}
+              onPressedChange={(on) =>
+                onChange(
+                  on
+                    ? [...months, month].sort((a, b) => a - b)
+                    : months.filter((m) => m !== month)
+                )
+              }
+            >
+              {name}
+            </Toggle>
+          )
+        })}
+      </div>
+    </Field>
   )
 }

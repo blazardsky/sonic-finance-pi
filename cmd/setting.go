@@ -136,6 +136,10 @@ type lists struct {
 	// the feature costs the other household member nothing until it is turned
 	// on, and off never touches any Spending intent already recorded.
 	SpendingIntentEnabled bool `json:"spending_intent_enabled"`
+
+	// The "Dati lavoratori" card (cmd/workers.go), flattened onto the same
+	// payload.
+	workers
 }
 
 // migrateLists is schema step 3: the seed values for both lists. Seeding
@@ -198,7 +202,10 @@ func readLists(db *sql.DB) (lists, error) {
 	if l.NetWorthTargetCents, err = getSettingCents(db, netWorthTargetCentsKey); err != nil {
 		return l, err
 	}
-	l.SpendingIntentEnabled, err = getSettingBool(db, spendingIntentEnabledKey)
+	if l.SpendingIntentEnabled, err = getSettingBool(db, spendingIntentEnabledKey); err != nil {
+		return l, err
+	}
+	l.workers, err = readWorkers(db)
 	return l, err
 }
 
@@ -235,6 +242,10 @@ func handlePutLists(db *sql.DB) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, errors.New("a list needs at least one entry"))
 			return
 		}
+		if err := l.workers.tidy(); err != nil {
+			writeInvalid(w, err)
+			return
+		}
 
 		if err := putList(db, payersKey, l.Payers); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
@@ -261,6 +272,10 @@ func handlePutLists(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		if err := putSettingBool(db, spendingIntentEnabledKey, l.SpendingIntentEnabled); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if err := putWorkers(db, l.workers); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}

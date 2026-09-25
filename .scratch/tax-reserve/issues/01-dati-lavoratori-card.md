@@ -6,9 +6,9 @@
 
 **Status:** ready-for-agent
 
-- [ ] Defaults on a fresh database: both switches off, fallback 33%, no tax months, no bonus months
-- [ ] The five values round-trip through the settings API; month sets come back sorted and without duplicates
-- [ ] A partial update with only these fields leaves the lists, Target, Goal, starting balance, Net worth target and Spending intent untouched, and the reverse
-- [ ] A month outside 1–12 or a percentage outside 0–100 is refused
-- [ ] The card shows the percentage and tax months only with the self-employed switch on, and the bonus months only with the extra-paycheck switch on; turning a switch off keeps what was entered
-- [ ] Type-check passes; manual look at the card
+- [x] Defaults on a fresh database: both switches off, fallback 33%, no tax months, no bonus months
+- [x] The five values round-trip through the settings API; month sets come back sorted and without duplicates
+- [x] A partial update with only these fields leaves the lists, Target, Goal, starting balance, Net worth target and Spending intent untouched, and the reverse
+- [x] A month outside 1–12 or a percentage outside 0–100 is refused
+- [x] The card shows the percentage and tax months only with the self-employed switch on, and the bonus months only with the extra-paycheck switch on; turning a switch off keeps what was entered
+- [x] Type-check passes; manual look at the card

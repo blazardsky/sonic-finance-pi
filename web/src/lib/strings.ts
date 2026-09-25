@@ -647,6 +647,20 @@ export const t = {
   // it is explicitly a seed, not the classification itself.
   spendingIntentDefault: "Intento di spesa predefinito",
 
+  // "Dati lavoratori" (.scratch/tax-reserve): who in the household works how,
+  // which is what the Tax reserve and the forecast's reminders read.
+  workersData: "Dati lavoratori",
+  selfEmployed: "C'è almeno un lavoratore autonomo in famiglia",
+  taxReservePercent: "Percentuale per le tasse",
+  taxReservePercentHint:
+    "Usata finché non c'è un anno fiscale completo da cui calcolarla.",
+  taxMonths: "Mesi in cui si pagano le tasse",
+  bonusPaychecks: "Mensilità aggiuntive",
+  bonusMonths: "Mesi con mensilità aggiuntiva",
+  invalidPercent: "Percentuale non valida: da 0 a 100.",
+  workersSaved: "Dati lavoratori salvati.",
+  workersNotSaved: "Dati lavoratori non salvati. Riprova.",
+
   changePassword: "Cambia password",
   currentPassword: "Password attuale",
   newPassword: "Nuova password",
