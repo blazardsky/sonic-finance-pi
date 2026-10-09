@@ -46,7 +46,16 @@ function AutocompleteContent({
         sideOffset={sideOffset}
         align={align}
         alignOffset={alignOffset}
-        className="isolate z-50"
+        // Same cross-library fix as ComboboxContent's Positioner: this is a
+        // @base-ui/react portal opened from inside a radix-ui Sheet (the
+        // mobile form panel), and Radix's Dialog sets pointer-events: none on
+        // <body> while open, re-enabling auto only on its own Content — a
+        // sibling of this Positioner, not an ancestor. Without
+        // pointer-events-auto the suggestions inherit none, so a tap falls
+        // through to whatever is underneath (another field's label, the
+        // backdrop) and closes or opens that instead. z-[100] guards stacking
+        // order against the Sheet's own z-50 for the same reason.
+        className="isolate z-[100] pointer-events-auto"
       >
         <AutocompletePrimitive.Popup
           data-slot="autocomplete-content"
