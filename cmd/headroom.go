@@ -314,7 +314,7 @@ func monthMoney(db *sql.DB, month string, forecast bool) (moneyTotals, error) {
 		JOIN category c ON c.id = i.category_id
 		WHERE substr(i.payment_date, 1, 7) = ? AND IFNULL(c.code, '') != ?`
 	expenseQuery := `SELECT COALESCE(SUM(amount_cents), 0) FROM expense
-		WHERE substr(occurred_on, 1, 7) = ?`
+		WHERE substr(occurred_on, 1, 7) = ? AND refunded = 0`
 	if forecast {
 		incomeQuery += ` AND i.contract_id IS NULL`
 		expenseQuery += ` AND recurring_id IS NULL`

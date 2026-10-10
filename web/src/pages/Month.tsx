@@ -148,6 +148,13 @@ export function Month() {
                 <Figure label={t.expenses} cents={totals.expense_cents} />
                 <Figure label={t.difference} cents={totals.net_cents} />
               </dl>
+              {/* ADR-0017: still part of the expense total — the money left —
+                  named so the gap against Budget is legible. */}
+              {totals.refunded_cents > 0 && (
+                <p className="mt-3 text-sm text-muted-foreground">
+                  {t.refundedAmount(formatCents(totals.refunded_cents))}
+                </p>
+              )}
             </CardContent>
           </Card>
         )}

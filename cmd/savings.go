@@ -170,7 +170,7 @@ func computeSavingsCents(db *sql.DB, cutoff string) (savingsCents, startingBalan
 	incomeArgs := []any{codeInvestments}
 	expenseQuery := `SELECT COALESCE(SUM(e.amount_cents), 0) FROM expense e
 		JOIN category c ON c.id = e.category_id
-		WHERE IFNULL(c.code, '') != ?`
+		WHERE IFNULL(c.code, '') != ? AND e.refunded = 0`
 	expenseArgs := []any{codeInvestments}
 	if cutoff != "" {
 		incomeQuery += ` AND i.payment_date <= ?`

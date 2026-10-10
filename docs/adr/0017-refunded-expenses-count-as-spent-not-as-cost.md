@@ -1,0 +1,13 @@
+# Refunded expenses count as spent but not as a cost
+
+Some expenses are paid by the household and then repaid by someone outside it — a flight a relative settles, a purchase a friend pays back — often at a time the household cannot predict, a day or a year later. We record this as a single boolean on the Expense, `refunded`, set when it is bought and meaning "expected to be repaid". It is an expectation, not a receipt: there is no second state for "the money came back", no refund date, no amount, and no field naming who repays it. The household still spent the money; it just does not expect to be out it.
+
+The flag does not change the stored amount (ADR-0002). What it changes is which figures count it. It stays in every figure that answers "what did the household spend" — the month total, the Category and daily breakdowns, recent entries, the Tracker and the CSV export — because the money genuinely left on that date. It is left out of Budget, Estimate, Savings, Headroom and the year's spending total, which describe what the household normally spends or keeps rather than what crossed its account this month. A refunded expense is therefore counted in some totals and not others on purpose, and the month and year screens surface the excluded amount as a separate "refunded" line so no screen silently disagrees with another.
+
+## Considered Options
+
+Keeping the flag purely informational, like an Item's `discounted` (ADR-0014), was rejected: a reimbursed €500 flight did not cost the household €500, so counting it in Savings and Budget would make those figures lie. Recording the refund as an Income was rejected because a refund reverses spending rather than adding earnings, and netting it as income would overstate what the household earned. A `refunded_cents` amount, supporting partial refunds, was rejected as a second number to reconcile for what are, here, full repayments. A two-state flag (expected → received) was rejected because tracking whether someone still owes you is the settling-up ADR-0001 refuses; the flag is set once and cleared by hand if the refund never comes. Adding it to Recurring expenses was rejected too: a refund is something that happened to one charge, not a property of a monthly habit.
+
+## Consequences
+
+The same Expense now appears in some totals and not others. The year report keeps its month bars and total as the true sum of each month, so its figures still reconcile with the month screen, and shows the refunded amount as its own line rather than netting it away. A refund that never materialises leaves the planning figures wrong until the flag is cleared.

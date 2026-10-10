@@ -12,10 +12,11 @@ import (
 // belong to. Money in is received Income only — an unpaid one counts toward
 // nothing, which is what most of these tests are about.
 type monthJSON struct {
-	Month        string `json:"month"`
-	IncomeCents  int64  `json:"income_cents"`
-	ExpenseCents int64  `json:"expense_cents"`
-	NetCents     int64  `json:"net_cents"`
+	Month         string `json:"month"`
+	IncomeCents   int64  `json:"income_cents"`
+	ExpenseCents  int64  `json:"expense_cents"`
+	NetCents      int64  `json:"net_cents"`
+	RefundedCents int64  `json:"refunded_cents"`
 }
 
 func (a *testApp) month(t *testing.T, month string) monthJSON {
@@ -548,6 +549,7 @@ type yearJSON struct {
 	NetCents         int64       `json:"net_cents"`
 	ExtraIncomeCents int64       `json:"extra_income_cents"`
 	InvestmentsCents int64       `json:"investments_cents"`
+	RefundedCents    int64       `json:"refunded_cents"`
 	Months           []monthJSON `json:"months"`
 }
 

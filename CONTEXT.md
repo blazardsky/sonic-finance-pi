@@ -12,6 +12,10 @@ _Avoid_: family, tenant, account, group
 Money leaving the household, on the date it left.
 _Avoid_: spesa, cost, outgoing, purchase, payment, transaction
 
+**Refunded**:
+An Expense the household expects to be repaid for by someone outside it — money it has already paid out and will get back, at a time it does not know. A Refunded Expense still counts as spent on the month, day and Category it occurred under, but is left out of Budget, Estimate, Savings, the year's spending total and Headroom — figures about what the household normally spends or keeps, not what left its account this month.
+_Avoid_: reimbursed, reimbursable, recoverable, paid back
+
 **Income**:
 Money owed to or received by the household. An Income exists from the moment it is expected — an invoice sent, a payment promised — and becomes received when it has a payment date. Totals only ever count received Incomes.
 _Avoid_: earning, revenue, incoming, deposit, transaction, invoice

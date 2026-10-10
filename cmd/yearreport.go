@@ -60,6 +60,11 @@ type fullYearReport struct {
 	// living, separate from what was paid the state.
 	ExpenseExcludingTaxCents int64 `json:"expense_excluding_tax_cents"`
 
+	// The refunded slice of the year's spend (ADR-0017) — still part of
+	// ExpenseExcludingTaxCents, named separately so the review page can show
+	// what is expected back rather than silently netting it away.
+	RefundedCents int64 `json:"refunded_cents"`
+
 	// Savings (computeSavingsCents, cmd/savings.go) as it stood the moment
 	// this year began — a baseline for how the year changed the household's
 	// position, not the Savings page's own all-time figure.
@@ -114,6 +119,10 @@ func handleFullYearReport(db *sql.DB, now func() time.Time) http.HandlerFunc {
 			return
 		}
 		if report.ExpenseExcludingTaxCents, err = readYearExpenseExcludingTax(db, year); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if report.RefundedCents, err = readYearRefundedCents(db, year); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -232,6 +241,16 @@ func readYearExpenseExcludingTax(db *sql.DB, year string) (int64, error) {
 		JOIN category c ON c.id = e.category_id
 		WHERE substr(e.occurred_on, 1, 4) = ? AND IFNULL(c.code, '') != ?`,
 		year, codeTaxes).Scan(&cents)
+	return cents, err
+}
+
+// readYearRefundedCents is the year's refunded slice (ADR-0017): the part of
+// the year's spend the household expects someone outside it to repay. Counted
+// by occurred_on, like every other year figure, and never netted out of one.
+func readYearRefundedCents(db *sql.DB, year string) (int64, error) {
+	var cents int64
+	err := db.QueryRow(`SELECT COALESCE(SUM(amount_cents), 0) FROM expense
+		WHERE substr(occurred_on, 1, 4) = ? AND refunded = 1`, year).Scan(&cents)
 	return cents, err
 }
 

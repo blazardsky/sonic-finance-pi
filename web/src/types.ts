@@ -157,6 +157,11 @@ export type Expense = {
   // creation time (see Category.spending_intent); from then on this is the
   // one value anything reads. null means "not classified".
   spending_intent: SpendingIntent | null
+  // Whether the household expects someone outside it to repay this Expense
+  // (ADR-0017). Set at purchase and an expectation rather than a receipt. It
+  // still counts as spent on its month, day and Category, but is left out of
+  // Budget, Estimate, Savings, Headroom and the year's spending total.
+  refunded: boolean
 }
 
 // A part of an Expense under its own Category. No id: an Item is saved as one
@@ -300,6 +305,10 @@ export type MonthRow = {
   income_cents: number
   expense_cents: number
   net_cents: number
+  // The slice of expense_cents the household expects to be repaid for
+  // (ADR-0017): still part of expense_cents — the money left — named
+  // separately so a screen can show what is expected back.
+  refunded_cents: number
 }
 
 // A month with what the money went on: what the month screen reads.
@@ -386,6 +395,9 @@ export type YearTotals = {
   // The Investments slice of expense_cents — still ordinary spend, just
   // named separately (same relationship tax_paid_cents has to it).
   investments_cents: number
+  // The refunded slice of expense_cents (ADR-0017) — still ordinary spend,
+  // just named separately so the year view can show what is expected back.
+  refunded_cents: number
   months: MonthRow[]
 }
 
@@ -423,6 +435,9 @@ export type FullYearReport = {
   spending_intent_by_month: SpendingIntentMonthTotal[]
   // The year's Expense with Taxes left out — what was actually spent living.
   expense_excluding_tax_cents: number
+  // The refunded slice of that spend (ADR-0017) — still part of it, named
+  // separately so the review page can show what is expected back.
+  refunded_cents: number
   // Savings (SavingsReport.savings_cents' own formula) as it stood on
   // December 31st of the prior year, not the Savings page's all-time figure.
   savings_at_start_cents: number

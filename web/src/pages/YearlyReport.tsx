@@ -152,6 +152,13 @@ export function YearlyReport() {
         </dl>
       )}
       {full && <p className="text-xs text-muted-foreground">{t.medianHint(year)}</p>}
+      {/* ADR-0017: still part of the spend above — the money left — named so
+          what is expected back is visible rather than silently netted away. */}
+      {full && full.refunded_cents > 0 && (
+        <p className="text-sm text-muted-foreground">
+          {t.refundedAmount(formatCents(full.refunded_cents))}
+        </p>
+      )}
 
       {totals && (
         <section className="flex flex-col gap-2">

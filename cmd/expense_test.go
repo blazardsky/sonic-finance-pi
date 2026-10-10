@@ -36,6 +36,9 @@ type expenseJSON struct {
 	// This Expense's own Spending intent (ticket 03) — nil when not
 	// classified, independent of its Category's own default.
 	SpendingIntent *string `json:"spending_intent"`
+
+	// ADR-0017: expected to be repaid by someone outside the household.
+	Refunded bool `json:"refunded"`
 }
 
 // An Item as the API hands it out. It carries no id: nothing addresses an Item

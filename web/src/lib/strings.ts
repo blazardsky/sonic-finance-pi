@@ -75,6 +75,10 @@ export const t = {
   payer: "Pagato da",
   paymentMethod: "Metodo di pagamento",
   note: "Note",
+  // ADR-0017: an Expense the household expects someone outside it to repay.
+  // An expectation, not a receipt, so the label says "awaiting", not "done".
+  refunded: "In attesa di rimborso",
+  refundedAmount: (amount: string) => `Di cui da rimborsare: € ${amount}`,
   notSet: "—",
   editExpense: "Modifica spesa",
   viewExpense: "Visualizza spesa",
@@ -242,6 +246,9 @@ export const t = {
   ofEstimate: (amount: string) => `di € ${amount} stimati`,
   ofWhichTax: "di cui tasse",
   ofWhichInvestments: "di cui investimenti",
+  // ADR-0017: the slice of the expenses total expected back from someone
+  // outside the household. Still part of the total — the money left.
+  ofWhichRefunded: "di cui da rimborsare",
   ofWhichExtra: "di cui extra",
   ofWhichGross: "di cui lordo",
   // The daily/weekly trend charts, by Category — the Dashboard reads the

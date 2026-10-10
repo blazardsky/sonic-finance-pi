@@ -219,6 +219,7 @@ export function Dashboard({
             footnotes={[
               ...(tax ? [{ label: t.ofWhichTax, cents: tax.tax_paid_cents }] : []),
               { label: t.ofWhichInvestments, cents: year.investments_cents },
+              { label: t.ofWhichRefunded, cents: year.refunded_cents },
             ]}
           />
           <TotalsCard

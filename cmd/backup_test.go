@@ -110,9 +110,9 @@ func TestExpenseCSVPutsItemsOnTheirOwnRows(t *testing.T) {
 	got := readCSV(t, res)
 	id, cat, itemCat := strconv.FormatInt(e.ID, 10), strconv.FormatInt(alimentari.ID, 10), strconv.FormatInt(svago.ID, 10)
 	want := [][]string{
-		{"type", "id", "expense_id", "occurred_on", "amount_cents", "category_id", "store", "payer", "payment_method", "note", "tax_year", "name"},
-		{"expense", id, "", "2026-03-15", "6200", cat, "Coop", "Nicco", "Contanti", "spesa, con virgola", "0", ""},
-		{"item", "", id, "", "1400", itemCat, "", "", "", "", "", "Libro"},
+		{"type", "id", "expense_id", "occurred_on", "amount_cents", "category_id", "store", "payer", "payment_method", "note", "tax_year", "refunded", "name"},
+		{"expense", id, "", "2026-03-15", "6200", cat, "Coop", "Nicco", "Contanti", "spesa, con virgola", "0", "false", ""},
+		{"item", "", id, "", "1400", itemCat, "", "", "", "", "", "", "Libro"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("csv = %#v, want %#v", got, want)

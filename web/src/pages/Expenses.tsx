@@ -231,6 +231,7 @@ const blankDraft = (): Draft => ({
   items: [],
   subcategory_id: null,
   spending_intent: null,
+  refunded: false,
 })
 
 // Field by field rather than a spread, so the draft carries what the form
@@ -247,6 +248,7 @@ const draftOf = (e: Expense): Draft => ({
   tax_year: e.tax_year,
   subcategory_id: e.subcategory_id,
   spending_intent: e.spending_intent,
+  refunded: e.refunded,
   items: e.items.map((it) => ({
     name: it.name,
     amount: toTyped(it.amount_cents),
@@ -641,11 +643,19 @@ export function Expenses({
         header: t.amount,
         meta: { filterVariant: "range" },
         cell: ({ row }) => (
-          <div className="font-medium tabular-nums">
-            <SpoilerAmount
-              cents={row.original.amount_cents}
-              gift={isGiftCategory(categories, row.original.category_id)}
-            />
+          <div className="flex flex-col gap-0.5">
+            <div className="font-medium tabular-nums">
+              <SpoilerAmount
+                cents={row.original.amount_cents}
+                gift={isGiftCategory(categories, row.original.category_id)}
+              />
+            </div>
+            {/* ADR-0017: still counted as spent, but expected back. */}
+            {row.original.refunded && (
+              <span className="w-fit rounded bg-muted px-1 text-[10px] text-muted-foreground">
+                {t.refunded}
+              </span>
+            )}
           </div>
         ),
       }),
@@ -989,6 +999,19 @@ export function Expenses({
                     </Field>
                   </div>
 
+                  {/* ADR-0017: an Expense the household expects someone
+                      outside it to repay. Set at purchase, an expectation
+                      rather than a receipt — it still counts as spent on the
+                      month and Category, but is left out of Budget, Estimate,
+                      Savings and Headroom. */}
+                  <FieldLabel className="flex w-fit items-center gap-1.5 text-sm font-normal">
+                    <Checkbox
+                      checked={draft.refunded}
+                      onCheckedChange={(v) => set("refunded", v === true)}
+                    />
+                    {t.refunded}
+                  </FieldLabel>
+
                   <Field>
                     <FieldLabel htmlFor="note">{t.note}</FieldLabel>
                     <Textarea
@@ -1268,6 +1291,9 @@ export function Expenses({
                   />
                 )}
                 {viewing.note && <ViewRow label={t.note} value={viewing.note} />}
+                {viewing.refunded && (
+                  <ViewRow label={t.refunded} value="Sì" />
+                )}
               </dl>
               {viewing.items.length > 0 && (
                 <div className="flex flex-col gap-2">

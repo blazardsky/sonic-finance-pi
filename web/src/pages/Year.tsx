@@ -122,6 +122,12 @@ export function Year({ onOpenYearReport }: { onOpenYearReport: () => void }) {
                 <dl className="flex flex-col divide-y divide-border">
                   <Row label={t.incomes} cents={totals.income_cents} />
                   <Row label={t.expenses} cents={totals.expense_cents} />
+                  {/* ADR-0017: still part of the year's expense total — the
+                      money left — named so what is expected back is visible
+                      rather than silently netted away. */}
+                  {totals.refunded_cents > 0 && (
+                    <Row label={t.ofWhichRefunded} cents={totals.refunded_cents} />
+                  )}
                   <Row label={t.difference} cents={totals.net_cents} big />
                 </dl>
               </CardContent>

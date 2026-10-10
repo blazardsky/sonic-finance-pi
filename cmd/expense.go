@@ -82,6 +82,18 @@ type expense struct {
 	// distinction falls out for free: an omitted key leaves it as loaded, an
 	// explicit null clears it.
 	SpendingIntent *string `json:"spending_intent"`
+
+	// Whether the household expects someone outside it to repay this Expense
+	// (ADR-0017, schema step 24). Set at purchase and an expectation rather
+	// than a receipt: there is no refund date, amount or counterparty, because
+	// tracking whether someone still owes you is the settling-up ADR-0001
+	// refuses. A refunded Expense still counts as spent on the month, day and
+	// Category it occurred under, but is left out of Budget, Estimate,
+	// Savings, Headroom and the year's spending total, which describe what the
+	// household normally spends or keeps rather than what crossed its account
+	// this month. Like SpendingIntent, PATCH decodes onto the loaded row, so an
+	// omitted key leaves it and an explicit false clears it.
+	Refunded bool `json:"refunded"`
 }
 
 // The fixed list a quantity's unit is picked from, the same one-of-a-fixed-
@@ -185,6 +197,15 @@ func migrateExpenses(tx *sql.Tx) error {
 		tax_year       INTEGER,
 		created_at     TEXT NOT NULL
 	) STRICT`)
+	return err
+}
+
+// migrateExpenseRefunded is schema step 24 (ADR-0017): a boolean marking an
+// Expense the household expects to be repaid for by someone outside it.
+// Defaults to 0, so every Expense saved before this ran reads exactly as an
+// ordinary one still does.
+func migrateExpenseRefunded(tx *sql.Tx) error {
+	_, err := tx.Exec(`ALTER TABLE expense ADD COLUMN refunded INTEGER NOT NULL DEFAULT 0 CHECK (refunded IN (0, 1))`)
 	return err
 }
 
@@ -312,10 +333,10 @@ func handleCreateExpense(db *sql.DB, now func() time.Time) http.HandlerFunc {
 
 		res, err := tx.Exec(`INSERT INTO expense
 			(occurred_on, amount_cents, category_id, store, payer, payment_method, note,
-			 tax_year, holding_id, subcategory_id, quantity, spending_intent, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 tax_year, holding_id, subcategory_id, quantity, spending_intent, refunded, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			e.OccurredOn, e.AmountCents, e.CategoryID, e.Store, e.Payer, e.PaymentMethod,
-			e.Note, nullYear(e.TaxYear), e.HoldingID, e.SubcategoryID, e.Quantity, e.SpendingIntent, now().Format(time.RFC3339))
+			e.Note, nullYear(e.TaxYear), e.HoldingID, e.SubcategoryID, e.Quantity, e.SpendingIntent, e.Refunded, now().Format(time.RFC3339))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -341,14 +362,14 @@ func handleCreateExpense(db *sql.DB, now func() time.Time) http.HandlerFunc {
 }
 
 const expenseSelect = `SELECT id, occurred_on, amount_cents, category_id,
-	store, payer, payment_method, note, COALESCE(tax_year, 0), holding_id, subcategory_id, quantity, spending_intent FROM expense`
+	store, payer, payment_method, note, COALESCE(tax_year, 0), holding_id, subcategory_id, quantity, spending_intent, refunded FROM expense`
 
 func scanExpense(row interface{ Scan(...any) error }) (expense, error) {
 	// The frontend maps over the breakdown, so an Expense without one has to
 	// marshal as [] rather than null. The caller fills in any Items there are.
 	e := expense{Items: []item{}}
 	err := row.Scan(&e.ID, &e.OccurredOn, &e.AmountCents, &e.CategoryID,
-		&e.Store, &e.Payer, &e.PaymentMethod, &e.Note, &e.TaxYear, &e.HoldingID, &e.SubcategoryID, &e.Quantity, &e.SpendingIntent)
+		&e.Store, &e.Payer, &e.PaymentMethod, &e.Note, &e.TaxYear, &e.HoldingID, &e.SubcategoryID, &e.Quantity, &e.SpendingIntent, &e.Refunded)
 	return e, err
 }
 
@@ -500,9 +521,9 @@ func handlePatchExpense(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		if _, err := tx.Exec(`UPDATE expense SET occurred_on = ?, amount_cents = ?, category_id = ?,
-			store = ?, payer = ?, payment_method = ?, note = ?, tax_year = ?, holding_id = ?, subcategory_id = ?, quantity = ?, spending_intent = ? WHERE id = ?`,
+			store = ?, payer = ?, payment_method = ?, note = ?, tax_year = ?, holding_id = ?, subcategory_id = ?, quantity = ?, spending_intent = ?, refunded = ? WHERE id = ?`,
 			e.OccurredOn, e.AmountCents, e.CategoryID, e.Store, e.Payer, e.PaymentMethod,
-			e.Note, nullYear(e.TaxYear), e.HoldingID, e.SubcategoryID, e.Quantity, e.SpendingIntent, e.ID); err != nil {
+			e.Note, nullYear(e.TaxYear), e.HoldingID, e.SubcategoryID, e.Quantity, e.SpendingIntent, e.Refunded, e.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}

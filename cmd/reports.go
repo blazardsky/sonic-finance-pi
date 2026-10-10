@@ -34,6 +34,12 @@ type monthRow struct {
 	IncomeCents  int64  `json:"income_cents"`
 	ExpenseCents int64  `json:"expense_cents"`
 	NetCents     int64  `json:"net_cents"`
+
+	// The slice of ExpenseCents the household expects someone outside it to
+	// repay (ADR-0017). ExpenseCents still counts it — the money left — but
+	// the screens show this alongside so the refunded amount is legible
+	// rather than silently netted away. A read-only projection, never stored.
+	RefundedCents int64 `json:"refunded_cents"`
 }
 
 // monthTotals answers the question the app exists to answer: where does this
@@ -118,6 +124,14 @@ func readMonthRow(db *sql.DB, now func() time.Time, month string) (monthRow, err
 		return m, err
 	}
 
+	// The refunded slice of the line above (ADR-0017): still part of
+	// ExpenseCents, named separately so the month screen can show what is
+	// expected back without the total ceasing to be what left the account.
+	if err := db.QueryRow(`SELECT COALESCE(SUM(amount_cents), 0) FROM expense
+		WHERE substr(occurred_on, 1, 7) = ? AND refunded = 1`, month).Scan(&m.RefundedCents); err != nil {
+		return m, err
+	}
+
 	// The filter ADR-0003 exists for. It is redundant against the substr on
 	// the line below it — a NULL payment date matches no month — and it stays
 	// anyway: this is the invariant the codebase least wants to have to
@@ -198,7 +212,7 @@ func readExpenseCentsExcludingInvestments(db *sql.DB, now func() time.Time, mont
 	var cents int64
 	err := db.QueryRow(`SELECT COALESCE(SUM(e.amount_cents), 0) FROM expense e
 		JOIN category c ON c.id = e.category_id
-		WHERE substr(e.occurred_on, 1, 7) = ? AND IFNULL(c.code, '') != ?`,
+		WHERE substr(e.occurred_on, 1, 7) = ? AND IFNULL(c.code, '') != ? AND e.refunded = 0`,
 		month, codeInvestments).Scan(&cents)
 	return cents, err
 }
@@ -460,6 +474,11 @@ type yearTotals struct {
 	// buy reading as an unexplained jump in "Spese dell'anno".
 	InvestmentsCents int64 `json:"investments_cents"`
 
+	// The refunded slice of ExpenseCents (ADR-0017): still part of
+	// ExpenseCents — the money left — named separately so the year view can
+	// show what is expected back rather than silently netting it away.
+	RefundedCents int64 `json:"refunded_cents"`
+
 	// Always twelve, January first, whether or not anything happened in any
 	// of them: a year view is a shape, and a missing month would be a gap in
 	// it rather than an empty one.
@@ -493,6 +512,7 @@ func handleYearReport(db *sql.DB, now func() time.Time) http.HandlerFunc {
 			}
 			totals.IncomeCents += m.IncomeCents
 			totals.ExpenseCents += m.ExpenseCents
+			totals.RefundedCents += m.RefundedCents
 			totals.Months = append(totals.Months, m)
 		}
 		totals.NetCents = totals.IncomeCents - totals.ExpenseCents

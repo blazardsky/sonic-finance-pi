@@ -75,18 +75,18 @@ func handleExportExpenses(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		out := [][]string{{"type", "id", "expense_id", "occurred_on", "amount_cents", "category_id", "store", "payer", "payment_method", "note", "tax_year", "name"}}
+		out := [][]string{{"type", "id", "expense_id", "occurred_on", "amount_cents", "category_id", "store", "payer", "payment_method", "note", "tax_year", "refunded", "name"}}
 		for _, e := range expenses {
 			id := strconv.FormatInt(e.ID, 10)
 			out = append(out, []string{
 				"expense", id, "", e.OccurredOn, strconv.FormatInt(e.AmountCents, 10),
 				strconv.FormatInt(e.CategoryID, 10), e.Store, e.Payer, e.PaymentMethod,
-				e.Note, strconv.Itoa(e.TaxYear), "",
+				e.Note, strconv.Itoa(e.TaxYear), strconv.FormatBool(e.Refunded), "",
 			})
 			for _, it := range e.Items {
 				out = append(out, []string{
 					"item", "", id, "", strconv.FormatInt(it.AmountCents, 10),
-					strconv.FormatInt(it.CategoryID, 10), "", "", "", "", "", it.Name,
+					strconv.FormatInt(it.CategoryID, 10), "", "", "", "", "", "", it.Name,
 				})
 			}
 		}
