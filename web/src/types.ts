@@ -160,7 +160,7 @@ export type Expense = {
   // Whether the household expects someone outside it to repay this Expense
   // (ADR-0017). Set at purchase and an expectation rather than a receipt. It
   // still counts as spent on its month, day and Category, but is left out of
-  // Budget, Estimate, Savings, Headroom and the year's spending total.
+  // Budget, Estimate, Savings and Headroom.
   refunded: boolean
 }
 

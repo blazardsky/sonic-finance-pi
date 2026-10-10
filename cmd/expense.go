@@ -89,9 +89,8 @@ type expense struct {
 	// tracking whether someone still owes you is the settling-up ADR-0001
 	// refuses. A refunded Expense still counts as spent on the month, day and
 	// Category it occurred under, but is left out of Budget, Estimate,
-	// Savings, Headroom and the year's spending total, which describe what the
-	// household normally spends or keeps rather than what crossed its account
-	// this month. Like SpendingIntent, PATCH decodes onto the loaded row, so an
+	// Savings and Headroom, which describe what the household normally spends
+	// or keeps rather than what crossed its account this month. Like SpendingIntent, PATCH decodes onto the loaded row, so an
 	// omitted key leaves it and an explicit false clears it.
 	Refunded bool `json:"refunded"`
 }

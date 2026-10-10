@@ -78,6 +78,7 @@ export const t = {
   // ADR-0017: an Expense the household expects someone outside it to repay.
   // An expectation, not a receipt, so the label says "awaiting", not "done".
   refunded: "In attesa di rimborso",
+  yes: "Sì",
   refundedAmount: (amount: string) => `Di cui da rimborsare: € ${amount}`,
   notSet: "—",
   editExpense: "Modifica spesa",

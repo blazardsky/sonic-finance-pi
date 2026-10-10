@@ -15,6 +15,7 @@ import {
   AutocompleteList,
 } from "@/components/ui/autocomplete"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
@@ -652,9 +653,9 @@ export function Expenses({
             </div>
             {/* ADR-0017: still counted as spent, but expected back. */}
             {row.original.refunded && (
-              <span className="w-fit rounded bg-muted px-1 text-[10px] text-muted-foreground">
+              <Badge variant="secondary" className="text-[10px]">
                 {t.refunded}
-              </span>
+              </Badge>
             )}
           </div>
         ),
@@ -1292,7 +1293,7 @@ export function Expenses({
                 )}
                 {viewing.note && <ViewRow label={t.note} value={viewing.note} />}
                 {viewing.refunded && (
-                  <ViewRow label={t.refunded} value="Sì" />
+                  <ViewRow label={t.refunded} value={t.yes} />
                 )}
               </dl>
               {viewing.items.length > 0 && (
