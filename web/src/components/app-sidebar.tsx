@@ -36,7 +36,7 @@ import {
 import { t } from "@/lib/strings"
 import type { Screen } from "@/App"
 
-const APP_RELEASE_VERSION = '1.5.0';
+const APP_RELEASE_VERSION = '1.6.0';
 
 const icons: Record<Screen, typeof RiDashboardLine> = {
   dashboard: RiDashboardLine,
