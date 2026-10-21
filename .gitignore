@@ -19,3 +19,5 @@ build/*
 
 .env
 .env*
+# Android APK build output
+android/build/
