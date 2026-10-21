@@ -11,3 +11,7 @@ Keeping the flag purely informational, like an Item's `discounted` (ADR-0014), w
 ## Consequences
 
 The same Expense now appears in some totals and not others. The year report keeps its month bars and total as the true sum of each month, so its figures still reconcile with the month screen, and shows the refunded amount as its own line rather than netting it away. A refund that never materialises leaves the planning figures wrong until the flag is cleared.
+
+## Amendment: the refund can be marked received
+
+In practice the household wanted to close a refund once the money came back, the way an Income is marked paid. A Refunded Expense now carries an optional `refund_received_on` date (schema step 25), set from the expense's "Segna come rimborsata" action. It changes no figure — the Expense was already out of Budget, Estimate, Savings and Headroom — except the "da rimborsare" lines, which now count only refunds still awaited. The rest of the decision stands: no Income is recorded for the refund, no amount (refunds are full) and no counterparty.

@@ -162,6 +162,8 @@ export type Expense = {
   // still counts as spent on its month, day and Category, but is left out of
   // Budget, Estimate, Savings and Headroom.
   refunded: boolean
+  // The day a refunded Expense's money came back; null while still awaited.
+  refund_received_on: string | null
 }
 
 // A part of an Expense under its own Category. No id: an Item is saved as one
@@ -431,6 +433,10 @@ export type SpendingIntentMonthTotal = {
 export type FullYearReport = {
   year: string
   by_month: MonthCategoryTotal[]
+  // Paid Income by the month it arrived and its Category (ADR-0003).
+  income_by_month: MonthCategoryTotal[]
+  // Paid Income per Client, largest first; null id/"" name is no Client.
+  income_by_client: { client_id: number | null; client: string; amount_cents: number }[]
   // Ticket 05/06's own field, behind spending_intent_enabled on the page.
   spending_intent_by_month: SpendingIntentMonthTotal[]
   // The year's Expense with Taxes left out — what was actually spent living.

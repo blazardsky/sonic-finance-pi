@@ -13,7 +13,7 @@ Money leaving the household, on the date it left.
 _Avoid_: spesa, cost, outgoing, purchase, payment, transaction
 
 **Refunded**:
-An Expense the household expects to be repaid for by someone outside it — money it has already paid out and will get back, at a time it does not know. A Refunded Expense still counts as spent on the month, day and Category it occurred under, but is left out of Budget, Estimate, Savings and Headroom — figures about what the household normally spends or keeps, not what left its account this month.
+An Expense the household expects to be repaid for by someone outside it — money it has already paid out and will get back, at a time it does not know. A Refunded Expense still counts as spent on the month, day and Category it occurred under, but is left out of Budget, Estimate, Savings and Headroom — figures about what the household normally spends or keeps, not what left its account this month. Once the money comes back the Expense is marked received, with a date; that changes no figure, and nothing is recorded as Income (ADR-0017).
 _Avoid_: reimbursed, reimbursable, recoverable, paid back
 
 **Income**:

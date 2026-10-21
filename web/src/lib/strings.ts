@@ -79,6 +79,9 @@ export const t = {
   // An expectation, not a receipt, so the label says "awaiting", not "done".
   refunded: "In attesa di rimborso",
   yes: "Sì",
+  refundReceived: "Rimborsata",
+  refundReceivedOn: "Rimborsata il",
+  markRefundReceived: "Segna come rimborsata",
   refundedAmount: (amount: string) => `Di cui da rimborsare: € ${amount}`,
   notSet: "—",
   editExpense: "Modifica spesa",
@@ -366,6 +369,12 @@ export const t = {
   // --chart-1..5 give: named generically since which Categories fall into it
   // changes every year.
   otherCategories: "Altre categorie",
+  otherClients: "Altri clienti",
+  noClient: "Nessun cliente",
+  incomeByCategory: "Da dove sono arrivati i soldi",
+  incomeByClient: "Entrate per cliente",
+  incomeYearBreakdown: "Entrate per categoria, mese per mese",
+  noIncomeThisYear: "Nessuna entrata incassata in questo anno.",
 
   // Pending payments — what is owed, and what looks unbilled
   pendingPayments: "In attesa di pagamento",

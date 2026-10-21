@@ -124,11 +124,12 @@ func readMonthRow(db *sql.DB, now func() time.Time, month string) (monthRow, err
 		return m, err
 	}
 
-	// The refunded slice of the line above (ADR-0017): still part of
+	// The refunded slice of the line above still awaited (ADR-0017): still part of
 	// ExpenseCents, named separately so the month screen can show what is
 	// expected back without the total ceasing to be what left the account.
 	if err := db.QueryRow(`SELECT COALESCE(SUM(amount_cents), 0) FROM expense
-		WHERE substr(occurred_on, 1, 7) = ? AND refunded = 1`, month).Scan(&m.RefundedCents); err != nil {
+		WHERE substr(occurred_on, 1, 7) = ? AND refunded = 1
+		AND refund_received_on IS NULL`, month).Scan(&m.RefundedCents); err != nil {
 		return m, err
 	}
 

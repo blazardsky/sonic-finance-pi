@@ -54,3 +54,41 @@ func TestARefundedExpenseCountsAsSpentButNotAsCost(t *testing.T) {
 		t.Fatal("PATCH refunded = true, want false")
 	}
 }
+
+// Marking the refund received closes it without moving any figure, and
+// clearing the flag clears the receipt with it.
+func TestReceivingARefundClosesItWithoutChangingFigures(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari")
+	e := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-01-20", "amount_cents": 5000, "category_id": alimentari.ID,
+		"refunded": true,
+	})
+	if e.RefundReceivedOn != nil {
+		t.Fatalf("a new refunded Expense came back received on %s", *e.RefundReceivedOn)
+	}
+
+	var got expenseJSON
+	if res := a.patch(t, expensePath(e.ID), map[string]any{"refund_received_on": "2026-03-01"}, &got); res.StatusCode != 200 {
+		t.Fatalf("PATCH refund_received_on = %d, want 200", res.StatusCode)
+	}
+	if got.RefundReceivedOn == nil || *got.RefundReceivedOn != "2026-03-01" {
+		t.Fatalf("refund_received_on = %v, want 2026-03-01", got.RefundReceivedOn)
+	}
+	// No longer "to be refunded", so the month's refunded line drops it.
+	if m := a.month(t, "2026-01"); m.ExpenseCents != 5000 || m.RefundedCents != 0 {
+		t.Errorf("month = %+v, want expense 5000, refunded 0", m)
+	}
+	if s := a.savings(t); s.SavingsCents != 0 {
+		t.Errorf("savings = %d, want 0 (receiving a refund changes no figure)", s.SavingsCents)
+	}
+
+	if res := a.patch(t, expensePath(e.ID), map[string]any{"refund_received_on": "2026-3-1"}, nil); res.StatusCode != 400 {
+		t.Errorf("PATCH bad date = %d, want 400", res.StatusCode)
+	}
+
+	a.patch(t, expensePath(e.ID), map[string]any{"refunded": false}, &got)
+	if got.RefundReceivedOn != nil {
+		t.Errorf("clearing refunded left refund_received_on = %s", *got.RefundReceivedOn)
+	}
+}

@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/table"
 import { apiJSON } from "@/lib/api"
 import { formatCents, thisMonth, thisYear } from "@/lib/money"
-import { paletteVar } from "@/lib/palette"
+import { colorSlots, paletteVar } from "@/lib/palette"
 import { colorOf } from "@/lib/pickers"
 import { t } from "@/lib/strings"
 import { cn } from "@/lib/utils"
@@ -102,6 +102,31 @@ export function YearlyReport() {
     [full, categories]
   )
   const sliceConfig = useMemo(() => categorySliceConfig(slices), [slices])
+  const incomeGrid = useMemo(
+    () => pivotByMonth(full?.income_by_month ?? [], year),
+    [full, year]
+  )
+  const incomeSlices = useMemo(
+    () => categorySlices(categoryShares(full?.income_by_month ?? []), categories),
+    [full, categories]
+  )
+  const incomeSliceConfig = useMemo(() => categorySliceConfig(incomeSlices), [incomeSlices])
+  const clientSlices = useMemo(
+    () =>
+      categorySlices(
+        (full?.income_by_client ?? []).map((c) => ({
+          id: c.client_id ?? 0,
+          name: c.client || t.noClient,
+          amount: c.amount_cents,
+        })),
+        categories,
+        // Clients have no stored colour: the palette in order, by rank.
+        (_id, i) => paletteVar(colorSlots[i % colorSlots.length], "primary"),
+        t.otherClients
+      ),
+    [full, categories]
+  )
+  const clientSliceConfig = useMemo(() => categorySliceConfig(clientSlices), [clientSlices])
   const spendingIntentPoints = useMemo(
     () => spendingIntentSeries(full?.spending_intent_by_month ?? [], year),
     [full, year]
@@ -234,45 +259,83 @@ export function YearlyReport() {
         <h2 className="text-sm font-medium text-muted-foreground">
           {t.fullYearBreakdown}
         </h2>
-        {grid.categories.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t.noSpendThisYear}</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t.month}</TableHead>
-                  {grid.categories.map((c) => (
-                    <TableHead key={c.id} className="text-right">
-                      {c.name}
-                    </TableHead>
-                  ))}
-                  <TableHead className="text-right">{t.total}</TableHead>
-                  <TableHead className="text-right">{t.runningTotal}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {grid.rows.map((row) => (
-                  <TableRow key={row.month}>
-                    <TableCell>{row.label}</TableCell>
-                    {grid.categories.map((c) => (
-                      <TableCell key={c.id} className="text-right tabular-nums">
-                        {formatCents(row.amounts[c.id] ?? 0)}
-                      </TableCell>
-                    ))}
-                    <TableCell className="text-right font-medium tabular-nums">
-                      {formatCents(row.total)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-muted-foreground">
-                      {formatCents(row.running)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
+        <BreakdownTable grid={grid} empty={t.noSpendThisYear} />
       </section>
+
+      <div className="flex flex-wrap gap-6 empty:hidden">
+        {incomeSlices.length > 0 && (
+          <section className="flex min-w-72 flex-1 flex-col gap-2">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              {t.incomeByCategory}
+            </h2>
+            <CategoryPieChart slices={incomeSlices} config={incomeSliceConfig} />
+          </section>
+        )}
+        {clientSlices.length > 0 && (
+          <section className="flex min-w-72 flex-1 flex-col gap-2">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              {t.incomeByClient}
+            </h2>
+            <CategoryPieChart slices={clientSlices} config={clientSliceConfig} />
+          </section>
+        )}
+      </div>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-medium text-muted-foreground">
+          {t.incomeYearBreakdown}
+        </h2>
+        <BreakdownTable grid={incomeGrid} empty={t.noIncomeThisYear} />
+      </section>
+    </div>
+  )
+}
+
+// The month × Category grid, shared by the expense and income breakdowns.
+function BreakdownTable({
+  grid,
+  empty,
+}: {
+  grid: ReturnType<typeof pivotByMonth>
+  empty: string
+}) {
+  if (grid.categories.length === 0) {
+    return <p className="text-sm text-muted-foreground">{empty}</p>
+  }
+  return (
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t.month}</TableHead>
+            {grid.categories.map((c) => (
+              <TableHead key={c.id} className="text-right">
+                {c.name}
+              </TableHead>
+            ))}
+            <TableHead className="text-right">{t.total}</TableHead>
+            <TableHead className="text-right">{t.runningTotal}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {grid.rows.map((row) => (
+            <TableRow key={row.month}>
+              <TableCell>{row.label}</TableCell>
+              {grid.categories.map((c) => (
+                <TableCell key={c.id} className="text-right tabular-nums">
+                  {formatCents(row.amounts[c.id] ?? 0)}
+                </TableCell>
+              ))}
+              <TableCell className="text-right font-medium tabular-nums">
+                {formatCents(row.total)}
+              </TableCell>
+              <TableCell className="text-right tabular-nums text-muted-foreground">
+                {formatCents(row.running)}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </div>
   )
 }
@@ -370,22 +433,25 @@ const MAX_CATEGORY_SLICES = 5
 
 function categorySlices(
   shares: CategoryShare[],
-  categories: Category[]
+  categories: Category[],
+  fillOf: (id: number, rank: number) => string = (id) =>
+    paletteVar(colorOf(categories, id), "primary"),
+  otherLabel: string = t.otherCategories
 ): CategorySlice[] {
   const top = shares.slice(0, MAX_CATEGORY_SLICES)
   const rest = shares.slice(MAX_CATEGORY_SLICES)
 
-  const slices: CategorySlice[] = top.map((c) => ({
+  const slices: CategorySlice[] = top.map((c, i) => ({
     key: `c${c.id}`,
     label: c.name,
     amount: c.amount,
-    fill: paletteVar(colorOf(categories, c.id), "primary"),
+    fill: fillOf(c.id, i),
   }))
 
   if (rest.length > 0) {
     slices.push({
       key: "other",
-      label: t.otherCategories,
+      label: otherLabel,
       amount: rest.reduce((sum, c) => sum + c.amount, 0),
       fill: "var(--muted-foreground)",
     })

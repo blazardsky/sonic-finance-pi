@@ -39,6 +39,8 @@ type expenseJSON struct {
 
 	// ADR-0017: expected to be repaid by someone outside the household.
 	Refunded bool `json:"refunded"`
+
+	RefundReceivedOn *string `json:"refund_received_on"`
 }
 
 // An Item as the API hands it out. It carries no id: nothing addresses an Item

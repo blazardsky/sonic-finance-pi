@@ -85,14 +85,20 @@ type expense struct {
 
 	// Whether the household expects someone outside it to repay this Expense
 	// (ADR-0017, schema step 24). Set at purchase and an expectation rather
-	// than a receipt: there is no refund date, amount or counterparty, because
-	// tracking whether someone still owes you is the settling-up ADR-0001
-	// refuses. A refunded Expense still counts as spent on the month, day and
+	// than a receipt: there is no amount or counterparty, because tracking
+	// who still owes you is the settling-up ADR-0001 refuses. The day the
+	// money came back is RefundReceivedOn. A refunded Expense still counts as spent on the month, day and
 	// Category it occurred under, but is left out of Budget, Estimate,
 	// Savings and Headroom, which describe what the household normally spends
 	// or keeps rather than what crossed its account this month. Like SpendingIntent, PATCH decodes onto the loaded row, so an
 	// omitted key leaves it and an explicit false clears it.
 	Refunded bool `json:"refunded"`
+
+	// The day the money for a Refunded Expense came back (schema step 25),
+	// null while it is still awaited. Only a Refunded Expense can have one, and
+	// it changes no figure: the Expense was already left out of the planning
+	// figures when it was flagged, so receiving the money just closes it.
+	RefundReceivedOn *string `json:"refund_received_on"`
 }
 
 // The fixed list a quantity's unit is picked from, the same one-of-a-fixed-
@@ -205,6 +211,14 @@ func migrateExpenses(tx *sql.Tx) error {
 // ordinary one still does.
 func migrateExpenseRefunded(tx *sql.Tx) error {
 	_, err := tx.Exec(`ALTER TABLE expense ADD COLUMN refunded INTEGER NOT NULL DEFAULT 0 CHECK (refunded IN (0, 1))`)
+	return err
+}
+
+// migrateExpenseRefundReceived is schema step 25: the day a Refunded
+// Expense's money came back. Null for every existing row, so every flagged
+// Expense reads as still awaited until someone marks it.
+func migrateExpenseRefundReceived(tx *sql.Tx) error {
+	_, err := tx.Exec(`ALTER TABLE expense ADD COLUMN refund_received_on TEXT CHECK (refund_received_on <> '')`)
 	return err
 }
 
@@ -332,10 +346,10 @@ func handleCreateExpense(db *sql.DB, now func() time.Time) http.HandlerFunc {
 
 		res, err := tx.Exec(`INSERT INTO expense
 			(occurred_on, amount_cents, category_id, store, payer, payment_method, note,
-			 tax_year, holding_id, subcategory_id, quantity, spending_intent, refunded, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 tax_year, holding_id, subcategory_id, quantity, spending_intent, refunded, refund_received_on, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			e.OccurredOn, e.AmountCents, e.CategoryID, e.Store, e.Payer, e.PaymentMethod,
-			e.Note, nullYear(e.TaxYear), e.HoldingID, e.SubcategoryID, e.Quantity, e.SpendingIntent, e.Refunded, now().Format(time.RFC3339))
+			e.Note, nullYear(e.TaxYear), e.HoldingID, e.SubcategoryID, e.Quantity, e.SpendingIntent, e.Refunded, e.RefundReceivedOn, now().Format(time.RFC3339))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -361,14 +375,14 @@ func handleCreateExpense(db *sql.DB, now func() time.Time) http.HandlerFunc {
 }
 
 const expenseSelect = `SELECT id, occurred_on, amount_cents, category_id,
-	store, payer, payment_method, note, COALESCE(tax_year, 0), holding_id, subcategory_id, quantity, spending_intent, refunded FROM expense`
+	store, payer, payment_method, note, COALESCE(tax_year, 0), holding_id, subcategory_id, quantity, spending_intent, refunded, refund_received_on FROM expense`
 
 func scanExpense(row interface{ Scan(...any) error }) (expense, error) {
 	// The frontend maps over the breakdown, so an Expense without one has to
 	// marshal as [] rather than null. The caller fills in any Items there are.
 	e := expense{Items: []item{}}
 	err := row.Scan(&e.ID, &e.OccurredOn, &e.AmountCents, &e.CategoryID,
-		&e.Store, &e.Payer, &e.PaymentMethod, &e.Note, &e.TaxYear, &e.HoldingID, &e.SubcategoryID, &e.Quantity, &e.SpendingIntent, &e.Refunded)
+		&e.Store, &e.Payer, &e.PaymentMethod, &e.Note, &e.TaxYear, &e.HoldingID, &e.SubcategoryID, &e.Quantity, &e.SpendingIntent, &e.Refunded, &e.RefundReceivedOn)
 	return e, err
 }
 
@@ -416,6 +430,15 @@ func (e *expense) validate() error {
 	// into.
 	if !validSpendingIntent(e.SpendingIntent) {
 		return fmt.Errorf("spending_intent must be one of %v", spendingIntents)
+	}
+	// Clearing the flag clears the receipt with it, so unticking "awaiting
+	// refund" never leaves a received date on an ordinary Expense.
+	if !e.Refunded {
+		e.RefundReceivedOn = nil
+	} else if e.RefundReceivedOn != nil {
+		if _, err := time.Parse(dateLayout, *e.RefundReceivedOn); err != nil {
+			return errors.New("refund_received_on must be a real date as YYYY-MM-DD")
+		}
 	}
 
 	// The breakdown marshals as [] rather than null, and is checked against
@@ -520,9 +543,9 @@ func handlePatchExpense(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		if _, err := tx.Exec(`UPDATE expense SET occurred_on = ?, amount_cents = ?, category_id = ?,
-			store = ?, payer = ?, payment_method = ?, note = ?, tax_year = ?, holding_id = ?, subcategory_id = ?, quantity = ?, spending_intent = ?, refunded = ? WHERE id = ?`,
+			store = ?, payer = ?, payment_method = ?, note = ?, tax_year = ?, holding_id = ?, subcategory_id = ?, quantity = ?, spending_intent = ?, refunded = ?, refund_received_on = ? WHERE id = ?`,
 			e.OccurredOn, e.AmountCents, e.CategoryID, e.Store, e.Payer, e.PaymentMethod,
-			e.Note, nullYear(e.TaxYear), e.HoldingID, e.SubcategoryID, e.Quantity, e.SpendingIntent, e.Refunded, e.ID); err != nil {
+			e.Note, nullYear(e.TaxYear), e.HoldingID, e.SubcategoryID, e.Quantity, e.SpendingIntent, e.Refunded, e.RefundReceivedOn, e.ID); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}

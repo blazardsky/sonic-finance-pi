@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
+  RiCheckLine,
   RiDeleteBinLine,
   RiEditLine,
   RiEyeLine,
@@ -233,6 +234,7 @@ const blankDraft = (): Draft => ({
   subcategory_id: null,
   spending_intent: null,
   refunded: false,
+  refund_received_on: null,
 })
 
 // Field by field rather than a spread, so the draft carries what the form
@@ -250,6 +252,7 @@ const draftOf = (e: Expense): Draft => ({
   subcategory_id: e.subcategory_id,
   spending_intent: e.spending_intent,
   refunded: e.refunded,
+  refund_received_on: e.refund_received_on,
   items: e.items.map((it) => ({
     name: it.name,
     amount: toTyped(it.amount_cents),
@@ -545,6 +548,21 @@ export function Expenses({
     return true
   }
 
+  // Incomes' markPaid for a refund: refund_received_on is the only field
+  // sent, so nothing else about the Expense changes.
+  async function markRefundReceived(e: Expense) {
+    try {
+      await api(`/api/expenses/${e.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ refund_received_on: today() }),
+      })
+    } catch {
+      toast(t.expenseNotSaved)
+      return
+    }
+    await load()
+  }
+
   async function removeExpense(e: Expense) {
     if (!confirm(t.confirmDeleteExpense(formatCents(e.amount_cents)))) return
     try {
@@ -654,7 +672,7 @@ export function Expenses({
             {/* ADR-0017: still counted as spent, but expected back. */}
             {row.original.refunded && (
               <Badge variant="secondary" className="text-[10px]">
-                {t.refunded}
+                {row.original.refund_received_on ? t.refundReceived : t.refunded}
               </Badge>
             )}
           </div>
@@ -705,6 +723,11 @@ export function Expenses({
                 <DropdownMenuItem onClick={() => selectExpense(e)}>
                   <RiEditLine /> {t.editExpense}
                 </DropdownMenuItem>
+                {e.refunded && !e.refund_received_on && (
+                  <DropdownMenuItem onClick={() => void markRefundReceived(e)}>
+                    <RiCheckLine /> {t.markRefundReceived}
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
                   variant="destructive"
                   onClick={() => void removeExpense(e)}
@@ -1292,9 +1315,15 @@ export function Expenses({
                   />
                 )}
                 {viewing.note && <ViewRow label={t.note} value={viewing.note} />}
-                {viewing.refunded && (
-                  <ViewRow label={t.refunded} value={t.yes} />
-                )}
+                {viewing.refunded &&
+                  (viewing.refund_received_on ? (
+                    <ViewRow
+                      label={t.refundReceivedOn}
+                      value={formatDate(viewing.refund_received_on)}
+                    />
+                  ) : (
+                    <ViewRow label={t.refunded} value={t.yes} />
+                  ))}
               </dl>
               {viewing.items.length > 0 && (
                 <div className="flex flex-col gap-2">

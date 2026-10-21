@@ -25,9 +25,17 @@ type spendingIntentMonthJSON struct {
 	BullshitCents  int64  `json:"bullshit_cents"`
 }
 
+type clientIncomeJSON struct {
+	ClientID    *int64 `json:"client_id"`
+	Client      string `json:"client"`
+	AmountCents int64  `json:"amount_cents"`
+}
+
 type fullYearJSON struct {
 	Year                     string                    `json:"year"`
 	ByMonth                  []monthCategoryLineJSON   `json:"by_month"`
+	IncomeByMonth            []monthCategoryLineJSON   `json:"income_by_month"`
+	IncomeByClient           []clientIncomeJSON        `json:"income_by_client"`
 	SpendingIntentByMonth    []spendingIntentMonthJSON `json:"spending_intent_by_month"`
 	ExpenseExcludingTaxCents int64                     `json:"expense_excluding_tax_cents"`
 	SavingsAtStartCents      int64                     `json:"savings_at_start_cents"`
@@ -335,5 +343,38 @@ func TestTheFullYearReportRefusesAYearThatIsNotAYear(t *testing.T) {
 		if res := a.get(t, "/api/reports/year/"+year+"/full", nil); res.StatusCode == http.StatusOK {
 			t.Errorf("GET /api/reports/year/%q/full = 200, want a refusal", year)
 		}
+	}
+}
+
+// Paid Income only, by the month it arrived, split by Category and by Client;
+// Income naming no Client is its own entry.
+func TestTheFullYearReportBreaksIncomeDownByCategoryAndClient(t *testing.T) {
+	a := newTestApp(t)
+	freelance := a.freelance(t)
+	acme := a.createClient(t, "Acme")
+
+	a.addIncome(t, map[string]any{"amount_cents": 30000, "category_id": freelance.ID,
+		"client_id": acme.ID, "payment_date": "2026-02-10"})
+	a.addIncome(t, map[string]any{"amount_cents": 10000, "category_id": freelance.ID,
+		"client_id": acme.ID, "payment_date": "2026-02-20"})
+	a.addIncome(t, map[string]any{"amount_cents": 5000, "category_id": freelance.ID,
+		"payment_date": "2026-03-01"})
+	// Unpaid and last year's: neither belongs to 2026's figures.
+	a.addIncome(t, map[string]any{"amount_cents": 99900, "category_id": freelance.ID, "client_id": acme.ID})
+	a.addIncome(t, map[string]any{"amount_cents": 99900, "category_id": freelance.ID,
+		"client_id": acme.ID, "payment_date": "2025-12-31"})
+
+	got := a.fullYear(t, "2026")
+	wantMonths := []monthCategoryLineJSON{
+		{"2026-02", freelance.ID, freelance.Name, 40000},
+		{"2026-03", freelance.ID, freelance.Name, 5000},
+	}
+	if fmt.Sprint(got.IncomeByMonth) != fmt.Sprint(wantMonths) {
+		t.Errorf("income_by_month = %+v, want %+v", got.IncomeByMonth, wantMonths)
+	}
+	if len(got.IncomeByClient) != 2 ||
+		got.IncomeByClient[0].Client != "Acme" || got.IncomeByClient[0].AmountCents != 40000 ||
+		got.IncomeByClient[1].ClientID != nil || got.IncomeByClient[1].AmountCents != 5000 {
+		t.Errorf("income_by_client = %+v, want Acme 40000 then no client 5000", got.IncomeByClient)
 	}
 }

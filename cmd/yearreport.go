@@ -45,10 +45,24 @@ type spendingIntentMonthTotal struct {
 // Everything Year.tsx/handleYearReport (cmd/reports.go) already answers — the
 // year's three numbers and its twelve months, for the cumulative chart — is
 // not repeated here; the frontend reads both endpoints together.
+type clientIncomeTotal struct {
+	ClientID    *int64 `json:"client_id"`
+	Client      string `json:"client"`
+	AmountCents int64  `json:"amount_cents"`
+}
+
 type fullYearReport struct {
 	Year string `json:"year"`
 
 	ByMonth []monthCategoryTotal `json:"by_month"`
+
+	// The Income side of ByMonth: paid Income grouped by the month its money
+	// arrived (ADR-0003) and its Category. No Item split — Income has none.
+	IncomeByMonth []monthCategoryTotal `json:"income_by_month"`
+
+	// The year's paid Income per Client, largest first. Income naming no
+	// Client is one entry with a null id and an empty name.
+	IncomeByClient []clientIncomeTotal `json:"income_by_client"`
 
 	// Ticket 05: the year-review line chart's own field, reused as-is by
 	// ticket 06's diagram (summed across the year rather than read per
@@ -111,6 +125,14 @@ func handleFullYearReport(db *sql.DB, now func() time.Time) http.HandlerFunc {
 		var err error
 
 		if report.ByMonth, err = readMonthCategoryBreakdown(db, year); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if report.IncomeByMonth, err = readIncomeMonthCategory(db, year); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if report.IncomeByClient, err = readIncomeByClient(db, year); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -189,6 +211,54 @@ func readMonthCategoryBreakdown(db *sql.DB, year string) ([]monthCategoryTotal, 
 	return out, rows.Err()
 }
 
+// readIncomeMonthCategory is readMonthCategoryBreakdown for Income: one
+// grouped query, counted by payment date like every Income sum (ADR-0003).
+func readIncomeMonthCategory(db *sql.DB, year string) ([]monthCategoryTotal, error) {
+	rows, err := db.Query(`SELECT substr(i.payment_date, 1, 7) AS month, c.id, c.name, SUM(i.amount_cents)
+		FROM income i JOIN category c ON c.id = i.category_id
+		WHERE i.payment_date IS NOT NULL AND substr(i.payment_date, 1, 4) = ?
+		GROUP BY month, c.id, c.name
+		ORDER BY month, SUM(i.amount_cents) DESC, c.name COLLATE NOCASE`, year)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []monthCategoryTotal{}
+	for rows.Next() {
+		var m monthCategoryTotal
+		if err := rows.Scan(&m.Month, &m.CategoryID, &m.Category, &m.AmountCents); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// readIncomeByClient is the year's paid Income per Client, hidden Clients
+// included — money a since-hidden Client paid was still paid.
+func readIncomeByClient(db *sql.DB, year string) ([]clientIncomeTotal, error) {
+	rows, err := db.Query(`SELECT i.client_id, COALESCE(c.name, ''), SUM(i.amount_cents)
+		FROM income i LEFT JOIN client c ON c.id = i.client_id
+		WHERE i.payment_date IS NOT NULL AND substr(i.payment_date, 1, 4) = ?
+		GROUP BY i.client_id
+		ORDER BY SUM(i.amount_cents) DESC, c.name COLLATE NOCASE`, year)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []clientIncomeTotal{}
+	for rows.Next() {
+		var c clientIncomeTotal
+		if err := rows.Scan(&c.ClientID, &c.Client, &c.AmountCents); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 // readSpendingIntentByMonth is ticket 05's own grouped query: one row per
 // month that has at least one classified Expense, its amount_cents summed
 // into the four buckets spendingIntentMonthTotal names. Conditional
@@ -250,7 +320,8 @@ func readYearExpenseExcludingTax(db *sql.DB, year string) (int64, error) {
 func readYearRefundedCents(db *sql.DB, year string) (int64, error) {
 	var cents int64
 	err := db.QueryRow(`SELECT COALESCE(SUM(amount_cents), 0) FROM expense
-		WHERE substr(occurred_on, 1, 4) = ? AND refunded = 1`, year).Scan(&cents)
+		WHERE substr(occurred_on, 1, 4) = ? AND refunded = 1
+		AND refund_received_on IS NULL`, year).Scan(&cents)
 	return cents, err
 }
 

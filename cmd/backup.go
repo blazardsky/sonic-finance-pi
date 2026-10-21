@@ -75,18 +75,22 @@ func handleExportExpenses(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		out := [][]string{{"type", "id", "expense_id", "occurred_on", "amount_cents", "category_id", "store", "payer", "payment_method", "note", "tax_year", "refunded", "name"}}
+		out := [][]string{{"type", "id", "expense_id", "occurred_on", "amount_cents", "category_id", "store", "payer", "payment_method", "note", "tax_year", "refunded", "refund_received_on", "name"}}
 		for _, e := range expenses {
 			id := strconv.FormatInt(e.ID, 10)
+			received := "" // still awaited, or not a refund at all
+			if e.RefundReceivedOn != nil {
+				received = *e.RefundReceivedOn
+			}
 			out = append(out, []string{
 				"expense", id, "", e.OccurredOn, strconv.FormatInt(e.AmountCents, 10),
 				strconv.FormatInt(e.CategoryID, 10), e.Store, e.Payer, e.PaymentMethod,
-				e.Note, strconv.Itoa(e.TaxYear), strconv.FormatBool(e.Refunded), "",
+				e.Note, strconv.Itoa(e.TaxYear), strconv.FormatBool(e.Refunded), received, "",
 			})
 			for _, it := range e.Items {
 				out = append(out, []string{
 					"item", "", id, "", strconv.FormatInt(it.AmountCents, 10),
-					strconv.FormatInt(it.CategoryID, 10), "", "", "", "", "", "", it.Name,
+					strconv.FormatInt(it.CategoryID, 10), "", "", "", "", "", "", "", it.Name,
 				})
 			}
 		}
