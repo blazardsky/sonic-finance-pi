@@ -238,29 +238,6 @@ export function Month() {
           </Card>
         )}
 
-        {/* Weekly, not daily: a month's worth of daily bars would be too thin
-            to read on a phone. Bucketed here rather than by a second
-            endpoint — a week is a client-side grouping of the same daily rows
-            the by_category breakdown above is drawn from (cmd/reports.go).
-            An edge week that only partly falls in this month keeps its real
-            date range, per the ticket, rather than being merged into a
-            neighbour. A wide min-width so it claims a full row on its own at
-            most screen sizes — a bar chart wants the room a stat card doesn't
-            need. */}
-        {daily.length > 0 && (
-          <Card className="min-w-full flex-2 lg:min-w-lg">
-            <CardHeader>
-              <CardTitle>{t.weeklyTrend}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <CategoryTrendChart
-                buckets={weeklyBuckets(daily)}
-                categories={categoriesIn(daily, categories)}
-              />
-            </CardContent>
-          </Card>
-        )}
-
         {/* The confirmation strip: what was just typed, newest first. An
             Expense reads as money out and an Income as money in, which is the
             one thing about an entry this list has to get across.
@@ -311,6 +288,28 @@ export function Month() {
             )}
           </CardContent>
         </Card>
+
+        {/* Weekly, not daily: a month's worth of daily bars would be too thin
+            to read on a phone. Bucketed here rather than by a second
+            endpoint — a week is a client-side grouping of the same daily rows
+            the by_category breakdown above is drawn from (cmd/reports.go).
+            An edge week that only partly falls in this month keeps its real
+            date range, per the ticket, rather than being merged into a
+            neighbour. Last and full width: beside the other cards it opened
+            a row below the tallest of them, leaving a tall empty gap. */}
+        {daily.length > 0 && (
+          <Card className="w-full">
+            <CardHeader>
+              <CardTitle>{t.weeklyTrend}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CategoryTrendChart
+                buckets={weeklyBuckets(daily)}
+                categories={categoriesIn(daily, categories)}
+              />
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   )
