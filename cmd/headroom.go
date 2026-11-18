@@ -51,6 +51,9 @@ type headroomMonth struct {
 	ForecastSpendingCents int64 `json:"forecast_spending_cents"`
 	ContractCents         int64 `json:"contract_cents"`
 	RecurringCents        int64 `json:"recurring_cents"`
+	// The most any month's Headroom may be (headroomCeiling), so a cap is
+	// visible rather than a number that is mysteriously low.
+	CeilingCents int64 `json:"ceiling_cents"`
 }
 
 // headroomReport is the rest of the year (horizonMonths), starting next
@@ -62,8 +65,8 @@ type headroomReport struct {
 	Months     []headroomMonth `json:"months"`
 	Placements []placement     `json:"placements"`
 	// StartCents is the last completed month's actual leftover, through the
-	// Goal buffer — what the running total starts from: real money, not a
-	// statistic.
+	// Goal buffer and capped at the ceiling — what the running total starts
+	// from: real money, not a statistic.
 	StartCents int64 `json:"start_cents"`
 	GoalCents  int64 `json:"goal_cents"`
 }
@@ -155,7 +158,7 @@ func place(months []headroomMonth, list []plannedPurchase, savingsCents int64) [
 // computeHeadroom forecasts each horizon month M as
 //
 //	leftover = Income(M) + Contract share(M) − spending(M) − Recurring due(M)
-//	Headroom = goalBuffer(leftover, Goal)
+//	Headroom = min(goalBuffer(leftover, Goal), ceiling)
 //
 // and accumulates from lastMonthHeadroom. Income(M) and spending(M) are
 // seasonal: last year's M−1, M and M+1, blended with this year's completed
@@ -216,7 +219,11 @@ func computeHeadroom(db *sql.DB, now func() time.Time) (headroomReport, error) {
 	if err != nil {
 		return report, err
 	}
-	report.StartCents, err = lastMonthHeadroom(db, now, goalCents)
+	ceiling, err := headroomCeiling(db, now, firstMonth, goalCents)
+	if err != nil {
+		return report, err
+	}
+	report.StartCents, err = lastMonthHeadroom(db, now, goalCents, ceiling)
 	if err != nil {
 		return report, err
 	}
@@ -234,12 +241,12 @@ func computeHeadroom(db *sql.DB, now func() time.Time) (headroomReport, error) {
 			WHERE start_month <= ? AND (end_month IS NULL OR end_month >= ?)`, month, month).Scan(&recurring); err != nil {
 			return report, err
 		}
-		headroom := goalBuffer(income+shares[month]-spending-recurring, goalCents)
+		headroom := min(goalBuffer(income+shares[month]-spending-recurring, goalCents), ceiling)
 		running += headroom
 		report.Months = append(report.Months, headroomMonth{
 			Month: month, HeadroomCents: headroom, RunningCents: running,
 			ForecastIncomeCents: income, ForecastSpendingCents: spending,
-			ContractCents: shares[month], RecurringCents: recurring,
+			ContractCents: shares[month], RecurringCents: recurring, CeilingCents: ceiling,
 		})
 	}
 	report.Available = true
@@ -287,21 +294,47 @@ func completedMonthsThisYear(now func() time.Time) []string {
 	return trailingCompletedMonths(now, int(now().Month())-1)
 }
 
-// lastMonthHeadroom is the last completed month's actual leftover through the
-// Goal buffer: every Income received in it — Contract Incomes included, they
-// arrived — except investment sales, minus every Expense, Recurring and
-// Investments alike. The month's Recurring expenses are generated first, so a
-// rent no screen happened to read yet still counts.
-func lastMonthHeadroom(db *sql.DB, now func() time.Time, goalCents int64) (int64, error) {
-	month := trailingCompletedMonths(now, 1)[0]
+// headroomCeiling is the most a month's Headroom may be: the Goal buffer of
+// the median actual leftover of the last twelve completed months. One
+// exceptional month (a windfall, a large invoice) would otherwise inflate
+// every forecast month and the start; the median is not moved by it. Months
+// before the first Expense are not real zeros and are left out.
+func headroomCeiling(db *sql.DB, now func() time.Time, firstMonth string, goalCents int64) (int64, error) {
+	var leftovers []int64
+	for _, m := range trailingCompletedMonths(now, budgetTrailingMonths) {
+		if m < firstMonth {
+			continue
+		}
+		l, err := monthLeftover(db, now, m)
+		if err != nil {
+			return 0, err
+		}
+		leftovers = append(leftovers, l)
+	}
+	return goalBuffer(medianCents(leftovers), goalCents), nil
+}
+
+// monthLeftover is a completed month's actual leftover: every Income received
+// in it — Contract Incomes included, they arrived — except investment sales,
+// minus every Expense, Recurring and Investments alike. The month's Recurring
+// expenses are generated first, so a rent no screen happened to read yet still
+// counts.
+func monthLeftover(db *sql.DB, now func() time.Time, month string) (int64, error) {
 	if err := materialise(db, now, month); err != nil {
 		return 0, err
 	}
 	t, err := monthMoney(db, month, false)
+	return t.incomeCents - t.spendingCents, err
+}
+
+// lastMonthHeadroom is the last completed month's actual leftover through the
+// Goal buffer, capped at the ceiling like every forecast month.
+func lastMonthHeadroom(db *sql.DB, now func() time.Time, goalCents, ceiling int64) (int64, error) {
+	l, err := monthLeftover(db, now, trailingCompletedMonths(now, 1)[0])
 	if err != nil {
 		return 0, err
 	}
-	return goalBuffer(t.incomeCents-t.spendingCents, goalCents), nil
+	return min(goalBuffer(l, goalCents), ceiling), nil
 }
 
 // monthMoney is one month's received Income (investment sales never count)
