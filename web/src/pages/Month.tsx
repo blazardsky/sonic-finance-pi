@@ -163,7 +163,47 @@ export function Month() {
             report, and a forgotten invoice is worth more than knowing which
             Category the shopping went under. It renders nothing when nothing
             is pending. */}
-        <PendingPayments className="min-w-72 flex-1" />
+        {month >= thisMonth() && <PendingPayments className="min-w-72 flex-1" />}
+
+        {/* Exactly the Incomes behind the money-in total above: the server
+            lists them with the total's own WHERE clause. */}
+        {totals && (
+          <Card className="min-w-72 flex-1">
+            <CardHeader>
+              <CardTitle>{t.incomesThisMonth}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {totals.incomes.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {t.noIncomesThisMonth}
+                </p>
+              ) : (
+                <ul className="flex flex-col divide-y divide-border">
+                  {totals.incomes.map((income) => (
+                    <li
+                      key={income.id}
+                      className="flex items-baseline justify-between gap-3 py-2"
+                    >
+                      <span className="min-w-0">
+                        <span className="truncate">
+                          {income.client
+                            ? `${income.category} · ${income.client}`
+                            : income.category}
+                        </span>{" "}
+                        <span className="text-xs text-muted-foreground">
+                          {formatDate(income.date)}
+                        </span>
+                      </span>
+                      <span className="whitespace-nowrap tabular-nums text-credit">
+                        + € {formatCents(income.amount_cents)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Where the money went. Every line is real spend — the breakdown
             adds up to the expense total above it, with an itemised shop split

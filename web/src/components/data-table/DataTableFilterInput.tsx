@@ -1,4 +1,7 @@
+import { RiCloseLine } from "@remixicon/react"
+
 import { DatePicker } from "@/components/date-picker"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -31,7 +34,34 @@ function normalizeRange<T>(range: [T | undefined, T | undefined]): [T | undefine
 // writing that column's own filter value — used identically by the desktop
 // inline header (DataTable.tsx) and the mobile filter sheet (ticket 04),
 // which is what keeps the two in sync without a separate filter state.
+// Every variant gets the same trailing clear button once it holds a value —
+// a picked date, in particular, had no other way back to "no filter".
 export function DataTableFilterInput<TData extends RowData>({
+  column,
+}: {
+  column: Column<DataTableFeatures, TData, unknown>
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <div className="min-w-0 flex-1">
+        <FilterControl column={column} />
+      </div>
+      {column.getFilterValue() !== undefined && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t.dataTableClearFilter}
+          onClick={() => column.setFilterValue(undefined)}
+        >
+          <RiCloseLine />
+        </Button>
+      )}
+    </div>
+  )
+}
+
+function FilterControl<TData extends RowData>({
   column,
 }: {
   column: Column<DataTableFeatures, TData, unknown>

@@ -1159,6 +1159,33 @@ func TestYearFiltersExpensesToThatYearOnly(t *testing.T) {
 	}
 }
 
+// from/to scope to an inclusive date range regardless of how recent it is —
+// the frontend's recent view asks for exactly this when the Date filter is set.
+func TestFromToFiltersExpensesToThatRange(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	for _, d := range []string{"2025-12-31", "2026-01-01", "2026-02-28", "2026-03-01"} {
+		a.addExpense(t, map[string]any{"occurred_on": d, "amount_cents": 100, "category_id": alimentari})
+	}
+
+	var got []expenseJSON
+	if res := a.get(t, "/api/expenses?from=2026-01-01&to=2026-02-28", &got); res.StatusCode != http.StatusOK {
+		t.Fatalf("GET ?from&to = %d, want 200", res.StatusCode)
+	}
+	if len(got) != 2 || got[0].OccurredOn != "2026-02-28" || got[1].OccurredOn != "2026-01-01" {
+		t.Fatalf("got %v, want 2026-02-28 and 2026-01-01 (both bounds inclusive)", got)
+	}
+	a.get(t, "/api/expenses?from=2026-02-01", &got)
+	if len(got) != 2 {
+		t.Errorf("from alone: len = %d, want 2", len(got))
+	}
+	for _, qs := range []string{"from=2026-1-1", "to=abc", "from=2026-02-30"} {
+		if res := a.get(t, "/api/expenses?"+qs, nil); res.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400", qs, res.StatusCode)
+		}
+	}
+}
+
 func TestLimitCapsHowManyExpensesComeBack(t *testing.T) {
 	a := newTestApp(t)
 	alimentari := a.category(t, "Alimentari").ID

@@ -1,3 +1,4 @@
+import type { ColumnFiltersState } from "@tanstack/react-table"
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react"
 import {
   RiCheckLine,
@@ -194,6 +195,17 @@ export function Incomes({
   // time — the same "recent / anno" filter Expenses.tsx offers, off the same
   // invoice-date-or-payment-date the list is ordered by.
   const [year, setYear] = useState<string | null>(null)
+  // The Date filter as a from/to query string. In the recent view a Date
+  // range would otherwise only filter the latest RECENT_LIMIT rows, so it is
+  // fetched from the server instead; clearing it falls back to the recent view.
+  const [rangeQuery, setRangeQuery] = useState("")
+  const onColumnFiltersChange = useCallback((filters: ColumnFiltersState) => {
+    const [from, to] = (filters.find((f) => f.id === "payment_date")?.value ?? []) as (string | undefined)[]
+    const qs = new URLSearchParams()
+    if (from) qs.set("from", from)
+    if (to) qs.set("to", to)
+    setRangeQuery(qs.toString())
+  }, [])
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value }))
@@ -254,9 +266,11 @@ export function Incomes({
   // whole year's Incomes, unbounded — same shape Expenses.tsx's own
   // expensesPath uses.
   const incomesPath =
-    year === null
-      ? `/api/incomes?limit=${RECENT_LIMIT}`
-      : `/api/incomes?year=${year}`
+    year !== null
+      ? `/api/incomes?year=${year}`
+      : rangeQuery
+        ? `/api/incomes?${rangeQuery}`
+        : `/api/incomes?limit=${RECENT_LIMIT}`
 
   const load = useCallback(
     () =>
@@ -662,6 +676,7 @@ export function Incomes({
             data={incomes ?? []}
             getRowId={(income) => String(income.id)}
             initialSorting={[{ id: "payment_date", desc: true }]}
+            onColumnFiltersChange={onColumnFiltersChange}
             paginationPosition="both"
           />
         </div>

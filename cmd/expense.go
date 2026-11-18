@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -247,7 +248,10 @@ func migrateItems(tx *sql.Tx) error {
 // Optional query params, all off by default (a bare GET still returns every
 // Expense unfiltered — Investments' own history read depends on that):
 // `year` (YYYY) scopes to one year, and `limit`/`offset` page through
-// whatever `year` (or the absence of it) already selected. The frontend uses
+// whatever `year` (or the absence of it) already selected. `from`/`to`
+// (YYYY-MM-DD, inclusive, either may be omitted) scope to a date range, which
+// the frontend sends instead of `limit` when the Date filter is set in the
+// recent view. The frontend uses
 // `limit` alone for its default "last 50" view and adds `year`+`offset` only
 // once a household actually pages into an older year — the ponytail this
 // replaces ("unpaginated... add a filter when a report needs one") named this
@@ -260,20 +264,12 @@ func handleListExpenses(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		query := expenseSelect
-		var args []any
-		if year := r.URL.Query().Get("year"); year != "" {
-			if len(year) != 4 {
-				writeError(w, http.StatusBadRequest, fmt.Errorf("year must be 4 digits"))
-				return
-			}
-			if _, err := strconv.Atoi(year); err != nil {
-				writeError(w, http.StatusBadRequest, fmt.Errorf("year must be numeric"))
-				return
-			}
-			query += ` WHERE occurred_on LIKE ?`
-			args = append(args, year+"-%")
+		where, args, err := periodFilter(r.URL.Query(), "occurred_on", "occurred_on")
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
 		}
+		query := expenseSelect + where
 		query += ` ORDER BY occurred_on DESC, id DESC`
 		if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 			limit, err := strconv.Atoi(limitStr)
@@ -319,6 +315,40 @@ func handleListExpenses(db *sql.DB) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, out)
 	}
+}
+
+// periodFilter turns the optional `year` (on yearCol) and `from`/`to` (on
+// rangeCol) list params into a WHERE clause, shared by the Expense and Income
+// lists. Dates are ISO strings, so a plain string comparison is a date
+// comparison, and a NULL rangeCol never matches a range.
+func periodFilter(q url.Values, yearCol, rangeCol string) (string, []any, error) {
+	var conds []string
+	var args []any
+	if year := q.Get("year"); year != "" {
+		if len(year) != 4 {
+			return "", nil, fmt.Errorf("year must be 4 digits")
+		}
+		if _, err := strconv.Atoi(year); err != nil {
+			return "", nil, fmt.Errorf("year must be numeric")
+		}
+		conds = append(conds, yearCol+` LIKE ?`)
+		args = append(args, year+"-%")
+	}
+	for _, p := range []struct{ name, op string }{{"from", ">="}, {"to", "<="}} {
+		v := q.Get(p.name)
+		if v == "" {
+			continue
+		}
+		if _, err := time.Parse(dateLayout, v); err != nil {
+			return "", nil, fmt.Errorf("%s must be YYYY-MM-DD", p.name)
+		}
+		conds = append(conds, rangeCol+" "+p.op+" ?")
+		args = append(args, v)
+	}
+	if len(conds) == 0 {
+		return "", nil, nil
+	}
+	return " WHERE " + strings.Join(conds, " AND "), args, nil
 }
 
 func handleCreateExpense(db *sql.DB, now func() time.Time) http.HandlerFunc {

@@ -51,6 +51,19 @@ type monthTotals struct {
 	// summing to ExpenseCents exactly — the screen maps over it, and a
 	// breakdown that did not add up would be worse than no breakdown.
 	ByCategory []categoryTotal `json:"by_category"`
+
+	// The Incomes IncomeCents sums, same WHERE as readMonthRow, so the list
+	// and the total cannot disagree. Always present, never null.
+	Incomes []monthIncome `json:"incomes"`
+}
+
+// monthIncome is one Income counted in a month's money in.
+type monthIncome struct {
+	ID          int64  `json:"id"`
+	Date        string `json:"date"`
+	AmountCents int64  `json:"amount_cents"`
+	Category    string `json:"category"`
+	Client      string `json:"client"`
 }
 
 // One Category's share of a month's spend. The name travels with the id
@@ -96,7 +109,34 @@ func readMonth(db *sql.DB, now func() time.Time, month string) (monthTotals, err
 		return monthTotals{monthRow: row}, err
 	}
 	byCategory, err := readBreakdown(db, month)
-	return monthTotals{monthRow: row, ByCategory: byCategory}, err
+	if err != nil {
+		return monthTotals{monthRow: row}, err
+	}
+	incomes, err := readMonthIncomes(db, month)
+	return monthTotals{monthRow: row, ByCategory: byCategory, Incomes: incomes}, err
+}
+
+// readMonthIncomes lists what readMonthRow's income total sums: the WHERE
+// clause is copied from it and must stay identical.
+func readMonthIncomes(db *sql.DB, month string) ([]monthIncome, error) {
+	rows, err := db.Query(`SELECT i.id, i.payment_date, i.amount_cents, c.name, COALESCE(cl.name, '')
+		FROM income i JOIN category c ON c.id = i.category_id
+		LEFT JOIN client cl ON cl.id = i.client_id
+		WHERE i.payment_date IS NOT NULL AND substr(i.payment_date, 1, 7) = ?
+		ORDER BY i.payment_date, i.id`, month)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []monthIncome{}
+	for rows.Next() {
+		var m monthIncome
+		if err := rows.Scan(&m.ID, &m.Date, &m.AmountCents, &m.Category, &m.Client); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
 }
 
 // readMonthRow is the single path every month read goes through, and stays

@@ -1150,3 +1150,29 @@ func TestARecurringTaxPaymentIsCountedByTheSummary(t *testing.T) {
 		t.Errorf("tax paid for 2027 = %d, want 30000 — January was moved to 2026", got.TaxPaidCents)
 	}
 }
+
+// The list behind income_cents: same rows as the total, unpaid ones absent.
+func TestTheMonthListsExactlyTheIncomesItsTotalCounts(t *testing.T) {
+	a := newTestApp(t)
+	a.addIncome(t, map[string]any{
+		"amount_cents": 1000, "category_id": a.freelance(t).ID, "payment_date": "2026-03-10",
+	})
+	a.addIncome(t, map[string]any{
+		"amount_cents": 500, "category_id": a.freelance(t).ID, "payment_date": "2026-04-01",
+	})
+	a.addIncome(t, map[string]any{
+		"amount_cents": 700, "category_id": a.freelance(t).ID, "invoice_sent_date": "2026-03-01",
+	})
+
+	var got struct {
+		IncomeCents int64 `json:"income_cents"`
+		Incomes     []struct {
+			Date        string `json:"date"`
+			AmountCents int64  `json:"amount_cents"`
+		} `json:"incomes"`
+	}
+	a.get(t, "/api/reports/month/2026-03", &got)
+	if len(got.Incomes) != 1 || got.Incomes[0].Date != "2026-03-10" || got.Incomes[0].AmountCents != got.IncomeCents {
+		t.Errorf("incomes = %+v, income_cents = %d, want only the March payment", got.Incomes, got.IncomeCents)
+	}
+}

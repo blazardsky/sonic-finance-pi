@@ -320,6 +320,16 @@ export type MonthTotals = MonthRow & {
   // remainder under the Expense's own, so nothing is ever "uncategorised"
   // (ADR-0002).
   by_category: CategoryTotal[]
+  // The Incomes income_cents is the sum of, oldest payment first.
+  incomes: MonthIncome[]
+}
+
+export type MonthIncome = {
+  id: number
+  date: string
+  amount_cents: number
+  category: string
+  client: string
 }
 
 // One Category's share of a month's spend. The name comes with the id, so the

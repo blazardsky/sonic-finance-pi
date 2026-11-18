@@ -1,3 +1,4 @@
+import type { ColumnFiltersState } from "@tanstack/react-table"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   RiCheckLine,
@@ -363,6 +364,17 @@ export function Expenses({
   // fetched in full — DataTable's own pagination (and its per-column
   // filters) take it from there client-side.
   const [year, setYear] = useState<string | null>(null)
+  // The Date filter as a from/to query string. In the recent view a Date
+  // range would otherwise only filter the latest RECENT_LIMIT rows, so it is
+  // fetched from the server instead; clearing it falls back to the recent view.
+  const [rangeQuery, setRangeQuery] = useState("")
+  const onColumnFiltersChange = useCallback((filters: ColumnFiltersState) => {
+    const [from, to] = (filters.find((f) => f.id === "occurred_on")?.value ?? []) as (string | undefined)[]
+    const qs = new URLSearchParams()
+    if (from) qs.set("from", from)
+    if (to) qs.set("to", to)
+    setRangeQuery(qs.toString())
+  }, [])
   // Captured once at mount, not read live — a mobile quick-add shortcut is
   // meant to open the panel on arrival, not force it back open every time
   // App re-renders with the flag still set (see App.tsx's reset-on-navigate-
@@ -394,9 +406,11 @@ export function Expenses({
   // whole year's Expenses, unbounded — the backend's own handler already
   // answers a bare year-scoped GET in full; DataTable pages through it.
   const expensesPath =
-    year === null
-      ? `/api/expenses?limit=${RECENT_LIMIT}`
-      : `/api/expenses?year=${year}`
+    year !== null
+      ? `/api/expenses?year=${year}`
+      : rangeQuery
+        ? `/api/expenses?${rangeQuery}`
+        : `/api/expenses?limit=${RECENT_LIMIT}`
 
   const load = useCallback(
     () =>
@@ -763,6 +777,7 @@ export function Expenses({
             data={expenses ?? []}
             getRowId={(e) => String(e.id)}
             initialSorting={[{ id: "occurred_on", desc: true }]}
+            onColumnFiltersChange={onColumnFiltersChange}
             paginationPosition="both"
           />
         </div>

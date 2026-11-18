@@ -525,6 +525,36 @@ func TestYearFiltersIncomesByInvoiceOrPaymentDate(t *testing.T) {
 	}
 }
 
+// from/to filter on payment_date alone (what the table's Date column shows),
+// unlike year, which falls back from the invoice date.
+func TestFromToFiltersIncomesByPaymentDate(t *testing.T) {
+	a := newTestApp(t)
+	id := a.freelance(t).ID
+	// Invoiced in range but unpaid: no payment_date, never in a range.
+	a.addIncome(t, map[string]any{"amount_cents": 100, "category_id": id, "invoice_sent_date": "2026-01-15"})
+	// Invoiced in range, paid after it: out.
+	a.addIncome(t, map[string]any{"amount_cents": 200, "category_id": id, "invoice_sent_date": "2026-01-01", "payment_date": "2026-03-15"})
+	// Invoiced before the range, paid inside it: in.
+	inside := a.addIncome(t, map[string]any{"amount_cents": 300, "category_id": id, "invoice_sent_date": "2025-12-20", "payment_date": "2026-01-10"})
+	edge := a.addIncome(t, map[string]any{"amount_cents": 400, "category_id": id, "payment_date": "2026-02-28"})
+
+	var got []incomeJSON
+	if res := a.get(t, "/api/incomes?from=2026-01-01&to=2026-02-28", &got); res.StatusCode != http.StatusOK {
+		t.Fatalf("GET ?from&to = %d, want 200", res.StatusCode)
+	}
+	if len(got) != 2 || got[0].ID != edge.ID || got[1].ID != inside.ID {
+		t.Fatalf("got %v, want only the two paid inside the range", got)
+	}
+	// `to` alone must still leave the unpaid one out.
+	a.get(t, "/api/incomes?to=2026-02-28", &got)
+	if len(got) != 2 {
+		t.Errorf("to alone: len = %d, want 2", len(got))
+	}
+	if res := a.get(t, "/api/incomes?to=nope", nil); res.StatusCode != http.StatusBadRequest {
+		t.Errorf("to=nope: status = %d, want 400", res.StatusCode)
+	}
+}
+
 func TestLimitCapsHowManyIncomesComeBack(t *testing.T) {
 	a := newTestApp(t)
 	id := a.freelance(t).ID

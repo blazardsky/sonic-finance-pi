@@ -99,6 +99,7 @@ export function DataTable<TData extends RowData>({
   groupBy,
   pagination: controlledPagination,
   onPaginationChange: controlledOnPaginationChange,
+  onColumnFiltersChange,
 }: {
   columns: DataTableColumnDef<TData>[]
   data: TData[]
@@ -113,6 +114,10 @@ export function DataTable<TData extends RowData>({
   // surviving a reload/back-forward, not just a data refetch.
   pagination?: PaginationState
   onPaginationChange?: (updater: Updater<PaginationState>) => void
+  // Notified with the active filters whenever they change, for a page that
+  // has to refetch on a filter (Expenses/Incomes' recent view and Date).
+  // The state itself still lives here.
+  onColumnFiltersChange?: (filters: ColumnFiltersState) => void
   // Ticket 02: when set, an expand-toggle column is auto-injected as the
   // first column and an expanded row renders this directly beneath it — the
   // "detail panel" pattern (Clients' Contracts, RecurringExpenses' Details),
@@ -133,6 +138,9 @@ export function DataTable<TData extends RowData>({
 }) {
   const [sorting, setSorting] = React.useState<SortingState>(initialSorting ?? [])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
+  React.useEffect(() => {
+    onColumnFiltersChange?.(columnFilters)
+  }, [columnFilters, onColumnFiltersChange])
   const [internalPagination, setInternalPagination] = React.useState<PaginationState>({
     pageIndex: 0,
     pageSize,
@@ -236,10 +244,22 @@ export function DataTable<TData extends RowData>({
       )}
     </Button>
   )
+  const clearAllButton = activeFilterCount > 0 && (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="hidden sm:inline-flex"
+      onClick={() => table.resetColumnFilters(true)}
+    >
+      {t.dataTableClearFilters}
+    </Button>
+  )
   // Filtri sits next to the prev/next buttons, the whole row pushed to the
   // right — not a separate row of its own above the table.
   const pagerRow = (
     <div className="flex items-center justify-end gap-2">
+      {clearAllButton}
       {filterButton}
       {pager}
     </div>
@@ -275,7 +295,10 @@ export function DataTable<TData extends RowData>({
     <div className="flex flex-col gap-2">
       <DataTableMobileFilters table={table} />
       {groupBy && filterButton && (
-        <div className="flex justify-end">{filterButton}</div>
+        <div className="flex justify-end gap-2">
+          {clearAllButton}
+          {filterButton}
+        </div>
       )}
       {!groupBy &&
         (paginationPosition === "top" || paginationPosition === "both") &&

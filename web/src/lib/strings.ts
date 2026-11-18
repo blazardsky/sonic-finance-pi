@@ -32,6 +32,7 @@ export const t = {
   dataTableFilterMax: "Max",
   dataTableFilters: "Filtri",
   dataTableClearFilters: "Cancella filtri",
+  dataTableClearFilter: "Cancella filtro",
   dataTableNoResults: "Nessun risultato.",
 
   // Date picker (web/src/components/date-picker.tsx) — the one placeholder
@@ -288,6 +289,8 @@ export const t = {
   previousMonth: "Mese precedente",
   nextMonth: "Mese successivo",
   byCategory: "Dove sono andati i soldi",
+  incomesThisMonth: "Entrate del mese",
+  noIncomesThisMonth: "Nessuna entrata questo mese.",
   nothingSpent: "Nessuna spesa questo mese.",
   // "movimenti" is what a bank calls these; this app has Expenses and Incomes,
   // and the word it already uses for having recorded one is "registrata".

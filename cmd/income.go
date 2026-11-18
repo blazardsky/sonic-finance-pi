@@ -149,24 +149,18 @@ func migrateIncomeInvoiceAndExtra(tx *sql.Tx) error {
 // neither date yet.
 //
 // Optional query params, the same shape handleListExpenses offers: `year`
-// (YYYY) scopes to one year of that same date, and `limit`/`offset` page
+// (YYYY) scopes to one year of that same date, `from`/`to` (YYYY-MM-DD,
+// inclusive) to a range of payment_date — the column the table's Date filter
+// reads, so an unpaid Income never falls in a range — and `limit`/`offset` page
 // through whatever `year` (or the absence of it) already selected.
 func handleListIncomes(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		query := incomeSelect
-		var args []any
-		if year := r.URL.Query().Get("year"); year != "" {
-			if len(year) != 4 {
-				writeError(w, http.StatusBadRequest, fmt.Errorf("year must be 4 digits"))
-				return
-			}
-			if _, err := strconv.Atoi(year); err != nil {
-				writeError(w, http.StatusBadRequest, fmt.Errorf("year must be numeric"))
-				return
-			}
-			query += ` WHERE COALESCE(invoice_sent_date, payment_date) LIKE ?`
-			args = append(args, year+"-%")
+		where, args, err := periodFilter(r.URL.Query(), "COALESCE(invoice_sent_date, payment_date)", "payment_date")
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
 		}
+		query := incomeSelect + where
 		query += ` ORDER BY COALESCE(invoice_sent_date, payment_date) DESC, id DESC`
 		if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 			limit, err := strconv.Atoi(limitStr)
