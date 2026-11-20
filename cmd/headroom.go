@@ -14,13 +14,12 @@ const headroomPath = "/api/reports/headroom"
 // Implementation Decisions).
 const headroomHorizonMonths = 6
 
-// horizonMonths is the rest of the current year, soonest first: the forecast
-// doesn't reach into a year it knows nothing about. At most
-// headroomHorizonMonths, and at least one, so December still forecasts
-// January.
+// horizonMonths is always the next headroomHorizonMonths months, soonest
+// first, crossing into next year when it comes: in November it runs December
+// through May. A fixed length keeps the two figures it feeds (next month and
+// the end of the horizon) from collapsing into one late in the year.
 func horizonMonths(now func() time.Time) []string {
-	n := min(max(12-int(now().Month()), 1), headroomHorizonMonths)
-	return nextMonths(now, n)
+	return nextMonths(now, headroomHorizonMonths)
 }
 
 // goalBuffer turns a month's leftover into its Headroom (CONTEXT.md). Goal is
@@ -56,7 +55,7 @@ type headroomMonth struct {
 	CeilingCents int64 `json:"ceiling_cents"`
 }
 
-// headroomReport is the rest of the year (horizonMonths), starting next
+// headroomReport is the next six months (horizonMonths), starting next
 // month: this month's leftover is still being spent, so it is never offered.
 // Unavailable, with no months, until there are budgetMinHistoryMonths of
 // history — the same rule Budget uses.

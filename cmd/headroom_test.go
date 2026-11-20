@@ -43,8 +43,8 @@ func TestGoalBuffer(t *testing.T) {
 	}
 }
 
-// The horizon is the rest of the year, at least one month and at most six.
-func TestHeadroomHorizonIsTheRestOfTheYear(t *testing.T) {
+// The horizon is always the next six months, crossing into next year.
+func TestHeadroomHorizonIsTheNextSixMonths(t *testing.T) {
 	a := newTestApp(t)
 	alimentari := a.category(t, "Alimentari")
 	for _, m := range []string{"2025-10", "2025-11", "2025-12"} {
@@ -52,9 +52,9 @@ func TestHeadroomHorizonIsTheRestOfTheYear(t *testing.T) {
 	}
 	for clock, want := range map[time.Time][]string{
 		time.Date(2026, 3, 15, 0, 0, 0, 0, time.UTC):  {"2026-04", "2026-09"},
-		time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC):  {"2026-10", "2026-12"},
-		time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC): {"2026-12", "2026-12"},
-		time.Date(2026, 12, 15, 0, 0, 0, 0, time.UTC): {"2027-01", "2027-01"},
+		time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC):  {"2026-10", "2027-03"},
+		time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC): {"2026-12", "2027-05"},
+		time.Date(2026, 12, 15, 0, 0, 0, 0, time.UTC): {"2027-01", "2027-06"},
 	} {
 		a.setNow(t, clock)
 		got := a.headroom(t).Months
