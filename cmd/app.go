@@ -131,7 +131,7 @@ func newApp(db *sql.DB, now func() time.Time) http.Handler {
 	mux.HandleFunc("POST /api/planned-purchases", handleCreatePlanned(db))
 	mux.HandleFunc("PUT /api/planned-purchases/{id}", handleUpdatePlanned(db))
 	mux.HandleFunc("DELETE /api/planned-purchases/{id}", handleDeletePlanned(db))
-	mux.HandleFunc("POST /api/planned-purchases/{id}/move", handleMovePlanned(db))
+	mux.HandleFunc("POST /api/planned-purchases/reorder", handleReorderPlanned(db))
 
 	mux.HandleFunc("GET "+settingsPath, handleGetLists(db))
 	mux.HandleFunc("PUT "+settingsPath, handlePutLists(db))

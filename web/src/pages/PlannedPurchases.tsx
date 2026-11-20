@@ -1,8 +1,33 @@
 import { useCallback, useEffect, useState } from "react"
 import {
-  RiArrowDownLine,
-  RiArrowUpLine,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type Announcements,
+  type DragEndEvent,
+  type Modifier,
+  type UniqueIdentifier,
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
+
+// Rows only reorder vertically; same as @dnd-kit/modifiers' restrictToVerticalAxis.
+const restrictToVerticalAxis: Modifier = ({ transform }) => ({
+  ...transform,
+  x: 0,
+})
+import {
   RiDeleteBinLine,
+  RiDraggable,
   RiEditLine,
   RiMoreLine,
   RiShoppingBagLine,
@@ -72,7 +97,7 @@ const signedCents = (cents: number) =>
 // The Acquisti programmati page: the household's priority-ordered list of
 // Planned purchases (CONTEXT.md). Not a DataTable: its sorting and filters
 // would fight the one order that matters here, the household's own, which
-// only the up/down controls change.
+// only dragging a row by its handle changes.
 export function PlannedPurchases({
   onBought,
 }: {
@@ -171,11 +196,31 @@ export function PlannedPurchases({
     }
   }
 
-  const move = (p: PlannedPurchase, direction: "up" | "down") =>
-    write(`/api/planned-purchases/${p.id}/move`, {
-      method: "POST",
-      body: JSON.stringify({ direction }),
+  // A small distance before a drag starts, so a tap on the handle stays a
+  // tap; the handle is touch-none, so touch goes through the pointer sensor.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
     })
+  )
+
+  // Optimistic: the row stays where it was dropped while the server saves;
+  // a refused save reloads the server's order.
+  async function reorder({ active, over }: DragEndEvent) {
+    if (!planned || !over || active.id === over.id) return
+    const next = arrayMove(
+      planned,
+      planned.findIndex((p) => p.id === active.id),
+      planned.findIndex((p) => p.id === over.id)
+    )
+    setPlanned(next)
+    const ok = await write("/api/planned-purchases/reorder", {
+      method: "POST",
+      body: JSON.stringify({ ids: next.map((p) => p.id) }),
+    })
+    if (!ok) void load()
+  }
 
   const pickable = pickableCategories(
     categories,
@@ -189,6 +234,21 @@ export function PlannedPurchases({
   const months = headroom?.months ?? []
   const lastRunning = months.at(-1)?.running_cents ?? 0
   const nextMonth = months[0]
+
+  const labelOf = (id: UniqueIdentifier) =>
+    list.find((p) => p.id === id)?.label ?? ""
+  const positionOf = (id: UniqueIdentifier) =>
+    list.findIndex((p) => p.id === id) + 1
+  const announcements: Announcements = {
+    onDragStart: ({ active }) => t.reorderPicked(labelOf(active.id)),
+    onDragOver: ({ active, over }) =>
+      over ? t.reorderOver(labelOf(active.id), positionOf(over.id)) : undefined,
+    onDragEnd: ({ active, over }) =>
+      over
+        ? t.reorderDropped(labelOf(active.id), positionOf(over.id))
+        : t.reorderCancelled(labelOf(active.id)),
+    onDragCancel: ({ active }) => t.reorderCancelled(labelOf(active.id)),
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
@@ -252,115 +312,132 @@ export function PlannedPurchases({
           {planned?.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t.noPlannedYet}</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="hidden w-10 sm:table-cell">
-                    {t.priority}
-                  </TableHead>
-                  <TableHead>{t.plannedLabel}</TableHead>
-                  <TableHead className="text-right">{t.amount}</TableHead>
-                  {headroom?.available && (
-                    <TableHead className="hidden sm:table-cell">
-                      {t.plannedWhen}
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              modifiers={[restrictToVerticalAxis]}
+              onDragEnd={(e) => void reorder(e)}
+              accessibility={{
+                announcements,
+                screenReaderInstructions: { draggable: t.reorderInstructions },
+              }}
+            >
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="hidden w-10 sm:table-cell">
+                      {t.priority}
                     </TableHead>
-                  )}
-                  <TableHead className="w-28 text-right">{t.actions}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {list.map((p, i) => {
-                  const category = categories.find(
-                    (c) => c.id === p.category_id
-                  )
-                  return (
-                    <TableRow key={p.id}>
-                      <TableCell className="hidden text-muted-foreground tabular-nums sm:table-cell">
-                        {i + 1}
-                      </TableCell>
-                      <TableCell>
-                        <span className="flex items-center gap-2">
-                          {category && <ColorDot color={category.color} />}
-                          {p.label}
-                        </span>
-                        {/* On phones the "Quando" column is folded in here. */}
-                        {headroom?.available && (
-                          <span className="text-xs whitespace-normal text-muted-foreground sm:hidden">
-                            <PlacementText
-                              placement={placements.get(p.id)}
-                              horizon={months.length}
-                            />
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right font-medium tabular-nums">
-                        € {formatCents(p.amount_cents)}
-                      </TableCell>
-                      {headroom?.available && (
-                        <TableCell className="hidden sm:table-cell">
-                          <PlacementText
-                            placement={placements.get(p.id)}
-                            horizon={months.length}
-                          />
-                        </TableCell>
-                      )}
-                      <TableCell>
-                        <div className="flex items-center justify-end">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={t.moveUp}
-                            title={t.moveUp}
-                            disabled={i === 0}
-                            onClick={() => void move(p, "up")}
-                          >
-                            <RiArrowUpLine />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={t.moveDown}
-                            title={t.moveDown}
-                            disabled={i === list.length - 1}
-                            onClick={() => void move(p, "down")}
-                          >
-                            <RiArrowDownLine />
-                          </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                aria-label={t.actions}
-                              >
-                                <RiMoreLine />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => onBought(p)}>
-                                <RiShoppingBagLine /> {t.bought}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => select(p)}>
-                                <RiEditLine /> {t.editPlanned}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                variant="destructive"
-                                onClick={() => void remove(p)}
-                              >
-                                <RiDeleteBinLine /> {t.delete}
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
+                    <TableHead>{t.plannedLabel}</TableHead>
+                    <TableHead className="text-right">{t.amount}</TableHead>
+                    {headroom?.available && (
+                      <TableHead className="hidden sm:table-cell">
+                        {t.plannedWhen}
+                      </TableHead>
+                    )}
+                    <TableHead className="w-28 text-right">
+                      {t.actions}
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <SortableContext
+                    items={list.map((p) => p.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {list.map((p, i) => {
+                      const category = categories.find(
+                        (c) => c.id === p.category_id
+                      )
+                      return (
+                        <SortableRow key={p.id} id={p.id}>
+                          {(handle) => (
+                            <>
+                              <TableCell className="hidden text-muted-foreground tabular-nums sm:table-cell">
+                                {i + 1}
+                              </TableCell>
+                              <TableCell>
+                                <span className="flex items-center gap-2">
+                                  {category && (
+                                    <ColorDot color={category.color} />
+                                  )}
+                                  {p.label}
+                                </span>
+                                {/* On phones the "Quando" column is folded in here. */}
+                                {headroom?.available && (
+                                  <span className="text-xs whitespace-normal text-muted-foreground sm:hidden">
+                                    <PlacementText
+                                      placement={placements.get(p.id)}
+                                      horizon={months.length}
+                                    />
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right font-medium tabular-nums">
+                                € {formatCents(p.amount_cents)}
+                              </TableCell>
+                              {headroom?.available && (
+                                <TableCell className="hidden sm:table-cell">
+                                  <PlacementText
+                                    placement={placements.get(p.id)}
+                                    horizon={months.length}
+                                  />
+                                </TableCell>
+                              )}
+                              <TableCell>
+                                <div className="flex items-center justify-end">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    className="cursor-grab touch-none active:cursor-grabbing"
+                                    aria-label={t.reorderHandle(p.label)}
+                                    title={t.reorderHandle(p.label)}
+                                    {...handle}
+                                  >
+                                    <RiDraggable />
+                                  </Button>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        aria-label={t.actions}
+                                      >
+                                        <RiMoreLine />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem
+                                        onClick={() => onBought(p)}
+                                      >
+                                        <RiShoppingBagLine /> {t.bought}
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onClick={() => select(p)}
+                                      >
+                                        <RiEditLine /> {t.editPlanned}
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        variant="destructive"
+                                        onClick={() => void remove(p)}
+                                      >
+                                        <RiDeleteBinLine /> {t.delete}
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </div>
+                              </TableCell>
+                            </>
+                          )}
+                        </SortableRow>
+                      )
+                    })}
+                  </SortableContext>
+                </TableBody>
+              </Table>
+            </DndContext>
           )}
         </div>
 
@@ -458,6 +535,36 @@ export function PlannedPurchases({
         </FormSidebar>
       </div>
     </div>
+  )
+}
+
+// One draggable row. The row moves, but only the handle starts a drag, so the
+// row's text and its menu stay clickable; the handle's props come back to the
+// caller to spread on its Button.
+function SortableRow({
+  id,
+  children,
+}: {
+  id: number
+  children: (handle: React.ComponentProps<"button">) => React.ReactNode
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id })
+  return (
+    <TableRow
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={isDragging ? "relative z-10 bg-muted" : undefined}
+    >
+      {children({ ref: setActivatorNodeRef, ...attributes, ...listeners })}
+    </TableRow>
   )
 }
 

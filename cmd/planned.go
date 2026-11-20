@@ -71,7 +71,7 @@ func handleListPlanned(db *sql.DB) http.HandlerFunc {
 
 // plannedBody is what create and update both take: the whole editable shape,
 // so an update is a replace, like the other record forms. Position is not
-// part of it — only a move changes the order.
+// part of it — only a reorder changes the order.
 type plannedBody struct {
 	Label       string `json:"label"`
 	AmountCents int64  `json:"amount_cents"`
@@ -169,50 +169,61 @@ func handleDeletePlanned(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// handleMovePlanned swaps one with its neighbour above ("up") or below
-// ("down") — the up/down controls, one place per tap. Moving the first up or
-// the last down is refused rather than silently ignored.
-func handleMovePlanned(db *sql.DB) http.HandlerFunc {
+// handleReorderPlanned takes the whole list in its new priority order — what
+// a drag and drop leaves behind — and renumbers positions to match. The ids
+// must be exactly the existing ones, each once: a list that has changed
+// meanwhile (another screen added or deleted one) is refused, not merged.
+func handleReorderPlanned(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		p, ok := findPlanned(w, db, r.PathValue("id"))
-		if !ok {
-			return
-		}
 		var body struct {
-			Direction string `json:"direction"`
+			IDs []int64 `json:"ids"`
 		}
 		if err := decodeJSON(w, r, &body); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		var neighbour string
-		switch body.Direction {
-		case "up":
-			neighbour = plannedSelect + ` WHERE position < ? ORDER BY position DESC LIMIT 1`
-		case "down":
-			neighbour = plannedSelect + ` WHERE position > ? ORDER BY position LIMIT 1`
-		default:
-			writeInvalid(w, errors.New(`direction must be "up" or "down"`))
-			return
-		}
-		other, err := scanPlanned(db.QueryRow(neighbour, p.Position))
-		if errors.Is(err, sql.ErrNoRows) {
-			writeInvalid(w, errors.New("already at that end of the list"))
-			return
-		}
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-
 		tx, err := db.Begin()
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
 		defer tx.Rollback()
-		for _, s := range []struct{ id, pos int64 }{{p.ID, other.Position}, {other.ID, p.Position}} {
-			if _, err := tx.Exec(`UPDATE planned_purchase SET position = ? WHERE id = ?`, s.pos, s.id); err != nil {
+
+		existing := map[int64]bool{}
+		rows, err := tx.Query(`SELECT id FROM planned_purchase`)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		for rows.Next() {
+			var id int64
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+			existing[id] = true
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		mismatch := errors.New("ids must list every planned purchase exactly once")
+		if len(body.IDs) != len(existing) {
+			writeInvalid(w, mismatch)
+			return
+		}
+		for _, id := range body.IDs {
+			if !existing[id] {
+				writeInvalid(w, mismatch)
+				return
+			}
+			delete(existing, id) // a repeated id finds nothing the second time
+		}
+
+		for i, id := range body.IDs {
+			if _, err := tx.Exec(`UPDATE planned_purchase SET position = ? WHERE id = ?`, i+1, id); err != nil {
 				writeError(w, http.StatusInternalServerError, err)
 				return
 			}

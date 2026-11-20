@@ -109,37 +109,38 @@ func TestPlannedPurchaseRejectsInvalidInput(t *testing.T) {
 	}
 }
 
-// Up/down move one place, and refuse to move past either end.
-func TestPlannedPurchaseMove(t *testing.T) {
+// Reorder takes the whole list in its new order, and refuses any list that
+// is not exactly the existing ids, each once.
+func TestPlannedPurchaseReorder(t *testing.T) {
 	a := newTestApp(t)
 	laptop := a.addPlanned(t, "Laptop", 150000)
-	a.addPlanned(t, "Divano", 80000)
+	divano := a.addPlanned(t, "Divano", 80000)
 	cuffie := a.addPlanned(t, "Cuffie", 20000)
 
-	move := func(id int64, dir string) int {
+	reorder := func(ids ...int64) int {
 		t.Helper()
-		return a.post(t, plannedItemPath(id)+"/move", map[string]string{"direction": dir}, nil).StatusCode
+		return a.post(t, plannedPath+"/reorder", map[string]any{"ids": ids}, nil).StatusCode
 	}
 
-	if code := move(cuffie.ID, "up"); code != http.StatusOK {
-		t.Fatalf("move up = %d, want 200", code)
-	}
-	assertLabels(t, a.planned(t), "Laptop", "Cuffie", "Divano")
-
-	if code := move(laptop.ID, "down"); code != http.StatusOK {
-		t.Fatalf("move down = %d, want 200", code)
+	if code := reorder(cuffie.ID, laptop.ID, divano.ID); code != http.StatusOK {
+		t.Fatalf("reorder = %d, want 200", code)
 	}
 	assertLabels(t, a.planned(t), "Cuffie", "Laptop", "Divano")
 
-	if code := move(cuffie.ID, "up"); code != http.StatusBadRequest {
-		t.Errorf("moving the first up = %d, want 400", code)
-	}
-	divano := a.planned(t)[2]
-	if code := move(divano.ID, "down"); code != http.StatusBadRequest {
-		t.Errorf("moving the last down = %d, want 400", code)
-	}
-	if code := move(divano.ID, "sideways"); code != http.StatusBadRequest {
-		t.Errorf("unknown direction = %d, want 400", code)
+	for name, ids := range map[string][]int64{
+		"missing one": {cuffie.ID, laptop.ID},
+		"duplicate":   {cuffie.ID, laptop.ID, laptop.ID},
+		"unknown id":  {cuffie.ID, laptop.ID, 99999},
+		"extra id":    {cuffie.ID, laptop.ID, divano.ID, 99999},
+		"empty":       {},
+	} {
+		if code := reorder(ids...); code != http.StatusBadRequest {
+			t.Errorf("%s: reorder = %d, want 400", name, code)
+		}
 	}
 	assertLabels(t, a.planned(t), "Cuffie", "Laptop", "Divano")
+
+	// New ones still go to the bottom after a reorder.
+	a.addPlanned(t, "Tenda", 5000)
+	assertLabels(t, a.planned(t), "Cuffie", "Laptop", "Divano", "Tenda")
 }

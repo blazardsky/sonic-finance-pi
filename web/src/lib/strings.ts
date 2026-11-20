@@ -407,8 +407,16 @@ export const t = {
   plannedNotSaved: "Acquisto non salvato. Riprova.",
   confirmDeletePlanned: (label: string) => `Eliminare "${label}"?`,
   bought: "Comprato",
-  moveUp: "Sposta su",
-  moveDown: "Sposta giù",
+  reorderHandle: (label: string) => `Trascina per riordinare "${label}"`,
+  // Read aloud to screen readers while a row is dragged (dnd-kit).
+  reorderInstructions:
+    "Premi spazio o invio per prendere l'acquisto, le frecce su e giù per spostarlo, spazio o invio per lasciarlo, esc per annullare.",
+  reorderPicked: (label: string) => `Preso "${label}".`,
+  reorderOver: (label: string, position: number) =>
+    `"${label}" in posizione ${position}.`,
+  reorderDropped: (label: string, position: number) =>
+    `"${label}" lasciato in posizione ${position}.`,
+  reorderCancelled: (label: string) => `Spostamento di "${label}" annullato.`,
   priority: "Priorità",
   headroomProjection: "Proiezione, non una promessa.",
   headroomForecastMonthly: "Margine mensile previsto",
