@@ -229,9 +229,10 @@ export function Settings() {
             </form>
           </CardContent>
         </Card>
-
-        <PasswordForm />
-        <BackupLinks />
+        <div>
+          <PasswordForm />
+          <BackupLinks />
+        </div>
       </div>
     </div>
   )
