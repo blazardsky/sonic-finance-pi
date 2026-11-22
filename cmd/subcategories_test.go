@@ -358,3 +358,96 @@ func TestReplaceWithAWrongSideOrNonexistentSubcategoryIsRefused(t *testing.T) {
 		t.Errorf("bare DELETE after refused replace_with attempts = %d, want 409", res.StatusCode)
 	}
 }
+
+// An Item carries its own Subcategory, independent of its Expense's: saved,
+// read back, replaced by an edit, and refused under the same rule the
+// Expense's own answers to. A hidden one still counts, as for the Expense.
+func TestAnItemCarriesItsOwnSubcategory(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	bio := a.createSubcategoryNamed(t, "Bio")
+	caffe := a.createSubcategoryNamed(t, "Caffè")
+
+	e := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 1000, "category_id": alimentari, "subcategory_id": caffe.ID,
+		"items": []map[string]any{
+			{"name": "Mele", "amount_cents": 300, "category_id": alimentari, "subcategory_id": bio.ID},
+			{"name": "Pane", "amount_cents": 200, "category_id": alimentari},
+		},
+	})
+	got := a.expense(t, e.ID)
+	if got.Items[0].SubcategoryID == nil || *got.Items[0].SubcategoryID != bio.ID {
+		t.Errorf("first item subcategory_id = %v, want %d", got.Items[0].SubcategoryID, bio.ID)
+	}
+	if got.Items[1].SubcategoryID != nil {
+		t.Errorf("second item subcategory_id = %v, want nil", got.Items[1].SubcategoryID)
+	}
+	if got.SubcategoryID == nil || *got.SubcategoryID != caffe.ID {
+		t.Errorf("expense subcategory_id = %v, want untouched %d", got.SubcategoryID, caffe.ID)
+	}
+
+	// Hidden is not part of the rule: hiding takes it out of the picker only.
+	if res := a.patch(t, subcategoryPath(bio.ID), map[string]any{"hidden": true}, nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("hiding = %d, want 200", res.StatusCode)
+	}
+	res := a.patch(t, expensePath(e.ID), map[string]any{"items": []map[string]any{
+		{"name": "Mele", "amount_cents": 300, "category_id": alimentari, "subcategory_id": caffe.ID},
+		{"name": "Pane", "amount_cents": 200, "category_id": alimentari, "subcategory_id": bio.ID},
+	}}, nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH items with a hidden subcategory = %d, want 200", res.StatusCode)
+	}
+	got = a.expense(t, e.ID)
+	if got.Items[0].SubcategoryID == nil || *got.Items[0].SubcategoryID != caffe.ID ||
+		got.Items[1].SubcategoryID == nil || *got.Items[1].SubcategoryID != bio.ID {
+		t.Errorf("items after edit = %+v, want subcategories %d, %d", got.Items, caffe.ID, bio.ID)
+	}
+
+	var incomeSide subcategoryJSON
+	if res := a.post(t, "/api/subcategories", map[string]any{"name": "Bonus", "applies_to": appliesIncome}, &incomeSide); res.StatusCode != http.StatusCreated {
+		t.Fatalf("POST an income-side Subcategory = %d, want 201", res.StatusCode)
+	}
+	for name, sub := range map[string]int64{"an income-side subcategory": incomeSide.ID, "a nonexistent subcategory": 9999} {
+		res := a.post(t, "/api/expenses", map[string]any{
+			"occurred_on": "2026-03-15", "amount_cents": 1000, "category_id": alimentari, "payer": "Nicco",
+			"items": []map[string]any{{"name": "Mele", "amount_cents": 300, "category_id": alimentari, "subcategory_id": sub}},
+		}, nil)
+		if res.StatusCode != http.StatusBadRequest {
+			t.Errorf("an item with %s = %d, want 400", name, res.StatusCode)
+		}
+	}
+}
+
+// Deleting a Subcategory reaches Items too: a bare delete is refused while an
+// Item still uses it, replace_with moves the Item onto the replacement, and
+// clear=true takes the tag off it.
+func TestDeletingASubcategoryReachesItems(t *testing.T) {
+	a := newTestApp(t)
+	alimentari := a.category(t, "Alimentari").ID
+	bio := a.createSubcategoryNamed(t, "Bio")
+	km0 := a.createSubcategoryNamed(t, "Km 0")
+
+	e := a.addExpense(t, map[string]any{
+		"occurred_on": "2026-03-15", "amount_cents": 1000, "category_id": alimentari,
+		"items": []map[string]any{{"name": "Mele", "amount_cents": 300, "category_id": alimentari, "subcategory_id": bio.ID}},
+	})
+	itemSub := func() *int64 { return a.expense(t, e.ID).Items[0].SubcategoryID }
+
+	if res := a.delete(t, subcategoryPath(bio.ID)); res.StatusCode != http.StatusConflict {
+		t.Errorf("DELETE a Subcategory only an Item uses = %d, want 409", res.StatusCode)
+	}
+
+	if res := a.delete(t, subcategoryPath(bio.ID)+"?replace_with="+strconv.FormatInt(km0.ID, 10)); res.StatusCode != http.StatusNoContent {
+		t.Fatalf("DELETE ?replace_with = %d, want 204", res.StatusCode)
+	}
+	if got := itemSub(); got == nil || *got != km0.ID {
+		t.Errorf("item subcategory_id after replace_with = %v, want %d", got, km0.ID)
+	}
+
+	if res := a.delete(t, subcategoryPath(km0.ID)+"?clear=true"); res.StatusCode != http.StatusNoContent {
+		t.Fatalf("DELETE ?clear=true = %d, want 204", res.StatusCode)
+	}
+	if got := itemSub(); got != nil {
+		t.Errorf("item subcategory_id after clear = %v, want nil", *got)
+	}
+}

@@ -181,6 +181,9 @@ export type Item = {
   // Purely informational (ADR-0014): never affects amount_cents or
   // price_per_unit.
   discounted: boolean
+  // The Item's own optional Tag (a Subcategory), independent of its
+  // Expense's; null is the ordinary case.
+  subcategory_id: number | null
   // Derived server-side from amount_cents and quantity (ADR-0014), in cents
   // per unit — never sent back on write, and null whenever quantity is.
   price_per_unit: number | null
@@ -620,35 +623,26 @@ export type NotYetInvoicedClient = {
   client: string
 }
 
-// One Store's figures for one (name, category) group in the Tracker
-// (cmd/tracker.go): last price is the most recently occurred Expense's, plus
-// the min/max ever seen there. Cents, but not always whole — an Item bought
-// with a quantity is priced per unit (amount_cents ÷ quantity), so this can
-// carry a fraction of a cent.
-export type TrackerStorePrice = {
+// One purchase of a Tracker group (cmd/tracker.go). price is cents, but not
+// always whole — an Item bought with a quantity is priced per unit
+// (amount_cents ÷ quantity), and then unit says which ("kg"/"lt"/"piece");
+// "" is a plain amount. subcategory_id is the Item's own Tag.
+export type TrackerPoint = {
+  occurred_on: string
+  price: number
+  unit: string
   store: string
-  last_price: number
-  last_occurred_on: string
-  min_price: number
-  max_price: number
+  discounted: boolean
+  subcategory_id: number | null
 }
 
-// One calendar year's average price for a Tracker group, across every Store
-// folded together — unlike TrackerStorePrice, which is scoped to one.
-export type TrackerYearlyPrice = {
-  year: number
-  average_price: number
-}
-
-// One (normalized name, Category) group GET /api/tracker answers with: how
-// much the same Item has cost over time and where it was cheaper. name is
-// already normalized (trimmed/lowercased) server-side for this endpoint only
-// — never re-normalize it here.
+// One (normalized name, Category) group GET /api/tracker answers with, every
+// purchase oldest first. name is already normalized (trimmed/lowercased)
+// server-side for this endpoint only — never re-normalize it here.
 export type TrackerItem = {
   name: string
   category_id: number
-  stores: TrackerStorePrice[]
-  yearly_average: TrackerYearlyPrice[]
+  points: TrackerPoint[]
 }
 
 // A Planned purchase (CONTEXT.md): something the household intends to buy

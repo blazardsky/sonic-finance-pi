@@ -36,13 +36,13 @@ _Avoid_: subscription, schedule, standing order, repeat
 A named bucket money is counted under when the household looks at where it went. Every Expense and Income has one; an Item may override an Expense's for part of the amount. A Category applies to Expenses, to Incomes, or to both — "Food" is never an Income and "Freelance" is never an Expense. Categories are a flat list. On Income screens the same concept is worded "income reason"; it is not a second field.
 _Avoid_: tag, label, type, kind, type of payment
 
-**Subcategory**:
-A second, independent tag an Expense (or a Recurring expense) may optionally carry alongside its Category — never a child of one specific Category, and never nested itself. The same Subcategory freely pairs with whichever Category an entry actually used it under; nothing links a Subcategory to a fixed parent.
-_Avoid_: sub-category (as a kind of Category), child category, tag
+**Tag**:
+A second, independent label an Expense, a Recurring expense or an Item may optionally carry alongside its Category — one at most, never a child of one specific Category, and never nested itself. The same Tag freely pairs with whichever Category an entry actually used it under; nothing links a Tag to a fixed parent. An Item's Tag is its own, independent of its Expense's (a new Item starts with the Expense's). In code, the API and the database it is still named `subcategory`.
+_Avoid_: subcategory / sottocategoria (on screen), child category
 
 **Spending intent**:
 An optional, two-step judgment the household can attach to an Expense or Recurring expense, off by default behind a settings switch. First: was it a Necessity or a Desire. Only a Desire can then optionally be further marked Wise or Bullshit — a Necessity is judged on neither, since needing something isn't a question of whether buying it was a good call. A Category may carry its own default Spending intent, which seeds a new Expense's own value; once set, an Expense's Spending intent is its own and does not change if the Category's default changes later.
-_Avoid_: tag (Subcategory already owns that word), judgment, classification, mark
+_Avoid_: tag (Tag already owns that word), judgment, classification, mark
 
 **Base category**:
 A Category the app itself depends on and therefore protects from renaming and deletion — "Freelance" and "Taxes" are what the yearly tax summary is computed from, "Investments" is what Budget, Target, and the yearly Estimate exclude, and "Gift" is what the spoiler blur resolves. They can be hidden from the pickers once you stop using them, but never renamed or removed. Only categories the code actually resolves are protected; every other Category is yours to add, rename, and archive freely.
@@ -61,7 +61,7 @@ A Recurring expense whose Category is Investments and which also names a Holding
 _Avoid_: recurring investment, DCA, dollar-cost averaging, subscription
 
 **Tracker**:
-A view over Items across every Expense, grouping by Store and Category to show how much the same Item has cost over time and where it was cheaper. Never a record of its own — always computed from ordinary Expenses and Items, the same way Pending payment is a view over Incomes.
+A view over Items across every Expense, grouping the same Item (by name and Category) to show its price per unit at each purchase over time and where it was cheaper. Products are listed under their Category, and a whole Category or Tag can be charted at once, one line per product, to compare them. Never a record of its own — always computed from ordinary Expenses and Items, the same way Pending payment is a view over Incomes.
 _Avoid_: price tracker, history, analytics
 
 **Pending payment**:
@@ -73,7 +73,7 @@ The year a tax payment relates to, which is usually not the year it was paid —
 _Avoid_: fiscal year, accounting period
 
 **Store**:
-Where an Expense happened, remembered as free text rather than chosen from a fixed list. The Tracker normalizes it (trimmed, lowercased) only when grouping for its own view — the stored value is untouched, and two spellings of the same shop can still end up as separate rows if they differ enough.
+Where an Expense happened, remembered as free text rather than chosen from a fixed list. The Tracker shows it beside each purchase as typed (trimmed) and never groups by it, so two spellings of the same shop simply read as two shops.
 _Avoid_: shop, merchant, vendor, place
 
 **Payer**:

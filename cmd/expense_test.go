@@ -57,6 +57,9 @@ type itemJSON struct {
 	Unit        string   `json:"unit"`
 	Discounted  bool     `json:"discounted"`
 
+	// The Item's own optional Subcategory, independent of its Expense's.
+	SubcategoryID *int64 `json:"subcategory_id"`
+
 	PricePerUnit *float64 `json:"price_per_unit"`
 }
 

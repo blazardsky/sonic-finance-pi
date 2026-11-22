@@ -51,6 +51,14 @@ func migrateSubcategories(tx *sql.Tx) error {
 	return err
 }
 
+// migrateItemSubcategory is schema step 25: an Item can carry its own optional
+// Subcategory (shown as "Tag"), independent of its Expense's — the Tracker
+// groups by it. No ON DELETE clause, for the same in-use 409 as above.
+func migrateItemSubcategory(tx *sql.Tx) error {
+	_, err := tx.Exec(`ALTER TABLE item ADD COLUMN subcategory_id INTEGER REFERENCES subcategory(id)`)
+	return err
+}
+
 func handleListSubcategories(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rows, err := db.Query(subcategorySelect + ` ORDER BY name COLLATE NOCASE`)
@@ -204,7 +212,7 @@ func handleDeleteSubcategory(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// reassignSubcategoryTo moves Expense's and Recurring expense's
+// reassignSubcategoryTo moves Expense's, Recurring expense's and Item's
 // subcategory_id from oldID to newID, then removes the now-unreferenced old
 // row, all in one transaction — mirrors reassignCategoryTo. category_id on
 // those rows is never touched: pairing a Subcategory with a Category is a
@@ -213,10 +221,11 @@ func reassignSubcategoryTo(db *sql.DB, oldID, newID int64) error {
 	return runThenDelete(db, []execStmt{
 		{`UPDATE expense SET subcategory_id = ? WHERE subcategory_id = ?`, []any{newID, oldID}},
 		{`UPDATE recurring_expense SET subcategory_id = ? WHERE subcategory_id = ?`, []any{newID, oldID}},
+		{`UPDATE item SET subcategory_id = ? WHERE subcategory_id = ?`, []any{newID, oldID}},
 	}, "subcategory", oldID)
 }
 
-// clearSubcategoryFrom nulls out Expense's and Recurring expense's
+// clearSubcategoryFrom nulls out Expense's, Recurring expense's and Item's
 // subcategory_id wherever it points at id, then removes the row — the
 // "remove the tag instead" choice ticket 01 gave Category no equivalent to,
 // since a Category is never optional on those rows the way a Subcategory is.
@@ -226,6 +235,7 @@ func clearSubcategoryFrom(db *sql.DB, id int64) error {
 	return runThenDelete(db, []execStmt{
 		{`UPDATE expense SET subcategory_id = NULL WHERE subcategory_id = ?`, []any{id}},
 		{`UPDATE recurring_expense SET subcategory_id = NULL WHERE subcategory_id = ?`, []any{id}},
+		{`UPDATE item SET subcategory_id = NULL WHERE subcategory_id = ?`, []any{id}},
 	}, "subcategory", id)
 }
 

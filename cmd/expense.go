@@ -137,6 +137,10 @@ type item struct {
 	// AmountCents or PricePerUnit.
 	Discounted bool `json:"discounted"`
 
+	// The Item's own optional Subcategory (shown as "Tag"), independent of
+	// its Expense's — nil is the ordinary case, same as on expense.
+	SubcategoryID *int64 `json:"subcategory_id"`
+
 	// The derived price per unit (ADR-0014): computed from AmountCents and
 	// Quantity wherever an Item is read, nil whenever Quantity is nil, and
 	// never stored. A request's own price_per_unit is never trusted —
@@ -679,7 +683,7 @@ func findExpense(w http.ResponseWriter, db *sql.DB, rawID string) (expense, bool
 // history of Items is a few hundred rows, which is cheaper to read whole than
 // to filter twice.
 func itemsByExpense(db *sql.DB) (map[int64][]item, error) {
-	rows, err := db.Query(`SELECT expense_id, name, amount_cents, category_id, quantity, unit, discounted
+	rows, err := db.Query(`SELECT expense_id, name, amount_cents, category_id, quantity, unit, discounted, subcategory_id
 		FROM item ORDER BY expense_id, id`)
 	if err != nil {
 		return nil, err
@@ -692,7 +696,7 @@ func itemsByExpense(db *sql.DB) (map[int64][]item, error) {
 		var it item
 		var unit sql.NullString
 		if err := rows.Scan(&id, &it.Name, &it.AmountCents, &it.CategoryID,
-			&it.Quantity, &unit, &it.Discounted); err != nil {
+			&it.Quantity, &unit, &it.Discounted, &it.SubcategoryID); err != nil {
 			return nil, err
 		}
 		it.Unit = unit.String
@@ -706,9 +710,9 @@ func itemsByExpense(db *sql.DB) (map[int64][]item, error) {
 // whole set — that is what lets one carry no id of its own.
 func insertItems(tx *sql.Tx, expenseID int64, items []item) error {
 	for _, it := range items {
-		if _, err := tx.Exec(`INSERT INTO item (expense_id, name, amount_cents, category_id, quantity, unit, discounted)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`, expenseID, it.Name, it.AmountCents, it.CategoryID,
-			it.Quantity, nullString(it.Unit), it.Discounted); err != nil {
+		if _, err := tx.Exec(`INSERT INTO item (expense_id, name, amount_cents, category_id, quantity, unit, discounted, subcategory_id)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, expenseID, it.Name, it.AmountCents, it.CategoryID,
+			it.Quantity, nullString(it.Unit), it.Discounted, it.SubcategoryID); err != nil {
 			return err
 		}
 		// Ticket 03: item_name_fts is an append-only vocabulary of every name
@@ -791,6 +795,10 @@ func checkExpense(w http.ResponseWriter, db *sql.DB, e *expense) bool {
 	for _, it := range e.Items {
 		if !checkCategoryAccepts(w, db, it.CategoryID, appliesExpense,
 			fmt.Sprintf("the item %q is not in a category an expense can go in", it.Name)) {
+			return false
+		}
+		if it.SubcategoryID != nil && !checkSubcategoryAccepts(w, db, *it.SubcategoryID, appliesExpense,
+			fmt.Sprintf("the item %q has a subcategory an expense cannot go in", it.Name)) {
 			return false
 		}
 	}

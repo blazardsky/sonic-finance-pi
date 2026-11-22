@@ -395,6 +395,16 @@ export function RecurringExpenses() {
           },
         }
       ),
+      helper.accessor((r) => nameOf(subcategories, r.subcategory_id), {
+        id: "tag",
+        header: t.subcategory,
+        meta: { filterVariant: "select", hiddenOnMobile: true },
+        cell: ({ row }) => (
+          <span className={running(row.original) ? "" : "text-muted-foreground"}>
+            {nameOf(subcategories, row.original.subcategory_id)}
+          </span>
+        ),
+      }),
       helper.accessor("note", {
         header: t.note,
         meta: { filterVariant: "text", hiddenOnMobile: true },
@@ -458,7 +468,7 @@ export function RecurringExpenses() {
       }),
     ]
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categories])
+  }, [categories, subcategories])
 
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">

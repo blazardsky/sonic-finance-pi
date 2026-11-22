@@ -211,15 +211,20 @@ type ItemDraft = {
   quantity: string
   unit: string
   discounted: boolean
+  subcategory_id: number | null
 }
 
-const blankItem = (category_id: number | "" = ""): ItemDraft => ({
+const blankItem = (
+  category_id: number | "" = "",
+  subcategory_id: number | null = null
+): ItemDraft => ({
   name: "",
   amount: "",
   category_id,
   quantity: "",
   unit: "",
   discounted: false,
+  subcategory_id,
 })
 
 const blankDraft = (): Draft => ({
@@ -261,6 +266,7 @@ const draftOf = (e: Expense): Draft => ({
     quantity: quantityTyped(it.quantity),
     unit: it.unit,
     discounted: it.discounted,
+    subcategory_id: it.subcategory_id,
   })),
 })
 
@@ -490,6 +496,7 @@ export function Expenses({
         quantity,
         unit: quantity === null ? "" : it.unit,
         discounted: it.discounted,
+        subcategory_id: it.subcategory_id,
       }
     })
     if (
@@ -608,11 +615,17 @@ export function Expenses({
   // The Expense's own Subcategory picker — a second, independent tag, never
   // narrowed by which Category is chosen: the whole point is that the same
   // one pairs with any of them.
-  const pickableSub = pickableSubcategories(
-    subcategories,
-    "expense",
-    subcategories.find((s) => s.id === draft.subcategory_id)
-  )
+  const pickableSub = (chosen: number | null) =>
+    pickableSubcategories(
+      subcategories,
+      "expense",
+      subcategories.find((s) => s.id === chosen)
+    )
+
+  // The distinct Tags on an Expense and its Items, the Expense's own first.
+  const tagsOf = (e: Expense) =>
+    [...new Set([e.subcategory_id, ...e.items.map((it) => it.subcategory_id)])]
+      .flatMap((id) => subcategories.find((s) => s.id === id) ?? [])
 
   // Whether the Tax year field belongs on screen, which is only for an Expense
   // in a tax Category. Ticket 03: Investments is also a Base category now, and
@@ -707,6 +720,28 @@ export function Expenses({
           )
         },
       }),
+      // Every Tag the Expense touches: its own plus each Item's, so filtering
+      // on a Tag keeps an Expense that carries it on itself or on any Item.
+      helper.accessor((e) => tagsOf(e).map((s) => s.name).join(", "), {
+        id: "tag",
+        header: t.subcategory,
+        meta: { filterVariant: "select", hiddenOnMobile: true },
+        getUniqueValues: (e) => tagsOf(e).map((s) => s.name),
+        filterFn: (row, columnId, value) =>
+          row.getUniqueValues<string>(columnId).includes(value),
+        cell: ({ row }) => {
+          const tags = tagsOf(row.original)
+          return tags.length === 0 ? (
+            "-"
+          ) : (
+            <div className="flex flex-wrap gap-1">
+              {tags.map((s) => (
+                <CategoryBadge key={s.id} name={s.name} color={s.color} />
+              ))}
+            </div>
+          )
+        },
+      }),
       helper.accessor("store", {
         header: t.store,
         meta: { filterVariant: "text", hiddenOnMobile: true },
@@ -755,7 +790,7 @@ export function Expenses({
       }),
     ]
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categories])
+  }, [categories, subcategories])
 
   return (
     <div className="mx-auto flex w-full max-w-(--content-max-width) flex-col gap-6 p-6 md:min-h-full">
@@ -900,7 +935,7 @@ export function Expenses({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">{t.chooseSubcategory}</SelectItem>
-                  {pickableSub.map((s) => (
+                  {pickableSub(draft.subcategory_id).map((s) => (
                     <SelectItem key={s.id} value={String(s.id)}>
                       <span className="flex items-center gap-2">
                         <ColorDot color={s.color} />
@@ -1187,6 +1222,43 @@ export function Expenses({
                               </Select>
                             </Field>
                             <Field orientation="responsive">
+                              <FieldLabel htmlFor={`item-subcategory-${i}`}>
+                                {t.subcategory}
+                              </FieldLabel>
+                              <Select
+                                value={
+                                  it.subcategory_id === null
+                                    ? "none"
+                                    : String(it.subcategory_id)
+                                }
+                                onValueChange={(v) =>
+                                  setItem(i, {
+                                    subcategory_id: v === "none" ? null : Number(v),
+                                  })
+                                }
+                              >
+                                <SelectTrigger
+                                  id={`item-subcategory-${i}`}
+                                  className="h-9"
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">
+                                    {t.chooseSubcategory}
+                                  </SelectItem>
+                                  {pickableSub(it.subcategory_id).map((s) => (
+                                    <SelectItem key={s.id} value={String(s.id)}>
+                                      <span className="flex items-center gap-2">
+                                        <ColorDot color={s.color} />
+                                        {s.name}
+                                      </span>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </Field>
+                            <Field orientation="responsive">
                               <FieldLabel htmlFor={`item-quantity-${i}`}>
                                 {t.itemQuantity}
                               </FieldLabel>
@@ -1255,7 +1327,7 @@ export function Expenses({
                       onClick={() =>
                         set("items", [
                           ...draft.items,
-                          blankItem(draft.category_id),
+                          blankItem(draft.category_id, draft.subcategory_id),
                         ])
                       }
                     >
@@ -1352,6 +1424,8 @@ export function Expenses({
                         <div className="flex items-baseline justify-between gap-2">
                           <span className="truncate">
                             {it.name} · {nameOf(categories, it.category_id)}
+                            {it.subcategory_id !== null &&
+                              ` · ${nameOf(subcategories, it.subcategory_id)}`}
                           </span>
                           <span className="tabular-nums">
                             € {formatCents(it.amount_cents)}

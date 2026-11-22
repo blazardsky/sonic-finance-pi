@@ -203,12 +203,12 @@ export function Dashboard({
             estimateCents={estimate?.income_estimate_cents ?? undefined}
             footnotes={[
               { label: t.ofWhichExtra, cents: year.extra_income_cents || 0 },
-              // "Lordo" is the freelance slice of the same total: invoiced
+              // "Da lavoro" is the freelance slice of the same total: invoiced
               // work arrives before tax, and tax leaves again as an Expense
               // (ADR-0004). received_cents is already that sum — freelance
               // only, cash-basis — so this reads the tax summary the card
               // below it reads rather than asking for a second year total.
-              ...(tax ? [{ label: t.ofWhichGross, cents: tax.received_cents }] : []),
+              ...(tax ? [{ label: t.ofWhichFromWork, cents: tax.received_cents }] : []),
             ]}
           />
           <TotalsCard
@@ -232,6 +232,22 @@ export function Dashboard({
         </div>
       )}
 
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+        {loading ? (
+          <Skeleton className="h-32 w-full" />
+        ) : (
+          pending && (
+            <ClientsCard
+              pending={pending}
+              clockOK={clockOK}
+              onEditIncome={onEditIncome}
+              onPaid={load}
+            />
+          )
+        )}
+        <RemindersCard loading={loading} />
+      </div>
+
       <DailyTrendCard loading={loading} daily={daily} categories={categories} />
 
       {/* items-start: without it the grid stretches the calendar column to
@@ -242,19 +258,6 @@ export function Dashboard({
         <div className="flex flex-col gap-4">
           <UpcomingCard loading={loading} upcoming={upcoming} categories={categories} />
           <BudgetCard />
-          {loading ? (
-            <Skeleton className="h-32 w-full" />
-          ) : (
-            pending && (
-              <ClientsCard
-                pending={pending}
-                clockOK={clockOK}
-                onEditIncome={onEditIncome}
-                onPaid={load}
-              />
-            )
-          )}
-          <RemindersCard loading={loading} />
         </div>
 
         {/* The two recent lists stacked in the two columns Prossime scadenze

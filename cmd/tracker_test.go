@@ -7,26 +7,20 @@ import (
 )
 
 // A Tracker group as the API hands it out: one per normalized (name,
-// category), a last/min/max per Store, and a yearly average across every
-// Store.
+// category), with every purchase of it oldest first.
 type trackerItemJSON struct {
-	Name          string                   `json:"name"`
-	CategoryID    int64                    `json:"category_id"`
-	Stores        []trackerStoreJSON       `json:"stores"`
-	YearlyAverage []trackerYearlyPriceJSON `json:"yearly_average"`
+	Name       string             `json:"name"`
+	CategoryID int64              `json:"category_id"`
+	Points     []trackerPointJSON `json:"points"`
 }
 
-type trackerStoreJSON struct {
-	Store          string  `json:"store"`
-	LastPrice      float64 `json:"last_price"`
-	LastOccurredOn string  `json:"last_occurred_on"`
-	MinPrice       float64 `json:"min_price"`
-	MaxPrice       float64 `json:"max_price"`
-}
-
-type trackerYearlyPriceJSON struct {
-	Year         int     `json:"year"`
-	AveragePrice float64 `json:"average_price"`
+type trackerPointJSON struct {
+	OccurredOn    string  `json:"occurred_on"`
+	Price         float64 `json:"price"`
+	Unit          string  `json:"unit"`
+	Store         string  `json:"store"`
+	Discounted    bool    `json:"discounted"`
+	SubcategoryID *int64  `json:"subcategory_id"`
 }
 
 func (a *testApp) tracker(t *testing.T) []trackerItemJSON {
@@ -50,70 +44,41 @@ func findTrackerGroup(t *testing.T, got []trackerItemJSON, name string) trackerI
 	return trackerItemJSON{}
 }
 
-func findTrackerStore(t *testing.T, g trackerItemJSON, store string) trackerStoreJSON {
-	t.Helper()
-	for _, s := range g.Stores {
-		if s.Store == store {
-			return s
-		}
-	}
-	t.Fatalf("no store %q in tracker group %+v", store, g)
-	return trackerStoreJSON{}
-}
-
-// Items with the same name and Store spelled differently — trimmed, cased
-// and spaced differently — land in one group, per ADR-0013.
-func TestTrackerGroupsByNormalizedNameAndStore(t *testing.T) {
+// Items with the same name spelled differently — trimmed, cased and spaced
+// differently — land in one group (ADR-0013), with one point per purchase in
+// date order, priced per unit, whatever order they were entered in.
+func TestTrackerGroupsByNormalizedNameWithOnePointPerPurchase(t *testing.T) {
 	a := newTestApp(t)
 	alimentari := a.category(t, "Alimentari").ID
+	bio := a.createSubcategoryNamed(t, "Bio")
 
-	lt := "lt"
-	one := 1.0
-	a.addExpense(t, map[string]any{
-		"occurred_on": "2025-06-10", "amount_cents": 500, "category_id": alimentari, "store": "Esselunga",
-		"items": []map[string]any{{"name": "Latte", "amount_cents": 120, "category_id": alimentari, "quantity": one, "unit": lt}},
-	})
-	a.addExpense(t, map[string]any{
-		"occurred_on": "2025-11-20", "amount_cents": 500, "category_id": alimentari, "store": "esselunga ",
-		"items": []map[string]any{{"name": " LATTE", "amount_cents": 150, "category_id": alimentari, "quantity": one, "unit": lt}},
-	})
 	a.addExpense(t, map[string]any{
 		"occurred_on": "2026-01-05", "amount_cents": 500, "category_id": alimentari, "store": "Conad",
-		"items": []map[string]any{{"name": "latte", "amount_cents": 100, "category_id": alimentari, "quantity": one, "unit": lt}},
+		"items": []map[string]any{{"name": "latte", "amount_cents": 200, "category_id": alimentari,
+			"quantity": 2.0, "unit": "lt", "discounted": true, "subcategory_id": bio.ID}},
+	})
+	a.addExpense(t, map[string]any{
+		"occurred_on": "2025-06-10", "amount_cents": 500, "category_id": alimentari, "store": " Esselunga",
+		"items": []map[string]any{{"name": " LATTE", "amount_cents": 120, "category_id": alimentari,
+			"quantity": 1.0, "unit": "lt"}},
 	})
 
-	got := a.tracker(t)
-	g := findTrackerGroup(t, got, "latte")
+	g := findTrackerGroup(t, a.tracker(t), "latte")
 	if g.CategoryID != alimentari {
 		t.Errorf("category_id = %d, want %d", g.CategoryID, alimentari)
 	}
-	if len(g.Stores) != 2 {
-		t.Fatalf("stores = %+v, want 2 (esselunga, conad)", g.Stores)
+	if len(g.Points) != 2 {
+		t.Fatalf("points = %+v, want 2", g.Points)
 	}
-
-	esselunga := findTrackerStore(t, g, "esselunga")
-	if esselunga.LastPrice != 150 || esselunga.LastOccurredOn != "2025-11-20" {
-		t.Errorf("esselunga last = %v on %q, want 150 on 2025-11-20", esselunga.LastPrice, esselunga.LastOccurredOn)
+	first, second := g.Points[0], g.Points[1]
+	if first.OccurredOn != "2025-06-10" || first.Price != 120 || first.Unit != "lt" ||
+		first.Store != "Esselunga" || first.Discounted || first.SubcategoryID != nil {
+		t.Errorf("first point = %+v, want 2025-06-10, 120/lt at Esselunga, not discounted, no tag", first)
 	}
-	if esselunga.MinPrice != 120 || esselunga.MaxPrice != 150 {
-		t.Errorf("esselunga min/max = %v/%v, want 120/150", esselunga.MinPrice, esselunga.MaxPrice)
-	}
-
-	conad := findTrackerStore(t, g, "conad")
-	if conad.LastPrice != 100 || conad.MinPrice != 100 || conad.MaxPrice != 100 {
-		t.Errorf("conad = %+v, want last/min/max all 100", conad)
-	}
-
-	// Yearly average is across every Store: 2025 folds both Esselunga
-	// purchases (120, 150), 2026 has just the one Conad purchase.
-	wantYears := map[int]float64{2025: 135, 2026: 100}
-	if len(g.YearlyAverage) != len(wantYears) {
-		t.Fatalf("yearly_average = %+v, want one entry per year in %v", g.YearlyAverage, wantYears)
-	}
-	for _, y := range g.YearlyAverage {
-		if want, ok := wantYears[y.Year]; !ok || y.AveragePrice != want {
-			t.Errorf("yearly_average[%d] = %v, want %v", y.Year, y.AveragePrice, want)
-		}
+	if second.OccurredOn != "2026-01-05" || second.Price != 100 || second.Unit != "lt" ||
+		second.Store != "Conad" || !second.Discounted ||
+		second.SubcategoryID == nil || *second.SubcategoryID != bio.ID {
+		t.Errorf("second point = %+v, want 2026-01-05, 100/lt at Conad, discounted, tag %d", second, bio.ID)
 	}
 }
 
@@ -128,16 +93,14 @@ func TestTrackerFallsBackToAmountCentsWithoutAQuantity(t *testing.T) {
 		"items": []map[string]any{{"name": "Lampada", "amount_cents": 1999, "category_id": casa}},
 	})
 
-	got := a.tracker(t)
-	g := findTrackerGroup(t, got, "lampada")
-	s := findTrackerStore(t, g, "ikea")
-	if s.LastPrice != 1999 || s.MinPrice != 1999 || s.MaxPrice != 1999 {
-		t.Errorf("ikea = %+v, want last/min/max all 1999 (amount_cents, no quantity)", s)
+	g := findTrackerGroup(t, a.tracker(t), "lampada")
+	if len(g.Points) != 1 || g.Points[0].Price != 1999 || g.Points[0].Unit != "" {
+		t.Errorf("points = %+v, want one at 1999 with no unit (amount_cents, no quantity)", g.Points)
 	}
 }
 
 // The same Item name under two different Categories is two groups: Category
-// is part of the grouping key, same as Store.
+// is part of the grouping key.
 func TestTrackerSeparatesGroupsByCategory(t *testing.T) {
 	a := newTestApp(t)
 	alimentari := a.category(t, "Alimentari").ID

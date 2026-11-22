@@ -62,8 +62,8 @@ export const t = {
   date: "Data",
   category: "Categoria",
   chooseCategory: "Scegli…",
-  subcategory: "Sottocategoria",
-  chooseSubcategory: "Nessuna",
+  subcategory: "Tag",
+  chooseSubcategory: "Nessuno",
   addExpense: "Aggiungi spesa",
   privacyMode: "Modalità privacy",
   invalidAmount: "Importo non valido.",
@@ -163,26 +163,27 @@ export const t = {
   colorSlotRed: "Rosso",
   colorSlotBlueGray: "Nessun colore",
 
-  // Subcategories — a second, independent tag an Expense can carry alongside
+  // Subcategories, worded "Tag" on screen (code/API keep "subcategory") — a
+  // second, independent tag an Expense or Item can carry alongside
   // its Category, freely paired with whichever Category an entry actually
   // used it under (no fixed parent).
-  subcategories: "Sottocategorie",
-  addSubcategory: "Aggiungi sottocategoria",
-  isSubcategory: "È una sottocategoria",
+  subcategories: "Tag",
+  addSubcategory: "Aggiungi tag",
+  isSubcategory: "È un tag",
   confirmDeleteSubcategory: (name: string) =>
-    `Eliminare la sottocategoria "${name}"?`,
+    `Eliminare il tag "${name}"?`,
   subcategoryInUse:
-    "Questa sottocategoria è usata da spese registrate. Nascondila invece di eliminarla.",
+    "Questo tag è usato da spese registrate. Nascondilo invece di eliminarlo.",
   // Ticket 02 (safe delete): the picker offered instead of the bare 409
   // above. Unlike Category, a replacement is optional here — "remove the tag
   // instead" clears subcategory_id everywhere without touching the Category
   // on those same rows.
   replaceSubcategoryTitle: (name: string) =>
-    `"${name}" è usata da spese registrate`,
+    `"${name}" è usato da spese registrate`,
   replaceSubcategoryHint:
-    "Scegli una sottocategoria dello stesso tipo su cui spostare tutto quello che punta a questa, oppure rimuovi semplicemente l'etichetta.",
-  chooseReplacementSubcategory: "Scegli una sottocategoria…",
-  removeSubcategoryTag: "Rimuovi l'etichetta invece",
+    "Scegli un tag dello stesso tipo su cui spostare tutto quello che punta a questo, oppure rimuovi semplicemente il tag.",
+  chooseReplacementSubcategory: "Scegli un tag…",
+  removeSubcategoryTag: "Rimuovi il tag invece",
 
   // Incomes — money owed to or received by the household
   incomes: "Entrate",
@@ -255,7 +256,7 @@ export const t = {
   // outside the household. Still part of the total — the money left.
   ofWhichRefunded: "di cui da rimborsare",
   ofWhichExtra: "di cui extra",
-  ofWhichGross: "di cui lordo",
+  ofWhichFromWork: "di cui da lavoro",
   // The daily/weekly trend charts, by Category — the Dashboard reads the
   // rolling window, the Month page buckets the same daily rows into weeks
   // itself (no separate weekly endpoint).
@@ -709,11 +710,16 @@ export const t = {
   // across Stores, read entirely from GET /api/tracker.
   tracker: "Tracker",
   noTrackerYet: "Nessun dato di tracciamento ancora.",
-  trackerLastPrice: "Ultimo prezzo",
+  trackerLastPrice: "Ultimo",
   trackerMinPrice: "Minimo",
   trackerMaxPrice: "Massimo",
-  trackerYearlyAverage: "Media annua",
   trackerChooseItem: "Scegli una voce",
+  trackerProduct: "Prodotto",
+  trackerPriceTrend: "Andamento del prezzo",
+  trackerNoTags: "Nessun prodotto ha un tag.",
+  // An Item's unit ("kg"/"lt"/"piece"), short enough for a chart legend.
+  trackerUnitShort: (unit: string) =>
+    unit === "kg" ? "kg" : unit === "lt" ? "lt" : "pz",
 
   // Backup — a button, then the copying is yours. The spreadsheet had no
   // way out; a .db and two CSVs are the way out of this app.
